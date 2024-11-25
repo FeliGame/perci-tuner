@@ -20,11 +20,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall -fno-rtti")
 
 # Register pass plugin
-add_llvm_pass_plugin(MyPass
+add_llvm_pass_plugin(PerciTuner
     lib/RegisterPasses.cpp
-    lib/MyPass.cpp
+    lib/CreateCallDependency.cpp
 )
 
 # Link against LLVM libraries
-target_link_libraries(MyPass ${LLVM_LIBS})
+target_link_libraries(PerciTuner ${LLVM_LIBS})
 

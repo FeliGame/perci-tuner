@@ -1,5 +1,5 @@
-#ifndef LLVM_MYPASS_MYPASS_H
-#define LLVM_MYPASS_MYPASS_H
+#ifndef LLVM_CREATE_CALL_DEPENDENCY_H
+#define LLVM_CREATE_CALL_DEPENDENCY_H
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
@@ -10,11 +10,10 @@
 
 namespace llvm {
 
-class MyPass : public PassInfoMixin<MyPass> {
-public:
-    // static char ID;
-    // MyPass() : FunctionPass(ID) {}
 
+// Tell user the function call chain in order
+class CreateCallDependency : public PassInfoMixin<CreateCallDependency> {
+public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager
 
     virtual bool runOnModule(Module &module);
@@ -26,4 +25,4 @@ public:
 
 } // namespace llvm
 
-#endif // LLVM_MYPASS_MYPASS_H
+#endif // LLVM_CREATE_CALL_DEPENDENCY_H

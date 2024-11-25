@@ -11,23 +11,23 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "MyPass.h"
+#include "CreateCallDependency.h"
 
 using namespace llvm;
 
 /* New PM Registration */
-llvm::PassPluginLibraryInfo getMyPassPluginInfo() {
+llvm::PassPluginLibraryInfo getCreateCallDependencyPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION, "PerciTuner", LLVM_VERSION_STRING,
           [](PassBuilder &PB) {
             // PB.registerVectorizerStartEPCallback(
             //     [](llvm::ModulePassManager &PM, OptimizationLevel Level) {
-            //       PM.addPass(MyPass());
+            //       PM.addPass(CreateCallDependency());
             //     });
             PB.registerPipelineParsingCallback(
                 [](StringRef Name, llvm::ModulePassManager &PM,
                    ArrayRef<llvm::PassBuilder::PipelineElement>) {
-                  if (Name == "mypass") {
-                    PM.addPass(MyPass());
+                  if (Name == "CreateCallDependency") {
+                    PM.addPass(CreateCallDependency());
                     return true;
                   }
                   return false;
@@ -35,9 +35,9 @@ llvm::PassPluginLibraryInfo getMyPassPluginInfo() {
           }};
 }
 
-#ifndef LLVM_MYPASS_LINK_INTO_TOOLS
+#ifndef LLVM_CREATE_CALL_DEPENDENCY_PASS_LINK_INTO_TOOLS
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
-  return getMyPassPluginInfo();
+  return getCreateCallDependencyPluginInfo();
 }
 #endif
