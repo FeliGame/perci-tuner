@@ -10,21 +10,25 @@ First things first, install LLVM (recommended version: 17.0.1).
 ## Add Environment Variable
 
 Add this into ~/.bashrc:
+
 `export PERCI_TUNER="/path/to/perci-tuner/"`
+
 Then run `source ~/.bashrc` to enable it:
 
 ## Building
 
 `sh scripts/build.sh`
+
 This will generate a pass.so under build/ directory.  
 
 ## Run Perci-Tuner
 
 `sh scripts/run.sh /path/to/src.cpp`
+
 This will generate results (IR and related files) under the src folder.
 
 # Structure
 
 * /lib: Source code of IR passes.
-* /scripts:  Run-time score logging with Python.
+* /scripts:  Run-time score logging with Python & Shell.
 * /benchmarks: Some code to test Perci-Tuner.
