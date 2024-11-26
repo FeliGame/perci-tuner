@@ -8,12 +8,13 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/ValueSymbolTable.h>
+#include <llvm/Demangle/Demangle.h>
 
 using namespace std;
 using namespace llvm;
 
 
-cl::opt<string> CallEntryName("call-entry", cl::value_desc("name"), cl::desc("Name of program entry"), cl::init("main"));
+cl::opt<string> CallEntryName("search-entry", cl::value_desc("name"), cl::desc("Name of program entry"), cl::init("main"));
 
 std::set<std::string> CalledFunctions;
 
@@ -23,20 +24,19 @@ void printCalledFunctions(Function* callee, int depth) {
     {
         errs() << "\t";
     }
-    errs() << callee->getName() << "\n";
+    errs() << llvm::demangle(callee->getName()) << "\n";
 }
 
 // Enter function calls recursively
 void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth) {
-    if (!visited.insert(&F).second) {
-        // 如果已经访问过这个函数，就返回
-        return;
-    }
+    // if (!visited.insert(&F).second) {
+    //     return;  // exit if visited
+    // }
     for (auto &BB : F) {
         for (auto &I : BB) {
             if (auto *call = dyn_cast<CallInst>(&I)) {
                 auto *callee = call->getCalledFunction();
-                if (callee && !callee->isIntrinsic()) { // 排除内建函数
+                if (callee && !callee->isIntrinsic()) { // LLVM intrinsic: such as llvm.fmuladd.f32
                     CalledFunctions.insert(callee->getName().str());
                     printCalledFunctions(callee, depth);
                     collectCalledFunctions(*callee, visited, depth + 1); // 递归调用
@@ -47,14 +47,13 @@ void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth
 }
 
 bool CreateCallDependency::runOnFunction(Function &F) {
-    errs() << "Find function: " << F.getName() << "\n";
-    
-    if (F.getName() != CallEntryName) {
+    if (demangle(F.getName()) != CallEntryName) {
         return false;
     }
 
+    errs() << "Call Dependency Tree:\n" << demangle(F.getName()) << "\n";
     std::set<Function*> visited;
-    collectCalledFunctions(F, visited, 0);
+    collectCalledFunctions(F, visited, 1);
 
     return false;
 }
@@ -71,6 +70,7 @@ void CreateCallDependency::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 PreservedAnalyses CreateCallDependency::run(Module &M, ModuleAnalysisManager &) {
+    errs() << "Perci-Tuner: Running CreateCallDependency Pass...\n";
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();

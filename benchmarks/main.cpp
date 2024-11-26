@@ -1,14 +1,14 @@
 #include <stdio.h>
 
-int foo1()
+inline int foo1(int a, int b)
 {
-    return 3.0;
+    return a - b;
 }
 
 int foo()
 {
     float a = 3.1, b = 0.4;
-    return a + b + foo1();
+    return a + b + foo1(a, b);
 }
 
 int fun()

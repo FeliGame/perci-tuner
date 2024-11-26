@@ -23,9 +23,15 @@ This will generate a pass.so under build/ directory.
 
 ## Run Perci-Tuner
 
-`sh scripts/run.sh /path/to/src.cpp`
+`sh scripts/run.sh /path/to/src.cpp "Optional Flags"`
 
 This will generate results (IR and related files) under the src folder.
+
+Optional Flags should be in such format: 
+
+`sh scripts/run.sh /path/to/src.cpp "--search-entry=main"`
+
+It means Perci-Tuner should search from main function (Implemented in CreateCallDependency).
 
 # Structure
 
