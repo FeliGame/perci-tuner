@@ -2,11 +2,11 @@
 
 # @Author: Guocheng —— NUDT
 
-#####################################################
-# Run PerciTuner automatically                      #
-# sh run.sh /path/to/src --pass_parameter(Optional) #
-#                                                   #
-#####################################################
+#######################################################
+# Run PerciTuner automatically                        #
+# sh run.sh /path/to/src "--pass_parameter(Optional)" #
+#                                                     #
+#######################################################
 
 # Only keep path: path/to/a.cpp -> path/to/
 SRC_PATH=$(echo "$1" | sed 's|/[^/]*$||')"/"

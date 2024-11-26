@@ -1,15 +1,20 @@
 #include <stdio.h>
 
-int fun()
+int foo1()
 {
-    float a = 3, b = 0.4;
-    return a * b;
+    return 3.0;
 }
 
 int foo()
 {
     float a = 3.1, b = 0.4;
-    return a + b;
+    return a + b + foo1();
+}
+
+int fun()
+{
+    float a = 3, b = 0.4 + foo();
+    return a * b + foo();
 }
 
 int main()

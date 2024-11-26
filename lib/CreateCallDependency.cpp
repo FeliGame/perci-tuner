@@ -15,6 +15,37 @@ using namespace llvm;
 
 cl::opt<string> CallEntryName("call-entry", cl::value_desc("name"), cl::desc("Name of program entry"), cl::init("main"));
 
+std::set<std::string> CalledFunctions;
+
+
+void printCalledFunctions(Function* callee, int depth) {
+    for (int i = 0; i < depth; ++i)
+    {
+        errs() << "\t";
+    }
+    errs() << callee->getName() << "\n";
+}
+
+// Enter function calls recursively
+void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth) {
+    if (!visited.insert(&F).second) {
+        // 如果已经访问过这个函数，就返回
+        return;
+    }
+    for (auto &BB : F) {
+        for (auto &I : BB) {
+            if (auto *call = dyn_cast<CallInst>(&I)) {
+                auto *callee = call->getCalledFunction();
+                if (callee && !callee->isIntrinsic()) { // 排除内建函数
+                    CalledFunctions.insert(callee->getName().str());
+                    printCalledFunctions(callee, depth);
+                    collectCalledFunctions(*callee, visited, depth + 1); // 递归调用
+                }
+            }
+        }
+    }
+}
+
 bool CreateCallDependency::runOnFunction(Function &F) {
     errs() << "Find function: " << F.getName() << "\n";
     
@@ -22,25 +53,8 @@ bool CreateCallDependency::runOnFunction(Function &F) {
         return false;
     }
 
-    vector<string> CalledFunctions;
-
-    for (auto &BB : F) {
-        for (auto &I : BB) {
-            if (auto *call = dyn_cast<CallInst>(&I)) {
-                // 获取被调用函数的名称
-                auto *Callee = call->getCalledFunction();
-                if (Callee) {
-                    CalledFunctions.push_back(Callee->getName().str());
-                }
-            }
-        }
-    }
-
-    // 输出调用的函数名称
-    errs() << "Called Functions in " << F.getName() << ":\n";
-    for (const auto &FuncName : CalledFunctions) {
-        errs() << " - " << FuncName << "\n";
-    }
+    std::set<Function*> visited;
+    collectCalledFunctions(F, visited, 0);
 
     return false;
 }
