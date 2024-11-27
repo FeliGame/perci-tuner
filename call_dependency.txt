@@ -1,7 +1,3 @@
 _Z3foov
-_Z3funv
 _Z4foo1ii
-_ZN7Snippet4foo1Ei
 _ZN7Snippet4foo1Eii
-main
-printf

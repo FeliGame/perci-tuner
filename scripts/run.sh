@@ -2,25 +2,39 @@
 
 # @Author: Guocheng —— NUDT
 
-#############################################################
-# Run PerciTuner automatically                              #
-# sh run.sh /path/to/src "--pass_parameter=value"(Optional) #
-#                                                           #
-#############################################################
+################################################################################
+# Run PerciTuner automatically                                                 #
+# sh run.sh /path/to/src1 /path/to/src2 ... "--pass_parameter=value"(Optional) #
+#                                                                              #
+################################################################################
 
-# Only keep path: path/to/a.cpp -> path/to/
-SRC_PATH=$(echo "$1" | sed 's|/[^/]*$||')"/"
-# Trim prefix & suffix: path/to/a.cpp-> a
-SRC_NAME=$(echo "$1" | sed 's|.*/||' | sed 's|\.[^.]*$||')
-# Trim suffix: path/to/a.cpp-> path/to/a
-SRC_NO_SUFFIX=$SRC_PATH$SRC_NAME
+FLAGS=""
+BCS=""
+for arg in "$@"
+do
+    if echo "$arg" | grep -q "^--"; then
+        FLAGS="$FLAGS $arg"  # append arg to FLAGS
+    else
+        # Only keep path: path/to/a.cpp -> path/to/
+        SRC_PATH=$(echo "$arg" | sed 's|/[^/]*$||')"/"
+        # Trim prefix & suffix: path/to/a.cpp-> a
+        SRC_NAME=$(echo "$arg" | sed 's|.*/||' | sed 's|\.[^.]*$||')
+        # Trim suffix: path/to/a.cpp-> path/to/a
+        SRC_NO_SUFFIX=$SRC_PATH$SRC_NAME
 
-echo "SRC_PATH: $SRC_PATH"
-echo "SRC_NAME: $SRC_NAME"
-echo "SRC_NO_SUFFIX: $SRC_NO_SUFFIX"
+        echo "SRC_PATH: $SRC_PATH"
+        echo "SRC_NAME: $SRC_NAME"
+        echo "SRC_NO_SUFFIX: $SRC_NO_SUFFIX"
 
-clang -emit-llvm -c $1 -o $SRC_NO_SUFFIX.bc
+        clang -emit-llvm -c $arg -o $SRC_NO_SUFFIX.bc
+        BCS="$BCS $SRC_NO_SUFFIX.bc"  # append bc name to BCS
 
-opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -time-passes -passes=CreateCallDependency $2 $SRC_NO_SUFFIX.bc -o $SRC_NO_SUFFIX.bc
+    fi
+done
+
+llvm-link $BCS -o output.bc
+
+opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -time-passes -passes=CreateCallDependency $FLAGS output.bc -o output.bc
+
 # Run IR
-lli $SRC_NO_SUFFIX.bc
+lli output.bc

@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "snippet.h"
+#include "snippet.hpp"
 
 
 Snippet s = Snippet();
