@@ -3,8 +3,11 @@ source_filename = "benchmarks/main.cpp"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+%class.Snippet = type { i8 }
+
 $_Z4foo1ii = comdat any
 
+@s = dso_local global %class.Snippet zeroinitializer, align 1
 @.str = private unnamed_addr constant [13 x i8] c"Hello World!\00", align 1
 @.str.1 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
 
@@ -24,8 +27,15 @@ define dso_local noundef i32 @_Z3foov() #0 {
   %10 = call noundef i32 @_Z4foo1ii(i32 noundef %7, i32 noundef %9)
   %11 = sitofp i32 %10 to float
   %12 = fadd float %5, %11
-  %13 = fptosi float %12 to i32
-  ret i32 %13
+  %13 = load float, ptr %1, align 4
+  %14 = fptosi float %13 to i32
+  %15 = load float, ptr %2, align 4
+  %16 = fptosi float %15 to i32
+  %17 = call noundef i32 @_ZN7Snippet4foo1Eii(ptr noundef nonnull align 1 dereferenceable(1) @s, i32 noundef %14, i32 noundef %16)
+  %18 = sitofp i32 %17 to float
+  %19 = fadd float %12, %18
+  %20 = fptosi float %19 to i32
+  ret i32 %20
 }
 
 ; Function Attrs: mustprogress noinline nounwind optnone uwtable
@@ -39,6 +49,8 @@ define linkonce_odr dso_local noundef i32 @_Z4foo1ii(i32 noundef %0, i32 noundef
   %7 = sub nsw i32 %5, %6
   ret i32 %7
 }
+
+declare noundef i32 @_ZN7Snippet4foo1Eii(ptr noundef nonnull align 1 dereferenceable(1), i32 noundef, i32 noundef) #2
 
 ; Function Attrs: mustprogress noinline optnone uwtable
 define dso_local noundef i32 @_Z3funv() #0 {
@@ -55,15 +67,22 @@ define dso_local noundef i32 @_Z3funv() #0 {
   %9 = call noundef i32 @_Z3foov()
   %10 = sitofp i32 %9 to float
   %11 = call float @llvm.fmuladd.f32(float %7, float %8, float %10)
-  %12 = fptosi float %11 to i32
-  ret i32 %12
+  %12 = load float, ptr %1, align 4
+  %13 = fptosi float %12 to i32
+  %14 = call noundef i32 @_ZN7Snippet4foo1Ei(ptr noundef nonnull align 1 dereferenceable(1) @s, i32 noundef %13)
+  %15 = sitofp i32 %14 to float
+  %16 = fadd float %11, %15
+  %17 = fptosi float %16 to i32
+  ret i32 %17
 }
 
 ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
-declare float @llvm.fmuladd.f32(float, float, float) #2
+declare float @llvm.fmuladd.f32(float, float, float) #3
+
+declare noundef i32 @_ZN7Snippet4foo1Ei(ptr noundef nonnull align 1 dereferenceable(1), i32 noundef) #2
 
 ; Function Attrs: mustprogress noinline norecurse optnone uwtable
-define dso_local noundef i32 @main() #3 {
+define dso_local noundef i32 @main() #4 {
   %1 = alloca i32, align 4
   store i32 0, ptr %1, align 4
   %2 = call i32 (ptr, ...) @printf(ptr noundef @.str)
@@ -72,13 +91,13 @@ define dso_local noundef i32 @main() #3 {
   ret i32 0
 }
 
-declare i32 @printf(ptr noundef, ...) #4
+declare i32 @printf(ptr noundef, ...) #2
 
 attributes #0 = { mustprogress noinline optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #1 = { mustprogress noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
-attributes #2 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #3 = { mustprogress noinline norecurse optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
-attributes #4 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #2 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #3 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #4 = { mustprogress noinline norecurse optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 
 !llvm.module.flags = !{!0, !1, !2, !3, !4}
 !llvm.ident = !{!5}

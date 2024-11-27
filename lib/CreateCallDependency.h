@@ -21,6 +21,13 @@ public:
     bool runOnFunction(Function &F);
 
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+
+private:
+    void printCalledFunction(Function* callee, int depth);
+
+    void writeToFile();
+    
+    void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth);
 };
 
 } // namespace llvm

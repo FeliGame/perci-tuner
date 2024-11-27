@@ -1,6 +1,4 @@
 #include "CreateCallDependency.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
@@ -9,6 +7,8 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/ValueSymbolTable.h>
 #include <llvm/Demangle/Demangle.h>
+
+#include <fstream>
 
 using namespace std;
 using namespace llvm;
@@ -19,7 +19,8 @@ cl::opt<string> CallEntryName("search-entry", cl::value_desc("name"), cl::desc("
 std::set<std::string> CalledFunctions;
 
 
-void printCalledFunctions(Function* callee, int depth) {
+// Print to command line, only for DEBUG!
+void CreateCallDependency::printCalledFunction(Function* callee, int depth) {
     for (int i = 0; i < depth; ++i)
     {
         errs() << "\t";
@@ -27,8 +28,8 @@ void printCalledFunctions(Function* callee, int depth) {
     errs() << llvm::demangle(callee->getName()) << "\n";
 }
 
-// Enter function calls recursively
-void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth) {
+// Visit function calls recursively
+void CreateCallDependency::collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth) {
     // if (!visited.insert(&F).second) {
     //     return;  // exit if visited
     // }
@@ -38,11 +39,22 @@ void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth
                 auto *callee = call->getCalledFunction();
                 if (callee && !callee->isIntrinsic()) { // LLVM intrinsic: such as llvm.fmuladd.f32
                     CalledFunctions.insert(callee->getName().str());
-                    printCalledFunctions(callee, depth);
+                    printCalledFunction(callee, depth);
                     collectCalledFunctions(*callee, visited, depth + 1); // 递归调用
                 }
             }
         }
+    }
+}
+
+// Write call dependency set into file
+void CreateCallDependency::writeToFile() {
+    ofstream callDependencyFile ("call_dependency.txt");
+    if (callDependencyFile.is_open()) {
+        for (auto &function : CalledFunctions) {
+            callDependencyFile << function << "\n";
+        }
+        callDependencyFile.close();
     }
 }
 
@@ -52,8 +64,12 @@ bool CreateCallDependency::runOnFunction(Function &F) {
     }
 
     errs() << "Call Dependency Tree:\n" << demangle(F.getName()) << "\n";
+    CalledFunctions.insert(F.getName().str());
+
     std::set<Function*> visited;
     collectCalledFunctions(F, visited, 1);
+
+    writeToFile();
 
     return false;
 }
