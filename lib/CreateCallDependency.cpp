@@ -49,12 +49,12 @@ void CreateCallDependency::collectCalledFunctions(Function &F, std::set<Function
 
 // Write call dependency set into file
 void CreateCallDependency::writeToFile() {
-    ofstream callDependencyFile ("call_dependency.txt");
-    if (callDependencyFile.is_open()) {
+    ofstream searchedFunctionsFile ("searched_functions.txt");
+    if (searchedFunctionsFile.is_open()) {
         for (auto &function : CalledFunctions) {
-            callDependencyFile << function << "\n";
+            searchedFunctionsFile << function << "\n";
         }
-        callDependencyFile.close();
+        searchedFunctionsFile.close();
     }
 }
 

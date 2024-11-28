@@ -1,3 +1,0 @@
-_Z3foov
-_Z4foo1ii
-_ZN7Snippet4foo1Eii
