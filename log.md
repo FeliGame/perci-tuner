@@ -19,3 +19,21 @@
 * CreateCallDependency：支持将结果输出到searched_functions.txt，值得注意的是，命令行调试输出的是人类可读形式，而文件中存储的是去重的IR符号形式。
 * 编写样例测试了CCD在跨文件调用类方法的效果。
 * run.sh现支持多源文件命令行参数输入，以进行编译。
+
+### 28
+
+* 明确Precimonious CreateConfigFile printType 对struct的输出不完善。
+* 新增Pass: CreatePrecisionConfig，类比Precimonious CreateConfigFile。
+* 待验证：printType函数中分析的IR符号在不同架构下是否一致？例如 X86_FP80TyID 对应 long double。
+* 存疑：Precimonious CreateConfigFile printType中有一行outfile << *type，不合理！
+
+### 29
+
+* opt命令传入多条pass的语法：-passes='passA,passB...'。
+* -passes中传入的顺序直接影响执行顺序。
+* CreatePrecisionConfig: 采用nlohmann/json序列化，以保证标准易用的JSON格式读写。
+
+### 30
+* CreatePrecisionConfig: LLVM17通过llvm::DbgDeclareInst而非AllocaInst或ValueSymbolTable来读取变量声明，同时须在生成IR的命令中启用-g选项才能读取到变量名。
+* TODO: CPC目前支持float、double、long double、struct、class变量类型，暂不支持数组、指针、const类型。
+* clean.sh: 清理所有非工具文件，该脚本应当在每次git commit前执行

@@ -1,3 +1,8 @@
+// @Author: Guocheng - NUDT
+// Usage: Tell the function call chain in run-time order.
+// Optional FLAG: "--search-entry=function(TypeList)"
+// Output: searched_functions.txt
+
 #include "CreateCallDependency.h"
 
 #include <llvm/IR/DebugInfo.h>
@@ -40,7 +45,7 @@ void CreateCallDependency::collectCalledFunctions(Function &F, std::set<Function
                 if (callee && !callee->isIntrinsic()) { // LLVM intrinsic: such as llvm.fmuladd.f32
                     CalledFunctions.insert(callee->getName().str());
                     printCalledFunction(callee, depth);
-                    collectCalledFunctions(*callee, visited, depth + 1); // 递归调用
+                    collectCalledFunctions(*callee, visited, depth + 1);
                 }
             }
         }
@@ -82,11 +87,11 @@ bool CreateCallDependency::runOnModule(Module &module) {
 }  
 
 void CreateCallDependency::getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.setPreservesAll();
+    AU.setPreservesAll();  // hasn't changed IR
 }
 
 PreservedAnalyses CreateCallDependency::run(Module &M, ModuleAnalysisManager &) {
-    errs() << "Perci-Tuner: Running CreateCallDependency Pass...\n";
+    errs() << ">>> Perci-Tuner: Running CreateCallDependency Pass...\n";
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();

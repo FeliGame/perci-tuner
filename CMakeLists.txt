@@ -23,6 +23,7 @@ set(CMAKE_CXX_FLAGS "-Wall -fno-rtti")
 add_llvm_pass_plugin(PerciTuner
     lib/RegisterPasses.cpp
     lib/CreateCallDependency.cpp
+    lib/CreatePrecisionConfig.cpp
 )
 
 # Link against LLVM libraries

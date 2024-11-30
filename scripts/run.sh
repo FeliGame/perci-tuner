@@ -26,7 +26,7 @@ do
         echo "SRC_NAME: $SRC_NAME"
         echo "SRC_NO_SUFFIX: $SRC_NO_SUFFIX"
 
-        clang -emit-llvm -c $arg -o $SRC_NO_SUFFIX.bc
+        clang -g -emit-llvm -c $arg -o $SRC_NO_SUFFIX.bc
         BCS="$BCS $SRC_NO_SUFFIX.bc"  # append bc name to BCS
 
     fi
@@ -34,7 +34,7 @@ done
 
 llvm-link $BCS -o output.bc
 
-opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -time-passes -passes=CreateCallDependency $FLAGS output.bc -o output.bc
+opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -time-passes -passes='search_functions,config' $FLAGS output.bc -o output.bc
 
 # Run IR
 lli output.bc

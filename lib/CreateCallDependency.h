@@ -1,9 +1,11 @@
+// @Author: Guocheng - NUDT
+
 #ifndef LLVM_CREATE_CALL_DEPENDENCY_H
 #define LLVM_CREATE_CALL_DEPENDENCY_H
 
-#include "llvm/Pass.h"
-#include "llvm/IR/Function.h"
-#include "llvm/Support/raw_ostream.h"
+#include <llvm/Pass.h>
+#include <llvm/IR/Function.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Passes/PassPlugin.h>
 #include <llvm/Support/CommandLine.h>
@@ -11,7 +13,6 @@
 namespace llvm {
 
 
-// Tell user the function call chain in order
 class CreateCallDependency : public PassInfoMixin<CreateCallDependency> {
 public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager

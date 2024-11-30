@@ -7,8 +7,10 @@
 ####################################
 
 cd $PERCI_TUNER
-rm -rf build
-mkdir build
+# rm -rf build
+if [ ! -d "build" ]; then
+    mkdir build
+fi
 cd build
 cmake ..
 make

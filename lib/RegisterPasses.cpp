@@ -12,6 +12,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "CreateCallDependency.h"
+#include "CreatePrecisionConfig.h"
 
 using namespace llvm;
 
@@ -26,8 +27,12 @@ llvm::PassPluginLibraryInfo getCreateCallDependencyPluginInfo() {
             PB.registerPipelineParsingCallback(
                 [](StringRef Name, llvm::ModulePassManager &PM,
                    ArrayRef<llvm::PassBuilder::PipelineElement>) {
-                  if (Name == "CreateCallDependency") {
+                  if (Name == "search_functions") {
                     PM.addPass(CreateCallDependency());
+                    return true;
+                  }
+                  if (Name == "config") {
+                    PM.addPass(CreatePrecisionConfig());
                     return true;
                   }
                   return false;

@@ -27,11 +27,17 @@ This will generate a pass.so under build/ directory.
 
 This will generate results (IR and related files) under the src folder.
 
-Optional Flags should be in such format: 
+## Optional Flags
 
-`sh scripts/run.sh /path/to/src1.cpp /path/to/src2.c ... "--search-entry=fun()"`
+Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
-The flag "--search-entry=xxx" means Perci-Tuner should search from main function (Implemented in CreateCallDependency).
+### --search-entry=fun(TypeList)
+
+Customize running entry function for searching, from Pass:search_functions, implemented in CreateCallDependency.
+
+### --config-file
+
+Customize searched result's output filename, from Pass:config, implemented in CreatePrecisionConfig.
 
 # Structure
 
