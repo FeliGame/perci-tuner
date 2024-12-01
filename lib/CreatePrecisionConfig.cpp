@@ -25,6 +25,15 @@ cl::opt<string> ConfigFileName("config-file", cl::value_desc("filename"), cl::de
 set<string> includedFunctions; 
 nlohmann::json config;
 
+string CreatePrecisionConfig::getTypeName(DIType* type) {
+    if (auto *derivedType = llvm::dyn_cast<llvm::DIDerivedType>(type)) {
+	if (auto baseType = derivedType->getBaseType()) {
+	    return getTypeName(baseType) + "*";
+	}
+    }
+    return type->getName().str();
+}
+
 void CreatePrecisionConfig::findLocalVariables(Function &F) {
     nlohmann::json function;
     auto funcName = demangle(F.getName());
@@ -35,7 +44,7 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
                 if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
                     nlohmann::json localVar;
                     localVar["name"] = DV->getName();
-                    localVar["type"] = DV->getType()->getName();
+                    localVar["type"] = getTypeName(DV->getType());
 
                     function.emplace_back(localVar); 
                 }

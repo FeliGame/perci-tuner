@@ -37,3 +37,9 @@
 * CreatePrecisionConfig: LLVM17通过llvm::DbgDeclareInst而非AllocaInst或ValueSymbolTable来读取变量声明，同时须在生成IR的命令中启用-g选项才能读取到变量名。
 * TODO: CPC目前支持float、double、long double、struct、class变量类型，暂不支持数组、指针、const类型。
 * clean.sh: 清理所有非工具文件，该脚本应当在每次git commit前执行
+
+## Dec, 2024
+
+### 1
+
+* CPC: Supports multiple pointers, such as 'MY_STRUCT**'.

@@ -30,7 +30,7 @@ public:
 private:
     void findLocalVariables(Function &F);
     
-    string getTypeName(Type *type);
+    string getTypeName(DIType *type);
 };
 
 } // namespace llvm

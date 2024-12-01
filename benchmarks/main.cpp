@@ -16,6 +16,7 @@ inline int comp_test(int a, int b)
     Snippet local_snippet;
     MY_STRUCT local_struct;
     auto p = &local_struct;
+    auto pp = &p;
     return a - b + global_struct.s2[0] - p->s1 - local_snippet.foo1(1);
 }
 
