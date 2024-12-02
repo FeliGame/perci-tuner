@@ -43,3 +43,7 @@
 ### 1
 
 * CPC: Supports multiple pointers, such as 'MY_STRUCT**'.
+
+### 2
+
+* CPC: Supports array. All of them shown in one dimension, such as: double[3][6](src) -> double[18](config.json).

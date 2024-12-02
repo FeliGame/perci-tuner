@@ -34,7 +34,7 @@ done
 
 llvm-link $BCS -o output.bc
 
-opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -time-passes -passes='search_functions,config' $FLAGS output.bc -o output.bc
+opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_functions,config' $FLAGS output.bc -o output.bc
 
 # Run IR
 lli output.bc

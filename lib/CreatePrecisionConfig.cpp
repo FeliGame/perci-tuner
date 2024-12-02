@@ -31,6 +31,13 @@ string CreatePrecisionConfig::getTypeName(DIType* type) {
 	    return getTypeName(baseType) + "*";
 	}
     }
+    if (auto *compositeType = llvm::dyn_cast<llvm::DICompositeType>(type)) {
+	if (auto baseType = compositeType->getBaseType()) {
+	    auto arraySize = compositeType->getSizeInBits() / baseType->getSizeInBits();
+	    return getTypeName(baseType) + "["+ std::to_string(arraySize) + "]";
+	}
+    }
+
     return type->getName().str();
 }
 
@@ -42,17 +49,25 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
         for (auto &I : BB) {
             if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
                 if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
-                    nlohmann::json localVar;
-                    localVar["name"] = DV->getName();
-                    localVar["type"] = getTypeName(DV->getType());
-
+                    auto varName = DV->getName();
+		    auto typeName = getTypeName(DV->getType());
+		    
+		    if (varName == "this") continue;
+		    if (typeName == "int") continue;
+		    if (typeName == "long") continue;
+		    if (typeName == "long long") continue;
+		    
+		    nlohmann::json localVar;
+                    localVar["name"] = varName;
+                    localVar["type"] = typeName;
+		    
                     function.emplace_back(localVar); 
                 }
             }
             // No use in Perci-Tuner, only for DEBUG 
             else if (auto *DVI = llvm::dyn_cast<llvm::DbgValueInst>(&I)) {
                 if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DVI->getVariable())) {
-                    llvm::outs() << "Local variable(val): " << DV->getName() << "\n";
+                    errs() << "Local variable(val): " << DV->getName() << "\n";
                 }
             }
         }
