@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include "snippet.hpp"
 #include <cstdlib>
-#include <cstring>
+#include <string>
+#include <iostream>
 
+using namespace std;
 
 struct MY_STRUCT {
     double s1 = 0.33;
@@ -13,6 +15,8 @@ struct MY_STRUCT {
 MY_STRUCT global_struct;
 
 Snippet s = Snippet();
+double d = 32.0;
+string g_str = "hello";
 
 inline int comp_test(int a, int b)
 {
@@ -45,6 +49,8 @@ int main()
 {
     const float m = 32.0;
     const char* str = "main without brackets??";
+    // Issue: put here cancel CCD func search
+    // string l_str = "local...";
     printf("%s", str);
     printf("%d", fun());
     return 0;

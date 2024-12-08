@@ -29,8 +29,12 @@ public:
 
 private:
     void findLocalVariables(Function &F);
+
+    void findGlobalVariables(Module &M);
     
-    string getTypeName(DIType *type);
+    string getDITypeName(DIType *type);
+
+    string getTypeName(Type *type);
 };
 
 } // namespace llvm

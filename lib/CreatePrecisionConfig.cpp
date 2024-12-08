@@ -9,10 +9,12 @@
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/Type.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/ValueSymbolTable.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/BinaryFormat/Dwarf.h>
 
 #include <fstream>
 
@@ -23,19 +25,32 @@ using namespace llvm;
 cl::opt<string> ConfigFileName("config-file", cl::value_desc("filename"), cl::desc("Config file"), cl::init("config.json"));
 
 set<string> includedFunctions; 
+set<string> globalVariables;
 nlohmann::json config;
 
-string CreatePrecisionConfig::getTypeName(DIType* type) {
+string CreatePrecisionConfig::getTypeName(Type* type) {
+    string result;
+    llvm::raw_string_ostream stream(result);
+    stream << *type;
+    // TODO: Unfinished
+
+    return result;
+}
+
+string CreatePrecisionConfig::getDITypeName(DIType* type) {
     if (auto *derivedType = llvm::dyn_cast<llvm::DIDerivedType>(type)) {
-	if (auto baseType = derivedType->getBaseType()) {
-	    return getTypeName(baseType) + "*";
-	}
+        if (auto baseType = derivedType->getBaseType()) {
+            if(derivedType->getTag() == dwarf::DW_TAG_const_type) {
+                return "const " + getDITypeName(baseType);
+            }
+            return getDITypeName(baseType) + "*";
+        }
     }
     if (auto *compositeType = llvm::dyn_cast<llvm::DICompositeType>(type)) {
-	if (auto baseType = compositeType->getBaseType()) {
-	    auto arraySize = compositeType->getSizeInBits() / baseType->getSizeInBits();
-	    return getTypeName(baseType) + "["+ std::to_string(arraySize) + "]";
-	}
+        if (auto baseType = compositeType->getBaseType()) {
+            auto arraySize = compositeType->getSizeInBits() / baseType->getSizeInBits();
+            return getDITypeName(baseType) + "["+ std::to_string(arraySize) + "]";
+        }
     }
 
     return type->getName().str();
@@ -50,14 +65,14 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
             if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
                 if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
                     auto varName = DV->getName();
-		    auto typeName = getTypeName(DV->getType());
-		    
-		    if (varName == "this") continue;
-		    if (typeName == "int") continue;
-		    if (typeName == "long") continue;
-		    if (typeName == "long long") continue;
-		    
-		    nlohmann::json localVar;
+                    auto typeName = getDITypeName(DV->getType());
+                    
+                    if (varName == "this") continue;
+                    if (typeName == "int") continue;
+                    if (typeName == "long") continue;
+                    if (typeName == "long long") continue;
+                    
+                    nlohmann::json localVar;
                     localVar["name"] = varName;
                     localVar["type"] = typeName;
 		    
@@ -73,7 +88,25 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
         }
     }
 
-    config[funcName] = function;
+    config["local"][funcName] = function;
+}
+
+void CreatePrecisionConfig::findGlobalVariables(Module &M) { 
+    nlohmann::json globalVars;
+    for (GlobalVariable &GV : M.globals()) {
+            // if (GV.isDeclaration()) continue; // Skip external globals
+
+            auto name = GV.getName();
+            // Skip vars not declared by user. 
+            if(name.find('.') != string::npos) continue;
+
+            nlohmann::json globalVar;
+            globalVar["name"] = name;
+            globalVar["type"] = getTypeName(GV.getValueType());
+
+            globalVars.emplace_back(globalVar);
+    }
+    config["global"] = globalVars;
 }
 
 bool CreatePrecisionConfig::runOnFunction(Function &F) {
@@ -93,6 +126,8 @@ bool CreatePrecisionConfig::runOnModule(Module &module) {
     while(inFile >> name) {
         includedFunctions.insert(name);
     }
+
+    findGlobalVariables(module);
 
     for(Module::iterator f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();

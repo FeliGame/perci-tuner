@@ -47,3 +47,17 @@
 ### 2
 
 * CPC: Supports array. All of them shown in one dimension, such as: double[3][6](src) -> double[18](config.json).
+
+### 5
+
+* Functions declared in IR generated from .c has no parameter lists.
+
+### 8
+
+* CPC: Supports const.
+
+### 9
+
+* CPC: Supports global vars but not formatted.
+* Issue: Local string decl will cancel CCD's func search progress. (NOT ALLOWED!)
+* TODO: Format global vars, analyze struct/class
