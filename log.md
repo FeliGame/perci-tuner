@@ -61,3 +61,9 @@
 * CPC: Supports global vars but not formatted.
 * Issue: Local string decl will cancel CCD's func search progress. (NOT ALLOWED!)
 * TODO: Format global vars, analyze struct/class
+
+### 17
+
+* All vars (except cmd paras) declared in passes should be private.
+* CPC: Add var decl location into config.json, found that type of global pointers aren't defined.
+* Add Pass: ChangePrecision (Unfinished).

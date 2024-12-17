@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <string>
 #include <iostream>
+#include <cmath>
 
 using namespace std;
 
@@ -42,6 +43,8 @@ int fun()
 {
     float a = 3, c = 32;
     int i = 10;
+    for(float j = 0; j < 3; ++j) j ++;
+    for(float j = 0; j < 3; ++j) ++ j;
     return a * c + fp_test() + s.foo1(a) - i;
 }
 
@@ -51,7 +54,7 @@ int main()
     const char* str = "main without brackets??";
     // Issue: put here cancel CCD func search
     // string l_str = "local...";
-    printf("%s", str);
+    printf("%f, ", sin(3.0f));
     printf("%d", fun());
     return 0;
 }

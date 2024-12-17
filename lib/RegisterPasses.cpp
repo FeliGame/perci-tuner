@@ -13,11 +13,12 @@
 
 #include "CreateCallDependency.h"
 #include "CreatePrecisionConfig.h"
+#include "ChangePrecision.h"
 
 using namespace llvm;
 
 /* New PM Registration */
-llvm::PassPluginLibraryInfo getCreateCallDependencyPluginInfo() {
+llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION, "PerciTuner", LLVM_VERSION_STRING,
           [](PassBuilder &PB) {
             // PB.registerVectorizerStartEPCallback(
@@ -35,14 +36,18 @@ llvm::PassPluginLibraryInfo getCreateCallDependencyPluginInfo() {
                     PM.addPass(CreatePrecisionConfig());
                     return true;
                   }
+                  if (Name == "change_precision") {
+                    PM.addPass(ChangePrecision());
+                    return true;
+                  }
                   return false;
                 });
           }};
 }
 
-#ifndef LLVM_CREATE_CALL_DEPENDENCY_PASS_LINK_INTO_TOOLS
+#ifndef LLVM_CREATE_PERCI_TUNER_PASS_LINK_INTO_TOOLS
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
-  return getCreateCallDependencyPluginInfo();
+  return getPerciTunerPassPluginInfo();
 }
 #endif

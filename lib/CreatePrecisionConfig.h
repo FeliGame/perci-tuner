@@ -3,6 +3,8 @@
 #ifndef LLVM_CREATE_PRECISION_CONFIG_H
 #define LLVM_CREATE_PRECISION_CONFIG_H
 
+#include "nlohmann/json.hpp"
+
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
 #include <llvm/Support/raw_ostream.h>
@@ -11,6 +13,7 @@
 #include <llvm/Support/CommandLine.h>
 
 #include <vector>
+#include <set>
 
 using namespace std;
 
@@ -31,10 +34,12 @@ private:
     void findLocalVariables(Function &F);
 
     void findGlobalVariables(Module &M);
-    
-    string getDITypeName(DIType *type);
 
-    string getTypeName(Type *type);
+    set<string> includedFunctions; 
+    
+    set<string> globalVariables;
+    
+    nlohmann::json config;
 };
 
 } // namespace llvm

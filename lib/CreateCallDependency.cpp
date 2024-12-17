@@ -21,8 +21,6 @@ using namespace llvm;
 
 cl::opt<string> CallEntryName("search-entry", cl::value_desc("name"), cl::desc("Name of program entry"), cl::init("main"));
 
-std::set<std::string> CalledFunctions;
-
 
 // Print to command line, only for DEBUG!
 void CreateCallDependency::printCalledFunction(Function* callee, int depth) {
@@ -43,7 +41,7 @@ void CreateCallDependency::collectCalledFunctions(Function &F, std::set<Function
             if (auto *call = dyn_cast<CallInst>(&I)) {
                 auto *callee = call->getCalledFunction();
                 if (callee && !callee->isIntrinsic()) { // LLVM intrinsic: such as llvm.fmuladd.f32
-                    CalledFunctions.insert(callee->getName().str());
+                    calledFunctions.insert(callee->getName().str());
                     printCalledFunction(callee, depth);
                     collectCalledFunctions(*callee, visited, depth + 1);
                 }
@@ -56,7 +54,7 @@ void CreateCallDependency::collectCalledFunctions(Function &F, std::set<Function
 void CreateCallDependency::writeToFile() {
     ofstream searchedFunctionsFile ("searched_functions.txt");
     if (searchedFunctionsFile.is_open()) {
-        for (auto &function : CalledFunctions) {
+        for (auto &function : calledFunctions) {
             searchedFunctionsFile << function << "\n";
         }
         searchedFunctionsFile.close();
@@ -69,7 +67,7 @@ bool CreateCallDependency::runOnFunction(Function &F) {
     }
 
     errs() << "Call Dependency Tree:\n" << demangle(F.getName()) << "\n";
-    CalledFunctions.insert(F.getName().str());
+    calledFunctions.insert(F.getName().str());
 
     std::set<Function*> visited;
     collectCalledFunctions(F, visited, 1);

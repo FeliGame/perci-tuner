@@ -24,6 +24,7 @@ add_llvm_pass_plugin(PerciTuner
     lib/RegisterPasses.cpp
     lib/CreateCallDependency.cpp
     lib/CreatePrecisionConfig.cpp
+    lib/ChangePrecision.cpp
 )
 
 # Link against LLVM libraries

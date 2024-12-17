@@ -29,6 +29,8 @@ private:
     void writeToFile();
     
     void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth);
+
+    std::set<std::string> calledFunctions;
 };
 
 } // namespace llvm
