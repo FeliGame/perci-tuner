@@ -39,8 +39,6 @@ Customize running entry function for searching, from Pass:search_functions, impl
 
 Customize searched result's output filename, from Pass:config, implemented in CreatePrecisionConfig.
 
-# Structure
+### --target-config
 
-* /lib: Source code of IR passes.
-* /scripts:  Run-time score logging with Python & Shell.
-* /benchmarks: Some code to test Perci-Tuner.
+Customize target precision input filename, from Pass:change-precision, implemented in ChangePrecision.

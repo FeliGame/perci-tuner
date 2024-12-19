@@ -73,3 +73,8 @@
 * CPC: Variable declare location.
 * CP: Change type of local vars in AllocInst.
 * TODO: CP should change StoreInst operands & their types.
+
+### 20
+
+* CP: Change StoreInst & Replace LoadInst.
+* Issue: Replace inst may cause fpext/fptrunc crash, solve this need analyze Use Propagation.

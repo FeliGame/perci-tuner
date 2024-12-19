@@ -5,6 +5,7 @@
 // Output: Precision-Changed IR
 
 #include "ChangePrecision.h"
+#include "utils/ParseTypeName.hpp"
 
 #include "nlohmann/json.hpp"
 #include <llvm/IR/DebugInfo.h>
@@ -15,6 +16,9 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/ValueSymbolTable.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/ADT/APInt.h>
+#include <llvm/ADT/APFloat.h>
+#include <llvm/ADT/APSInt.h>
 
 #include <fstream>
 
@@ -54,33 +58,61 @@ void ChangePrecision::parseTypeConfig() {
 
 void ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType) {
     Value *var = DDI->getAddress();
+    auto align = Align(newType->getPrimitiveSizeInBits() / 8);
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
         errs() << "Changing AllocInst: " << *alloca << "\n";
         alloca->setAllocatedType(newType);
-        alloca->setAlignment(Align(newType->getPrimitiveSizeInBits() / 8));
+        alloca->setAlignment(align);
         errs() << "Changed AllocInst: " << *alloca << "\n";
 
-        // // TODO: 更新所有相关的store指令的类型
-        // for (User *user : alloca->users()) {
-        //     if (auto store = dyn_cast<StoreInst>(user)) {
-        //         // 获取原始的赋值
-        //         Value *oldValue = store->getOperand(0);
+        vector<Instruction*> instToErase;  // Inst to be erased later
 
-        //         // 将原始的赋值转换为新的类型
-        //         Value *newValue = nullptr;
-        //         if (oldValue->getType()->isFloatingPointTy()) {
-        //             newValue = ConstantFP::get(newType, dyn_cast<ConstantFP>(oldValue)->getValueAPF().convertToFloat());
-        //         } else if (oldValue->getType()->isIntegerTy()) {
-        //             newValue = ConstantInt::get(newType, dyn_cast<ConstantInt>(oldValue)->getZExtValue());
-        //         } else {
-        //             errs() << "Unsupported type: " << *oldValue->getType() << "\n";
-        //             continue;
-        //         }
+        for (User *user : alloca->users()) {
+            if (auto store = dyn_cast<StoreInst>(user)) {
+                // 获取原始的赋值
+                Value *oldValue = store->getOperand(0);
 
-        //         // 更新store指令的操作数
-        //         store->setOperand(0, newValue);
-        //     }
-        // }
+                // 将原始的赋值转换为新的类型
+                Value *newValue = nullptr;
+                // only converting float/double/long double
+                if (oldValue->getType()->isFloatingPointTy() && newType->isFloatingPointTy()) {
+                    auto valueAPF = dyn_cast<ConstantFP>(oldValue)->getValueAPF();
+                    if (newType->isFloatTy()) {
+                        newValue = ConstantFP::get(newType, valueAPF.convertToFloat());
+                    } else if (newType->isDoubleTy()) {
+                        newValue = ConstantFP::get(newType, valueAPF.convertToDouble());
+                    // } else if (newType->isFP128Ty()) {
+                    //     newValue = ConstantFP::get(newType, valueAPF.convert(APFloat::IEEEquad(), APFloat::rmNearestTiesToEven));
+                    } else {
+                        errs() << "Unsupported new type: " << *newType << "\n";
+                        continue;
+                    }
+                } else {
+                    errs() << "Unsupported old type: " << *oldValue->getType() << "\n";
+                    continue;
+                }
+
+                store->setOperand(0, newValue);
+                store->setAlignment(align);
+            }
+            else if (auto load = dyn_cast<LoadInst>(user)) {
+                Type *oldType = load->getType();
+                if (oldType == newType) continue;
+
+                auto *newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
+                newLoad->setAlignment(align);
+                if (MDNode *N = load->getMetadata("dbg")) {
+                    newLoad->setMetadata("dbg", N);
+                }
+
+                load->replaceAllUsesWith(newLoad);
+                instToErase.emplace_back(load);    // erase later to avoid broken iterator
+            }
+        }
+
+        for (auto* inst : instToErase) {
+            inst->eraseFromParent();
+        }
     }
 }
 
@@ -101,13 +133,22 @@ bool ChangePrecision::runOnFunction(Function &F) {
                         if (configEntry["name"] == varName && configEntry["line"] == std::to_string(lineNo)) {
                             Type *targetType = nullptr;
                             auto typeName = configEntry["type"].get<string>();
-                            if(typeName == "float") {
+
+                            // If new type is same as before, skip
+                            if (typeName == parseDITypeName(DV->getType())) continue;
+                            if (typeName == "float") {
                                 targetType = Type::getFloatTy(context);
-                            } else if(typeName == "double") {
+                            } else if (typeName == "double") {
                                 targetType = Type::getDoubleTy(context);
-                            } else if(typeName == "long double") {
+                            } else if (typeName == "long double") {
                                 targetType = Type::getFP128Ty(context);
-                            } else {  // TODO: Add more type
+                            } else if (typeName == "int") {
+                                targetType = Type::getInt32Ty(context);
+                            } else if (typeName == "long") {
+                                targetType = Type::getInt64Ty(context);
+                            } else if (typeName == "long long") {
+                                targetType = Type::getInt128Ty(context);
+                            } else {  // TODO: Add more type such as const/array/pointer...
                                 errs() << "Unknown type: " << typeName << "\n";
                                 continue;
                             }

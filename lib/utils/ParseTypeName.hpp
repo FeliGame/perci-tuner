@@ -18,7 +18,7 @@ using namespace llvm;
 using namespace std;
 
 
-string parseTypeName(Type* type) {
+inline string parseTypeName(Type* type) {
     string result;
     llvm::raw_string_ostream stream(result);
     // stream << *type;  // simply output complete type info
@@ -53,7 +53,7 @@ string parseTypeName(Type* type) {
     return result;
 }
 
-string parseDITypeName(DIType* type) {
+inline string parseDITypeName(DIType* type) {
     if (auto *derivedType = llvm::dyn_cast<llvm::DIDerivedType>(type)) {
         if (auto baseType = derivedType->getBaseType()) {
             if(derivedType->getTag() == dwarf::DW_TAG_const_type) {
@@ -72,4 +72,4 @@ string parseDITypeName(DIType* type) {
     return type->getName().str();
 }
 
-#endif
+#endif // INCLUDE_PARSE_TYPENAME_HPP_
