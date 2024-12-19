@@ -67,3 +67,9 @@
 * All vars (except cmd paras) declared in passes should be private.
 * CPC: Add var decl location into config.json, found that type of global pointers aren't defined.
 * Add Pass: ChangePrecision (Unfinished).
+
+### 19
+
+* CPC: Variable declare location.
+* CP: Change type of local vars in AllocInst.
+* TODO: CP should change StoreInst operands & their types.

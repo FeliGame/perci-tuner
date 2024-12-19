@@ -48,7 +48,8 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
                     nlohmann::json localVar;
                     localVar["name"] = varName;
                     localVar["type"] = typeName;
-                    localVar["location"] = file->getFilename().str() + ":" + std::to_string(lineNo);
+                    localVar["line"] = std::to_string(lineNo);
+                    localVar["file"] = file->getFilename().str();
                 
                     function.emplace_back(localVar); 
                 }
@@ -89,7 +90,8 @@ void CreatePrecisionConfig::findGlobalVariables(Module &M) {
                 if (GVDebug) {
                     unsigned lineNo = GVDebug->getLine();
                     DIFile *file = GVDebug->getFile();
-                    globalVar["location"] = file->getFilename().str() + ":" + std::to_string(lineNo);
+                    globalVar["line"] = std::to_string(lineNo);
+                    globalVar["file"] = file->getFilename().str();
                 }
             }
         }

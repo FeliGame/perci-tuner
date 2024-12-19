@@ -31,7 +31,7 @@ private:
 
     void parseTypeConfig();
 
-    void changeVariablePrecision(DbgDeclareInst *DDI, Type *newType, LLVMContext&);
+    void changeVariablePrecision(DbgDeclareInst *DDI, Type *newType);
 
     std::set<std::string> includedFunctions;
 

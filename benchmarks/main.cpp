@@ -50,11 +50,12 @@ int fun()
 
 int main()
 {
-    const float m = 32.0;
+    float m = 32.1f;
     const char* str = "main without brackets??";
     // Issue: put here cancel CCD func search
     // string l_str = "local...";
     printf("%f, ", sin(3.0f));
+    printf("%f, ", m);
     printf("%d", fun());
     return 0;
 }

@@ -22,7 +22,7 @@ using namespace std;
 using namespace llvm;
 
 
-cl::opt<string> TypeConfigName("type-config", cl::value_desc("filename"), cl::desc("Type Config file"), cl::init("config.json"));
+cl::opt<string> TargetConfigName("target-config", cl::value_desc("filename"), cl::desc("Target Type Config"), cl::init("config.json"));
 
 void ChangePrecision::parseIncludedFunctions() {
     ifstream inFile("searched_functions.txt");
@@ -40,9 +40,9 @@ void ChangePrecision::parseIncludedFunctions() {
 
 // 【Temporary】
 void ChangePrecision::parseTypeConfig() {
-    std::ifstream configFile(TypeConfigName.c_str());
+    std::ifstream configFile(TargetConfigName.c_str());
     if (!configFile.is_open()) {
-        errs() << "Failed to open " << TypeConfigName << "\n";
+        errs() << "Failed to open " << TargetConfigName << "\n";
         return;
     }
 
@@ -52,50 +52,69 @@ void ChangePrecision::parseTypeConfig() {
     config = nlohmann::json::parse(configContent);
 }
 
-void ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType, LLVMContext& context) {
-    // 获取原始变量的分配指令
+void ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType) {
     Value *var = DDI->getAddress();
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
-        // 更改分配指令的类型
-        alloca->mutateType(newType);
+        errs() << "Changing AllocInst: " << *alloca << "\n";
+        alloca->setAllocatedType(newType);
+        alloca->setAlignment(Align(newType->getPrimitiveSizeInBits() / 8));
+        errs() << "Changed AllocInst: " << *alloca << "\n";
 
-        // // 获取原始DILocalVariable对象
-        // DILocalVariable *originalDV = DDI->getVariable();
+        // // TODO: 更新所有相关的store指令的类型
+        // for (User *user : alloca->users()) {
+        //     if (auto store = dyn_cast<StoreInst>(user)) {
+        //         // 获取原始的赋值
+        //         Value *oldValue = store->getOperand(0);
 
-        // // 创建新的DILocalVariable对象
-        // DILocalVariable *newDV = new (context) DILocalVariable(
-        //     originalDV->getScope(),            // Scope
-        //     originalDV->getName(),            // Name
-        //     originalDV->getFile(),            // File
-        //     originalDV->getLine(),            // Line
-        //     cast<DIType>(newType),            // Type
-        //     originalDV->getArg(),             // Arg
-        //     originalDV->getFlags(),           // Flags
-        //     originalDV->getAlignInBits()      // AlignInBits
-        // );
-        // // 更新调试信息指令以反映新的类型
-        // DDI->setVariable(newDV);
+        //         // 将原始的赋值转换为新的类型
+        //         Value *newValue = nullptr;
+        //         if (oldValue->getType()->isFloatingPointTy()) {
+        //             newValue = ConstantFP::get(newType, dyn_cast<ConstantFP>(oldValue)->getValueAPF().convertToFloat());
+        //         } else if (oldValue->getType()->isIntegerTy()) {
+        //             newValue = ConstantInt::get(newType, dyn_cast<ConstantInt>(oldValue)->getZExtValue());
+        //         } else {
+        //             errs() << "Unsupported type: " << *oldValue->getType() << "\n";
+        //             continue;
+        //         }
+
+        //         // 更新store指令的操作数
+        //         store->setOperand(0, newValue);
+        //     }
+        // }
     }
-    // 如果需要，添加其他代码来处理不同类型的变量
 }
 
 
 bool ChangePrecision::runOnFunction(Function &F) {
     auto &context = F.getContext();
-    auto *doubleType = Type::getDoubleTy(context);
     auto functionConfig = config["local"][demangle(F.getName())];
 
     for (auto &BB : F) {
         for (auto &I : BB) {
-           if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
+            if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
                 if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
                     auto varName = DV->getName();
-                    // 查找 JSON 中是否有匹配的变量名称和类型更改配置
-                    if (functionConfig.contains(varName)) {
-                        auto typeName = functionConfig[varName]["type"];
-                        if (typeName == "float" || typeName == "double" || typeName == "long double") {
-                            errs() << F.getName() << " found " << varName.str() << ": " << typeName.dump(4) << '\n';
-                            // changeVariablePrecision(DDI, doubleType, context);
+                    unsigned lineNo = DDI->getDebugLoc().getLine();
+
+                    // TODO: Iterate each var to match, can be more efficient
+                    for (auto &configEntry : functionConfig) {
+                        if (configEntry["name"] == varName && configEntry["line"] == std::to_string(lineNo)) {
+                            Type *targetType = nullptr;
+                            auto typeName = configEntry["type"].get<string>();
+                            if(typeName == "float") {
+                                targetType = Type::getFloatTy(context);
+                            } else if(typeName == "double") {
+                                targetType = Type::getDoubleTy(context);
+                            } else if(typeName == "long double") {
+                                targetType = Type::getFP128Ty(context);
+                            } else {  // TODO: Add more type
+                                errs() << "Unknown type: " << typeName << "\n";
+                                continue;
+                            }
+
+                            errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
+                            changeVariablePrecision(DDI, targetType);
+                            break;  // found & changed
                         }
                     }
                 }
