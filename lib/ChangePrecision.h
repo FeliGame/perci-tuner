@@ -10,6 +10,7 @@
 #include <llvm/Passes/PassPlugin.h>
 #include <llvm/Support/CommandLine.h>
 
+#include <vector>
 #include <set>
 #include "nlohmann/json.hpp"
 
@@ -31,9 +32,13 @@ private:
 
     void parseTypeConfig();
 
-    void changeVariablePrecision(DbgDeclareInst *DDI, Type *newType);
+    bool changeVariablePrecision(DbgDeclareInst *DDI, Type *newType);
+
+    bool changeCallPrecision(CallInst *call, const std::string &newCallName);
 
     std::set<std::string> includedFunctions;
+
+    std::vector<Instruction*> instToErase;  // Inst to be erased later
 
     nlohmann::json config;
 };

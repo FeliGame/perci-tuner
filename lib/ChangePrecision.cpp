@@ -56,16 +56,16 @@ void ChangePrecision::parseTypeConfig() {
     config = nlohmann::json::parse(configContent);
 }
 
-void ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType) {
+bool ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType) {
     Value *var = DDI->getAddress();
     auto align = Align(newType->getPrimitiveSizeInBits() / 8);
+    bool modified = false;
+
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
         errs() << "Changing AllocInst: " << *alloca << "\n";
         alloca->setAllocatedType(newType);
         alloca->setAlignment(align);
         errs() << "Changed AllocInst: " << *alloca << "\n";
-
-        vector<Instruction*> instToErase;  // Inst to be erased later
 
         for (User *user : alloca->users()) {
             if (auto store = dyn_cast<StoreInst>(user)) {
@@ -94,6 +94,7 @@ void ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType
 
                 store->setOperand(0, newValue);
                 store->setAlignment(align);
+                modified = true;
             }
             else if (auto load = dyn_cast<LoadInst>(user)) {
                 Type *oldType = load->getType();
@@ -107,20 +108,51 @@ void ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType
 
                 load->replaceAllUsesWith(newLoad);
                 instToErase.emplace_back(load);    // erase later to avoid broken iterator
+                modified = true;
             }
         }
-
-        for (auto* inst : instToErase) {
-            inst->eraseFromParent();
-        }
     }
+    
+    return modified;
 }
 
+bool ChangePrecision::changeCallPrecision(CallInst *call, const std::string &newCallName) {
+    // 获取当前调用指令的参数列表
+    SmallVector<Value*, 3> args;
+    for (unsigned i = 0; i < 3; ++i) {
+        Value *arg = call->getOperand(i);
+        if (arg->getType()->isFloatTy()) {
+            // 将float类型的参数转换为double类型
+            args.push_back(new FPExtInst(arg, Type::getDoubleTy(arg->getContext()), "", call));
+        } else {
+            args.push_back(arg);
+        }
+    }
+
+    // 创建新的调用指令
+    FunctionCallee newCallee = call->getCalledFunction()->getParent()->getOrInsertFunction(newCallName,
+        FunctionType::get(Type::getDoubleTy(call->getContext()),
+            {Type::getDoubleTy(call->getContext()),
+             Type::getDoubleTy(call->getContext()),
+             Type::getDoubleTy(call->getContext())}, false));
+
+    auto *newCall = CallInst::Create(newCallee, args, "", call);
+    newCall->takeName(call);
+    newCall->setDebugLoc(call->getDebugLoc());
+
+    // 替换原来的调用指令
+    errs() << "replacing " << *call << " with " << *newCall << "\n";
+    call->replaceAllUsesWith(newCall);
+    instToErase.emplace_back(call);    // erase later to avoid broken iterator
+
+    return true;
+}
 
 bool ChangePrecision::runOnFunction(Function &F) {
     auto &context = F.getContext();
     auto functionConfig = config["local"][demangle(F.getName())];
-
+    bool modified = false;
+    // Check if decl inst need to be changed
     for (auto &BB : F) {
         for (auto &I : BB) {
             if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
@@ -154,7 +186,7 @@ bool ChangePrecision::runOnFunction(Function &F) {
                             }
 
                             errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
-                            changeVariablePrecision(DDI, targetType);
+                            modified |= changeVariablePrecision(DDI, targetType);
                             break;  // found & changed
                         }
                     }
@@ -162,20 +194,43 @@ bool ChangePrecision::runOnFunction(Function &F) {
             }
         }
     }
-    return true;
+    // Check if call inst need to be changed
+    // TODO: 只实现了将float->double的情况
+    for (auto &BB : F) {
+        for (auto &I : BB) {
+            if (auto *call = dyn_cast<CallInst>(&I)) {
+                Function *callee = call->getCalledFunction();
+                if (callee && callee->getName() == "llvm.fmuladd.f32") {
+                    for (unsigned i = 0; i < 3; ++i) {  // 有4个操作数，但第四个固定为ptr
+                        Value *arg = call->getOperand(i);
+                        if (!arg->getType()->isFloatTy()) {
+                            modified |= changeCallPrecision(call, "llvm.fmuladd.f64");
+                            break;  // 同一条只需要替换一次
+                        }   
+                    }
+                }
+            }
+        }
+    }
+    return modified;
 }
 
 bool ChangePrecision::runOnModule(Module &module) {
     parseIncludedFunctions();
     parseTypeConfig();
-
+    bool modified = false;
     for(Module::iterator f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();
         if(!f->isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
-            runOnFunction(*f);
+            modified |= runOnFunction(*f);
         }
     }
-    return true;  // has changed IR
+
+    for (auto* inst : instToErase) {
+        inst->eraseFromParent();
+    }
+
+    return modified;
 }  
 
 void ChangePrecision::getAnalysisUsage(AnalysisUsage &AU) const {

@@ -78,3 +78,8 @@
 
 * CP: Change StoreInst & Replace LoadInst.
 * Issue: Replace inst may cause fpext/fptrunc crash, solve this need analyze Use Propagation.
+
+###
+
+* CP: Replace LLVM CallInst. (such as fmuladd.f32 < - > fmuladd.f64)
+* Issue: While compiling C code, arithmetic inst as 'fmul' will throw error: 'unmatched operand type'.
