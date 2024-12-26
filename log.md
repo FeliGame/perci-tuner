@@ -79,7 +79,12 @@
 * CP: Change StoreInst & Replace LoadInst.
 * Issue: Replace inst may cause fpext/fptrunc crash, solve this need analyze Use Propagation.
 
-###
+### 25
 
 * CP: Replace LLVM CallInst. (such as fmuladd.f32 < - > fmuladd.f64)
 * Issue: While compiling C code, arithmetic inst as 'fmul' will throw error: 'unmatched operand type'.
+
+### 27
+
+* Add Pass: IRTiming, it records clock cycles while running each function in IR.
+* CreateCallDependency is renamed: SearchFunctions.

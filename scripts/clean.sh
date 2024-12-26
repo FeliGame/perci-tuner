@@ -7,6 +7,6 @@
 ########################
 
 cd $PERCI_TUNER
-find . -type f -name "searched_functions.txt" -exec rm {} \;
 find . -type f -name "*.json" -exec rm {} \;
 find . -type f -name "*.bc" -exec rm {} \;
+find . -type f -name "*.txt" -not -name "CMakeLists.txt" -exec rm {} \;

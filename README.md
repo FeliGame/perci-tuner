@@ -31,7 +31,7 @@ This will generate results (IR and related files) under the src folder.
 
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
-### --search-entry=fun(TypeList)
+### --search-entry=fun(TypeList if C++)
 
 Customize running entry function for searching, from Pass:search_functions, implemented in CreateCallDependency.
 
@@ -42,3 +42,7 @@ Customize searched result's output filename, from Pass:config, implemented in Cr
 ### --target-config
 
 Customize target precision input filename, from Pass:change-precision, implemented in ChangePrecision.
+
+### --ir-timing-result
+
+Customize IR timing result's output filename, from Pass:ir-timing, implemented in IRTiming.

@@ -1,7 +1,7 @@
 // @Author: Guocheng - NUDT
 // Usage: Tell declared variables' type.
 // Input: searched_functions.txt
-// Output: xxx_config.json
+// Output: config.json
 
 #include "CreatePrecisionConfig.h"
 #include "utils/ParseTypeName.hpp"

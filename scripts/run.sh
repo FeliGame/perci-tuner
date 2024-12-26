@@ -8,6 +8,8 @@
 #                                                                              #
 ################################################################################
 
+sh $PERCI_TUNER/scripts/clean.sh
+
 FLAGS=""
 BCS=""
 for arg in "$@"
@@ -34,7 +36,7 @@ done
 
 llvm-link $BCS -o output.bc
 
-opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_functions,config,change_precision' $FLAGS output.bc -o output.bc
+opt -time-passes -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_functions,config,change_precision,ir_timing' $FLAGS output.bc -o output.bc
 
 # Run IR
 lli output.bc

@@ -13,7 +13,7 @@
 namespace llvm {
 
 
-class CreateCallDependency : public PassInfoMixin<CreateCallDependency> {
+class SearchFunctions : public PassInfoMixin<SearchFunctions> {
 public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager
 

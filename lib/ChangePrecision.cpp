@@ -1,7 +1,6 @@
 // @Author: Guocheng - NUDT
 // Usage: Change variables' precision according to json.
-// Optional FLAG: 
-// Input: Variable new type config
+// Input: Variable target type config
 // Output: Precision-Changed IR
 
 #include "ChangePrecision.h"
@@ -234,11 +233,11 @@ bool ChangePrecision::runOnModule(Module &module) {
 }  
 
 void ChangePrecision::getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.setPreservesAll();  // hasn't changed IR
+    AU.setPreservesAll();
 }
 
-PreservedAnalyses ChangePrecision::run(Module &M, ModuleAnalysisManager &) {
-    errs() << ">>> Perci-Tuner: Running ChangePrecision Pass...\n";
+PreservedAnalyses ChangePrecision::run(Module &M, ModuleAnalysisManager &MAM) {
+    errs() << ">>> Perci-Tuner: Running ChangePrecision Pass...\n";    
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();

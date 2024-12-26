@@ -1,9 +1,9 @@
 // @Author: Guocheng - NUDT
 // Usage: Tell the function call chain in run-time order.
-// Optional FLAG: "--search-entry=function(TypeList)"
+// Input(Optional): "--search-entry=function(TypeList if C++)"
 // Output: searched_functions.txt
 
-#include "CreateCallDependency.h"
+#include "SearchFunctions.h"
 
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
@@ -23,7 +23,7 @@ cl::opt<string> CallEntryName("search-entry", cl::value_desc("name"), cl::desc("
 
 
 // Print to command line, only for DEBUG!
-void CreateCallDependency::printCalledFunction(Function* callee, int depth) {
+void SearchFunctions::printCalledFunction(Function* callee, int depth) {
     for (int i = 0; i < depth; ++i)
     {
         errs() << "\t";
@@ -32,7 +32,7 @@ void CreateCallDependency::printCalledFunction(Function* callee, int depth) {
 }
 
 // Visit function calls recursively
-void CreateCallDependency::collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth) {
+void SearchFunctions::collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth) {
     // if (!visited.insert(&F).second) {
     //     return;  // exit if visited
     // }
@@ -51,7 +51,7 @@ void CreateCallDependency::collectCalledFunctions(Function &F, std::set<Function
 }
 
 // Write call dependency set into file
-void CreateCallDependency::writeToFile() {
+void SearchFunctions::writeToFile() {
     ofstream searchedFunctionsFile ("searched_functions.txt");
     if (searchedFunctionsFile.is_open()) {
         for (auto &function : calledFunctions) {
@@ -61,7 +61,7 @@ void CreateCallDependency::writeToFile() {
     }
 }
 
-bool CreateCallDependency::runOnFunction(Function &F) {
+bool SearchFunctions::runOnFunction(Function &F) {
     if (demangle(F.getName()) != CallEntryName) {
         return false;
     }
@@ -77,19 +77,19 @@ bool CreateCallDependency::runOnFunction(Function &F) {
     return false;
 }
 
-bool CreateCallDependency::runOnModule(Module &module) {
+bool SearchFunctions::runOnModule(Module &module) {
     for(Module::iterator f = module.begin(), fe = module.end(); f != fe; f++) {
         runOnFunction(*f);
     }
     return false;  // hasn't changed IR
 }  
 
-void CreateCallDependency::getAnalysisUsage(AnalysisUsage &AU) const {
+void SearchFunctions::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();  // hasn't changed IR
 }
 
-PreservedAnalyses CreateCallDependency::run(Module &M, ModuleAnalysisManager &) {
-    errs() << ">>> Perci-Tuner: Running CreateCallDependency Pass...\n";
+PreservedAnalyses SearchFunctions::run(Module &M, ModuleAnalysisManager &) {
+    errs() << ">>> Perci-Tuner: Running SearchFunctions Pass...\n";
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();
