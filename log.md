@@ -5,7 +5,6 @@
 ### 25
 
 * 编写第一个Pass(CreateCallDependency), 以查询源文件的所有函数调用
-* TODO: 无法查询被调用函数实现中的下一级调用
 
 ### 26
 
@@ -35,7 +34,6 @@
 
 ### 30
 * CreatePrecisionConfig: LLVM17通过llvm::DbgDeclareInst而非AllocaInst或ValueSymbolTable来读取变量声明，同时须在生成IR的命令中启用-g选项才能读取到变量名。
-* TODO: CPC目前支持float、double、long double、struct、class变量类型，暂不支持数组、指针、const类型。
 * clean.sh: 清理所有非工具文件，该脚本应当在每次git commit前执行
 
 ## Dec, 2024
@@ -60,7 +58,7 @@
 
 * CPC: Supports global vars but not formatted.
 * Issue: Local string decl will cancel CCD's func search progress. (NOT ALLOWED!)
-* TODO: Format global vars, analyze struct/class
+* TODO: Analyze struct/class
 
 ### 17
 
@@ -72,7 +70,6 @@
 
 * CPC: Variable declare location.
 * CP: Change type of local vars in AllocInst.
-* TODO: CP should change StoreInst operands & their types.
 
 ### 20
 
@@ -88,3 +85,10 @@
 
 * Add Pass: IRTiming, it records clock cycles while running each function in IR.
 * CreateCallDependency is renamed: SearchFunctions.
+
+## Jan, 2025
+
+### 5
+
+* IRTiming: Delete IRTimingResult file in main.
+* Issue: Current IRTiming can't record accumulative cycles while execute a function multiple times.

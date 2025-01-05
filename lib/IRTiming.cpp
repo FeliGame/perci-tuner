@@ -25,6 +25,28 @@ cl::opt<string> IRTimingResultName("ir-timing-result", cl::value_desc("filename"
 
 bool IRTiming::runOnModule(Module &M)
 {
+    // Delete IRTimingResult file in main function
+    FunctionType *mainFuncType = FunctionType::get(Type::getInt32Ty(M.getContext()), PointerType::get(Type::getInt8Ty(M.getContext()), 0), false);
+    FunctionCallee mainFunc = M.getOrInsertFunction("main", mainFuncType);
+    Function *mainFuncPtr = dyn_cast<Function>(mainFunc.getCallee());
+
+    if (mainFuncPtr && !mainFuncPtr->isDeclaration()) {
+        IRBuilder<> Builder(&mainFuncPtr->getEntryBlock(), mainFuncPtr->getEntryBlock().begin());
+
+        auto *FileNamePtr = Builder.CreateGlobalStringPtr(IRTimingResultName.c_str());
+        auto *ModePtr = Builder.CreateGlobalStringPtr("w"); // rewrite
+
+        auto *fopenFuncType = FunctionType::get(PointerType::get(Type::getInt8Ty(M.getContext()), 0), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true);
+        auto fopenFunc = M.getOrInsertFunction("fopen", fopenFuncType);
+
+        auto *File = Builder.CreateCall(fopenFunc, {FileNamePtr, ModePtr});
+
+        auto *fcloseFuncType = FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true);
+        auto fcloseFunc = M.getOrInsertFunction("fclose", fcloseFuncType);
+        Builder.CreateCall(fcloseFunc, {File});
+    }
+
+    // Record timing result into file
     for (auto &F : M)
     {
         if (F.isDeclaration())
@@ -35,7 +57,7 @@ bool IRTiming::runOnModule(Module &M)
         auto *StartCycle = Builder.CreateCall(Intrinsic::getDeclaration(&M, Intrinsic::readcyclecounter), {}, "start_cycle");
 
         // Create a file pointer
-        auto *FilePtr = Builder.CreateGlobalStringPtr(IRTimingResultName.c_str());
+        auto *FileNamePtr = Builder.CreateGlobalStringPtr(IRTimingResultName.c_str());
         auto *ModePtr = Builder.CreateGlobalStringPtr("a");
 
         // Write elapsed cycles to file using fprintf
@@ -44,18 +66,18 @@ bool IRTiming::runOnModule(Module &M)
         auto *FuncNamePtr = Builder.CreateGlobalStringPtr(funcName);
 
         // Create fopen & get file pointer
-        auto FopenFunc = M.getOrInsertFunction(
+        auto fopenFunc = M.getOrInsertFunction(
             "fopen",
             FunctionType::get(PointerType::get(Type::getInt8Ty(M.getContext()), 0), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
-        auto *File = Builder.CreateCall(FopenFunc, {FilePtr, ModePtr});
+        auto *File = Builder.CreateCall(fopenFunc, {FileNamePtr, ModePtr});
 
         // Create fclose
-        auto FcloseFunc = M.getOrInsertFunction(
+        auto fcloseFunc = M.getOrInsertFunction(
             "fclose",
             FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
 
         // Create a function to write to file using fprintf
-        auto FprintfFunc = M.getOrInsertFunction(
+        auto fprintfFunc = M.getOrInsertFunction(
             "fprintf",
             FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
 
@@ -71,8 +93,8 @@ bool IRTiming::runOnModule(Module &M)
                         Intrinsic::getDeclaration(&M, Intrinsic::readcyclecounter), {}, "end_cycle");
                     auto *ElapsedCycle = ReturnBuilder.CreateSub(EndCycle, StartCycle, "elapsed_cycle");
 
-                    ReturnBuilder.CreateCall(FprintfFunc, {File, FmtStrPtr, FuncNamePtr, ElapsedCycle});
-                    ReturnBuilder.CreateCall(FcloseFunc, {File});
+                    ReturnBuilder.CreateCall(fprintfFunc, {File, FmtStrPtr, FuncNamePtr, ElapsedCycle});
+                    ReturnBuilder.CreateCall(fcloseFunc, {File});
                 }
             }
         }
