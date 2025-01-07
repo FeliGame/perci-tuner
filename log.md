@@ -92,3 +92,7 @@
 
 * IRTiming: Delete IRTimingResult file in main.
 * Issue: Current IRTiming can't record accumulative cycles while execute a function multiple times.
+
+### 8
+
+* CP: Insert fpext/fptrunc while change precision.

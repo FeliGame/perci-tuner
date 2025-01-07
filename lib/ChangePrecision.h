@@ -34,7 +34,13 @@ private:
 
     bool changeVariablePrecision(DbgDeclareInst *DDI, Type *newType);
 
-    bool changeCallPrecision(CallInst *call, const std::string &newCallName);
+    bool repairFMulAdd(CallInst *call, Type* argType);
+
+    Value *ensureTypeConsistency(Value *val, Type *targetType, Instruction *insertBefore);
+
+    bool fixInstructionType(User *user, Type *targetType, DenseSet<Value*> &visited);
+
+    bool repairCasts(Function &F);
 
     std::set<std::string> includedFunctions;
 

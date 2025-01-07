@@ -22,19 +22,25 @@ int comp_test(int a, int b)
 
 static int fp_test()
 {
-    float a = 3.1f, b = 0.4f;
+    long double a = 3.1f, b = 0.4f;
     long double ld = 33.3;
     double c[2] = {0.1, 0.3};
     double arr[2][3];
 
-    return a + b + comp_test(a, b) + c[0];
+    double add = a + b;
+    double mul = a * b;
+    double div = a / b;
+    double sub = a - b;
+    double muladd = a * b + c[0];
+    double add2 = a + b + ld;
+
+    return a + b * comp_test(a, b) / c[0];
 }
 
 int fun()
 {
-    float a = 3, c = 32;
     int i = 10;
-    return a * c + fp_test() - i;
+    return fp_test() - i;
 }
 
 int main()
@@ -43,5 +49,5 @@ int main()
     const char* str = "main without brackets??";
     printf("%s", str);
     printf("%d", fun());
-    return 0;
+    // return 0;
 }
