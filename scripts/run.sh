@@ -33,9 +33,17 @@ do
     fi
 done
 
-llvm-link $BCS -o output.bc
+if ! llvm-link $BCS -o output.bc; then
+    echo "llvm-link command failed. Exiting script."
+    exit 1
+fi
 
-opt -time-passes -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_functions,config,change_precision,ir_timing' $FLAGS output.bc -o output.bc
+if ! opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_functions,config,change_precision,ir_timing' $FLAGS output.bc -o output.bc; then
+    echo "opt command failed. Exiting script."
+    exit 1
+fi
 
-# Run IR
-lli output.bc
+if ! lli output.bc; then
+    echo "lli command failed. Exiting script."
+    exit 1
+fi

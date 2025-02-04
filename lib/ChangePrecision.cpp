@@ -54,12 +54,11 @@ void ChangePrecision::parseTypeConfig() {
     config = nlohmann::json::parse(configContent);
 }
 
-bool ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType) {
+bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
     auto *var = DDI->getAddress();
     auto align = Align(newType->getPrimitiveSizeInBits() / 8);
     bool modified = false;
 
-    DenseSet<Value*> visited; // Avoid repeat change while recursive call
 
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
         errs() << "Changing AllocInst: " << *alloca << "\n";
@@ -70,19 +69,19 @@ bool ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType
         for (auto *user : alloca->users()) {
             if (auto store = dyn_cast<StoreInst>(user)) {
                 auto *oldValue = store->getOperand(0);
-                if (oldValue->getType() == newType || visited.contains(oldValue)) continue;
+                if (oldValue->getType() == newType) continue;
                 if (oldValue->getType()->isFloatingPointTy() && newType->isFloatingPointTy()) {
-                    if (auto *newValue = ensureTypeConsistency(oldValue, newType, store)) {
+                    if (auto *newValue = insertCast(oldValue, newType, store)) {
                         store->setOperand(0, newValue);
                         store->setAlignment(align);
                         modified = true;
-                        visited.insert(newValue);
+                        modifiedValues.insert(newValue);
                     }
                 }
             }
             else if (auto load = dyn_cast<LoadInst>(user)) {
                 auto *oldType = load->getType();
-                if (oldType == newType || visited.contains(load)) continue;
+                if (oldType == newType) continue;
 
                 auto *newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
                 newLoad->setAlignment(align);
@@ -93,16 +92,17 @@ bool ChangePrecision::changeVariablePrecision(DbgDeclareInst *DDI, Type *newType
                 load->replaceAllUsesWith(newLoad);
                 instToErase.emplace_back(load);    // erase later to avoid broken iterator
                 modified = true;
-                visited.insert(newLoad);
+                modifiedValues.insert(newLoad);
 
-                errs() << "user(newLoad): " << *newLoad << "\n";
+                errs() << "repair users of load: " << *newLoad << "\n";
                 for (auto *loadUser : newLoad->users()) {
-                    fixInstructionType(loadUser, newType, visited);
+                    repairUserType(loadUser);
                 }
-            } else {
-                errs() << "user(else): " << *user << "\n";
-                fixInstructionType(user, newType, visited);
             }
+            // else {
+            //     errs() << "repair else inst's user: " << *user << "\n";
+            //     repairUserType(user);
+            // }
         }
     }
     
@@ -127,10 +127,8 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
     for (auto i = 0; i < 3; ++i) {
         auto *arg = call->getOperand(i);
         if (arg->getType()->getPrimitiveSizeInBits() < argType->getPrimitiveSizeInBits()) {
-            errs() << "Inserting fpext for arg: " << *arg << "\n";
             args.push_back(new FPExtInst(arg, argType, "", call));
         } else if (arg->getType()->getPrimitiveSizeInBits() > argType->getPrimitiveSizeInBits()) {
-            errs() << "Inserting fptrunc for arg: " << *arg << "\n";
             args.push_back(new FPTruncInst(arg, argType, "", call));
         } else {
             args.push_back(arg);
@@ -144,7 +142,7 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
     newCall->takeName(call);
     newCall->setDebugLoc(call->getDebugLoc());
 
-    errs() << "replacing " << *call << " with " << *newCall << "\n";
+    errs() << "repairFMulAdd(): replace " << *call << " with " << *newCall << "\n";
     call->replaceAllUsesWith(newCall);
     instToErase.emplace_back(call);    // erase later to avoid broken iterator
 
@@ -152,9 +150,8 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
 }
 
 // Insert fpext/fptrunc cast if needed
-Value *ChangePrecision::ensureTypeConsistency(Value *val, Type *targetType, Instruction *insertBefore) {
+Value *ChangePrecision::insertCast(Value *val, Type *targetType, Instruction *insertBefore) {
     if (val->getType() == targetType) {
-        errs() << "No type cast needed for: " << *val << "\n";
         return val; 
     }
 
@@ -168,69 +165,85 @@ Value *ChangePrecision::ensureTypeConsistency(Value *val, Type *targetType, Inst
 
     if (val->getType()->isFloatingPointTy() && targetType->isFloatingPointTy()) {
         if (val->getType()->getPrimitiveSizeInBits() < targetType->getPrimitiveSizeInBits()) {
-            errs() << "Inserting fpext: " << *(val->getType()) << "->" << *targetType << "\n";
+            errs() << "Insert fpext: " << *(val->getType()) << "->" << *targetType << "\n";
             return builder.CreateFPExt(val, targetType, "ext");
         } else if (val->getType()->getPrimitiveSizeInBits() > targetType->getPrimitiveSizeInBits()) {
-            errs() << "Inserting fptrunc: " << *(val->getType()) << "->" << *targetType << "\n";
+            errs() << "Insert fptrunc: " << *val << " of type "<< *(val->getType()) << "->" << *targetType << "\n";
             return builder.CreateFPTrunc(val, targetType, "trunc");
         }
     } 
     else {
-        errs() << "Unsupported non-floating point type cast: " 
+        errs() << "InsertCasts(): Unsupported non-floating point type cast: " 
                << *val->getType() << " -> " << *targetType << "\n";
     }
 
     return nullptr;
 }
 
-bool ChangePrecision::fixInstructionType(User *user, Type *targetType, DenseSet<Value*> &visited) {
-    if (visited.contains(user)) {
-        return false;
-    }
+// Make inst operands type consistent
+bool ChangePrecision::repairUserType(User *user) {
+    // if (modifiedValues.contains(user)) {
+    //     return false;
+    // }
 
     if (!isa<Instruction>(user)) {
-        errs() << "User is not an instruction.\n";
+        errs() << "RepairUser: User is not an inst.\n";
         return false;
     }
 
     auto *inst = cast<Instruction>(user);
 
     if (isa<FPExtInst>(inst) || isa<FPTruncInst>(inst)) {
-        errs() << "Skipping type cast instruction: " << *inst << "\n";
+        errs() << "RepairUser: skip cast inst: " << *inst << "\n";
         return false;
     }
 
-    //== 修改处：若 targetType 为空，说明我们是“泛型修复”模式，可以直接拿第一个操作数的目标类型来推
-    //  也可以直接 return false，如果你只想在 "递归里" 改，而不在这里改。
-    if (!targetType) {
-        errs() << "No explicit targetType given, skip fixInstructionType: " << *inst << "\n";
-        return false;
-    }
-
-    errs() << "Processing instruction: " << *inst << "\n";
-    visited.insert(user);
+    errs() << "RepairUser: Process inst: " << *inst << "\n";
+    modifiedValues.insert(user);
 
     bool modified = false;
+
+    // Find the highest precision operand type
+    Type *highestType = nullptr;
+    if (auto *binOp = dyn_cast<BinaryOperator>(inst)) {
+        for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
+            auto *operand = binOp->getOperand(i);
+            if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+                highestType = operand->getType();
+            }
+        }
+    } else if (auto *call = dyn_cast<CallInst>(inst)) {
+        auto *callee = call->getCalledFunction();
+        if (callee && callee->getName().startswith("llvm.fmuladd")) {
+            for (unsigned i = 0; i < 3; ++i) {  // 有4个操作数，但第四个固定为ptr，使用最高精度
+                auto *operand = call->getOperand(i);
+                if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+                    highestType = operand->getType();
+                }
+            }
+        }
+    }
 
     if (auto *binOp = dyn_cast<BinaryOperator>(inst)) {
         for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
             auto *operand = binOp->getOperand(i);
-            if (operand->getType() != targetType) {
-                if (!visited.contains(operand)) {
-                    errs() << "Operand " << i << " type " << *operand->getType() 
-                           << " != target type " << *targetType << ", casting...\n";
-                    if (auto *newOperand = ensureTypeConsistency(operand, targetType, binOp)) {
+            // type of src operands not match
+            if (operand->getType() != highestType) {
+                // if (!modifiedValues.contains(operand)) {
+                    errs() << "RepairUser: Operand " << i << " of type " << *operand->getType() 
+                           << " != target type " << *highestType<< ", casting...\n";
+                    if (auto *newOperand = insertCast(operand, highestType, binOp)) {
                         binOp->setOperand(i, newOperand);
                         modified = true;
-                        visited.insert(newOperand);
+                        modifiedValues.insert(newOperand);
                     }
-                }
+                // }
             }
         }
-
-        if (binOp->getType() != targetType) {
-            errs() << "binOp type " << *binOp->getType() 
-                   << " != target type " << *targetType << ", repairng binOp...\n";
+        // type of dst operand not match, replace the binOp with a new one
+        if (binOp->getType() != highestType) {
+            errs() << "RepairUser: binOp type not match: " << *binOp->getType() 
+                   << " != target type " << *highestType << "\n";
             IRBuilder<> builder(binOp);
             auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
                                                  binOp->getOperand(0), 
@@ -243,35 +256,31 @@ bool ChangePrecision::fixInstructionType(User *user, Type *targetType, DenseSet<
             binOp->replaceAllUsesWith(newBinOp);
             instToErase.emplace_back(binOp);
             modified = true;
-            visited.insert(newBinOp);
+            modifiedValues.insert(newBinOp);
 
             for (auto *binOpUser : newBinOp->users()) {
-                if (binOpUser->getType() != targetType) {
-                    fixInstructionType(binOpUser, targetType, visited);
+                if (binOpUser->getType() != highestType) {
+                    //【这个递归？？？】
+                    repairUserType(binOpUser);
                 }
             }
         }
     }
     // repair llvm.fmuladd
-    if (auto *call = dyn_cast<CallInst>(inst)) {
+    else if (auto *call = dyn_cast<CallInst>(inst)) {
         bool modified = false;
         auto *callee = call->getCalledFunction();
 
         if (callee && callee->getName().startswith("llvm.fmuladd")) {
-            auto *longestArgType = call->getOperand(0)->getType();
-            for (auto i = 1; i < 3; ++i) {  // 有4个操作数，但第四个固定为ptr，使用最高精度
-                if(call->getOperand(i)->getType()->getPrimitiveSizeInBits() > longestArgType->getPrimitiveSizeInBits())
-                    longestArgType = call->getOperand(i)->getType();
+            modified |= repairFMulAdd(call, highestType);        
+            if (modified) {
+                for (auto *callUser : call->users()) {
+                    if (callUser->getType()!= highestType) {
+                        errs() << "repair fmuladd(): incorrect user detected.\n";
+                        repairUserType(callUser);
+                    }
+                }
             }
-
-            modified |= repairFMulAdd(call, longestArgType);        
-
-            // for (auto *callUser : call->users()) {
-            //     if (callUser->getType()!= targetType) {
-            //         errs() << "Incorrect user type detected\n";
-            //         fixInstructionType(callUser, targetType, visited);
-            //     }
-            // }
         }
     }
 
@@ -279,7 +288,7 @@ bool ChangePrecision::fixInstructionType(User *user, Type *targetType, DenseSet<
     return modified;
 }
 
-// Repair wrong fpext/fptrunc insts
+// Remove redundant & Replace wrong fpext/fptrunc insts
 bool llvm::ChangePrecision::repairCasts(Function &F)
 {
     bool modified = false;
@@ -288,13 +297,13 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
         for (auto &I : BB) {
             if (auto *fpext = dyn_cast<FPExtInst>(&I)) {
                 if (fpext->getSrcTy() == fpext->getDestTy()) {
-                    errs() << "Removing redundant fpext: " << *fpext << "\n";
+                    errs() << "Remove redundant fpext: " << *fpext << "\n";
                     fpext->replaceAllUsesWith(fpext->getOperand(0));
                     instToErase.push_back(fpext);
                     modified = true;
                 }
                 else if (fpext->getSrcTy()->getPrimitiveSizeInBits() > fpext->getDestTy()->getPrimitiveSizeInBits()) {
-                    errs() << "Replacing incorrect fpext with fptrunc: " << *fpext << "\n";
+                    errs() << "Replace incorrect fpext with fptrunc: " << *fpext << "\n";
                     IRBuilder<> builder(fpext);
                     auto *truncatedValue = builder.CreateFPTrunc(fpext->getOperand(0), fpext->getDestTy(), "trunc");
                     fpext->replaceAllUsesWith(truncatedValue);
@@ -304,13 +313,13 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
             }
             else if (auto *fptrunc = dyn_cast<FPTruncInst>(&I)) {
                 if (fptrunc->getSrcTy() == fptrunc->getDestTy()) {
-                    errs() << "Removing redundant fptrunc: " << *fptrunc << "\n";
+                    errs() << "Remove redundant fptrunc: " << *fptrunc << "\n";
                     fptrunc->replaceAllUsesWith(fptrunc->getOperand(0));
                     instToErase.push_back(fptrunc);
                     modified = true;
                 }
                 else if (fptrunc->getSrcTy()->getPrimitiveSizeInBits() < fptrunc->getDestTy()->getPrimitiveSizeInBits()) {
-                    errs() << "Replacing incorrect fptrunc with fpext: " << *fptrunc << "\n";
+                    errs() << "Replace incorrect fptrunc with fpext: " << *fptrunc << "\n";
                     IRBuilder<> builder(fptrunc);
                     auto *extendedValue = builder.CreateFPExt(fptrunc->getOperand(0), fptrunc->getDestTy(), "ext");
                     fptrunc->replaceAllUsesWith(extendedValue);
@@ -355,7 +364,7 @@ bool ChangePrecision::runOnFunction(Function &F) {
                             }
 
                             errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
-                            modified |= changeVariablePrecision(DDI, targetType);
+                            modified |= changeAllocaInst(DDI, targetType);
                             break;  // found & changed
                         }
                     }
@@ -363,6 +372,17 @@ bool ChangePrecision::runOnFunction(Function &F) {
             }
         }
     }
+
+    // Repair users of modified vals in one time
+    // for (auto *val : modifiedValues)
+    // {
+    //     if (auto *load = dyn_cast<LoadInst>(val)) {
+    //         errs() << "load inst to repair: " << *load << "\n";
+    //         for (auto *user : load->users()) {
+    //             repairUserType(user);
+    //         }
+    //     }
+    // }
 
     modified |= repairCasts(F);
     return modified;

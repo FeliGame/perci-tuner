@@ -32,18 +32,19 @@ private:
 
     void parseTypeConfig();
 
-    bool changeVariablePrecision(DbgDeclareInst *DDI, Type *newType);
+    bool changeAllocaInst(DbgDeclareInst *DDI, Type *newType);
 
     bool repairFMulAdd(CallInst *call, Type* argType);
 
-    Value *ensureTypeConsistency(Value *val, Type *targetType, Instruction *insertBefore);
+    Value *insertCast(Value *val, Type *targetType, Instruction *insertBefore);
 
-    bool fixInstructionType(User *user, Type *targetType, DenseSet<Value*> &visited);
+    bool repairUserType(User *user);
 
     bool repairCasts(Function &F);
 
     std::set<std::string> includedFunctions;
 
+    DenseSet<Value*> modifiedValues;
     std::vector<Instruction*> instToErase;  // Inst to be erased later
 
     nlohmann::json config;

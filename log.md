@@ -96,3 +96,10 @@
 ### 8
 
 * CP: Insert fpext/fptrunc while change precision.
+
+## Feb, 2025
+
+### 4
+
+* Issue: for an equation 'a + b + c', if a and b changed from ld to d , and c keep ld; then casts comes to a wrong solution: d + d + d; Correct solution: ld + ld + ld. To solve this, I commit changes as below:
+* CP: RepairUserType(): Find the highest operand precision in inst and make other operands consistent.
