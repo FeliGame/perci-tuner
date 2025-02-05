@@ -75,7 +75,6 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                         store->setOperand(0, newValue);
                         store->setAlignment(align);
                         modified = true;
-                        modifiedValues.insert(newValue);
                     }
                 }
             }
@@ -90,9 +89,9 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                 }
 
                 load->replaceAllUsesWith(newLoad);
-                instToErase.emplace_back(load);    // erase later to avoid broken iterator
+                errs() << "erase later: " << *load << "\n";
+                instToErase.insert(load);    // erase later to avoid broken iterator
                 modified = true;
-                modifiedValues.insert(newLoad);
 
                 errs() << "repair users of load: " << *newLoad << "\n";
                 for (auto *loadUser : newLoad->users()) {
@@ -144,7 +143,8 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
 
     errs() << "repairFMulAdd(): replace " << *call << " with " << *newCall << "\n";
     call->replaceAllUsesWith(newCall);
-    instToErase.emplace_back(call);    // erase later to avoid broken iterator
+    errs() << "erase later: " << *call << "\n";
+    instToErase.insert(call);    // erase later to avoid broken iterator
 
     return true;
 }
@@ -182,10 +182,6 @@ Value *ChangePrecision::insertCast(Value *val, Type *targetType, Instruction *in
 
 // Make inst operands type consistent
 bool ChangePrecision::repairUserType(User *user) {
-    // if (modifiedValues.contains(user)) {
-    //     return false;
-    // }
-
     if (!isa<Instruction>(user)) {
         errs() << "RepairUser: User is not an inst.\n";
         return false;
@@ -197,9 +193,6 @@ bool ChangePrecision::repairUserType(User *user) {
         errs() << "RepairUser: skip cast inst: " << *inst << "\n";
         return false;
     }
-
-    errs() << "RepairUser: Process inst: " << *inst << "\n";
-    modifiedValues.insert(user);
 
     bool modified = false;
 
@@ -229,15 +222,12 @@ bool ChangePrecision::repairUserType(User *user) {
             auto *operand = binOp->getOperand(i);
             // type of src operands not match
             if (operand->getType() != highestType) {
-                // if (!modifiedValues.contains(operand)) {
-                    errs() << "RepairUser: Operand " << i << " of type " << *operand->getType() 
-                           << " != target type " << *highestType<< ", casting...\n";
-                    if (auto *newOperand = insertCast(operand, highestType, binOp)) {
-                        binOp->setOperand(i, newOperand);
-                        modified = true;
-                        modifiedValues.insert(newOperand);
-                    }
-                // }
+                errs() << "RepairUser: Operand " << i << " of type " << *operand->getType() 
+                       << " != target type " << *highestType<< ", casting...\n";
+                if (auto *newOperand = insertCast(operand, highestType, binOp)) {
+                    binOp->setOperand(i, newOperand);
+                    modified = true;
+                }
             }
         }
         // type of dst operand not match, replace the binOp with a new one
@@ -254,13 +244,12 @@ bool ChangePrecision::repairUserType(User *user) {
             }
 
             binOp->replaceAllUsesWith(newBinOp);
-            instToErase.emplace_back(binOp);
+            errs() << "erase later: " << *binOp << "\n";
+            instToErase.insert(binOp);
             modified = true;
-            modifiedValues.insert(newBinOp);
 
             for (auto *binOpUser : newBinOp->users()) {
                 if (binOpUser->getType() != highestType) {
-                    //【这个递归？？？】
                     repairUserType(binOpUser);
                 }
             }
@@ -299,7 +288,7 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
                 if (fpext->getSrcTy() == fpext->getDestTy()) {
                     errs() << "Remove redundant fpext: " << *fpext << "\n";
                     fpext->replaceAllUsesWith(fpext->getOperand(0));
-                    instToErase.push_back(fpext);
+                    instToErase.insert(fpext);
                     modified = true;
                 }
                 else if (fpext->getSrcTy()->getPrimitiveSizeInBits() > fpext->getDestTy()->getPrimitiveSizeInBits()) {
@@ -307,7 +296,7 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
                     IRBuilder<> builder(fpext);
                     auto *truncatedValue = builder.CreateFPTrunc(fpext->getOperand(0), fpext->getDestTy(), "trunc");
                     fpext->replaceAllUsesWith(truncatedValue);
-                    instToErase.push_back(fpext);
+                    instToErase.insert(fpext);
                     modified = true;
                 }
             }
@@ -315,7 +304,7 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
                 if (fptrunc->getSrcTy() == fptrunc->getDestTy()) {
                     errs() << "Remove redundant fptrunc: " << *fptrunc << "\n";
                     fptrunc->replaceAllUsesWith(fptrunc->getOperand(0));
-                    instToErase.push_back(fptrunc);
+                    instToErase.insert(fptrunc);
                     modified = true;
                 }
                 else if (fptrunc->getSrcTy()->getPrimitiveSizeInBits() < fptrunc->getDestTy()->getPrimitiveSizeInBits()) {
@@ -323,7 +312,7 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
                     IRBuilder<> builder(fptrunc);
                     auto *extendedValue = builder.CreateFPExt(fptrunc->getOperand(0), fptrunc->getDestTy(), "ext");
                     fptrunc->replaceAllUsesWith(extendedValue);
-                    instToErase.push_back(fptrunc);
+                    instToErase.insert(fptrunc);
                     modified = true;
                 }
             }

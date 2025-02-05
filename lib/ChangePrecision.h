@@ -10,8 +10,6 @@
 #include <llvm/Passes/PassPlugin.h>
 #include <llvm/Support/CommandLine.h>
 
-#include <vector>
-#include <set>
 #include "nlohmann/json.hpp"
 
 namespace llvm {
@@ -44,8 +42,7 @@ private:
 
     std::set<std::string> includedFunctions;
 
-    DenseSet<Value*> modifiedValues;
-    std::vector<Instruction*> instToErase;  // Inst to be erased later
+    DenseSet<Instruction*> instToErase;  // Inst to be erased later
 
     nlohmann::json config;
 };
