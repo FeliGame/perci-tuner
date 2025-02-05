@@ -362,17 +362,6 @@ bool ChangePrecision::runOnFunction(Function &F) {
         }
     }
 
-    // Repair users of modified vals in one time
-    // for (auto *val : modifiedValues)
-    // {
-    //     if (auto *load = dyn_cast<LoadInst>(val)) {
-    //         errs() << "load inst to repair: " << *load << "\n";
-    //         for (auto *user : load->users()) {
-    //             repairUserType(user);
-    //         }
-    //     }
-    // }
-
     modified |= repairCasts(F);
     return modified;
 }

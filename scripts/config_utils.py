@@ -5,20 +5,21 @@
 import copy, json
 
 # valid precision types
-PRECICIONS = ["float", "double", "long double"]
-CONST_PRECICIONS = ["const "+ p for p in PRECICIONS]
-POINTER_PRECICIONS = [p+"*" for p in PRECICIONS]
+PRECISIONS = ["float", "double", "long double"]
+CONST_PRECISIONS = ["const "+ p for p in PRECISIONS]
+POINTER_PRECISIONS = [p+"*" for p in PRECISIONS]
+
 
 # fill search types for each variable
 # and delete the variables that dont need to change precicions
 def parse_search_var_conf(change_set):
   for change_var in change_set:
-    if change_var['type'] in PRECICIONS:
-      change_var['search_types'] = PRECICIONS[:PRECICIONS.index(change_var['type'])+1]
-    elif change_var['type'] in CONST_PRECICIONS:
-      change_var['search_types'] = CONST_PRECICIONS[:CONST_PRECICIONS.index(change_var['type'])+1]
-    elif change_var['type'] in POINTER_PRECICIONS:
-      change_var['search_types'] = POINTER_PRECICIONS[:POINTER_PRECICIONS.index(change_var['type'])+1]
+    if change_var['type'] in PRECISIONS:
+      change_var['search_types'] = PRECISIONS[:PRECISIONS.index(change_var['type'])+1]
+    elif change_var['type'] in CONST_PRECISIONS:
+      change_var['search_types'] = CONST_PRECISIONS[:CONST_PRECISIONS.index(change_var['type'])+1]
+    elif change_var['type'] in POINTER_PRECISIONS:
+      change_var['search_types'] = POINTER_PRECISIONS[:POINTER_PRECISIONS.index(change_var['type'])+1]
   # delete the variables that dont need to change precicions
   # i.  the variables' type is not in the valid precision types
   # ii. the variables' 'search_types' only have one option for the variable

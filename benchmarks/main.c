@@ -35,7 +35,7 @@ static double fp_test()
     // double add2 = a + b + ld;
 
 // double e = comp_test(a, b) / c[0];
-    return a + b * c[0];
+    return a + b * c[0] * b;
 }
 
 double fun()
@@ -48,7 +48,7 @@ int main()
 {
     const float m = 32.0;
     const char* str = "main.c output:";
-    printf("%s\n", str);
+    // printf("%s\n", str);
     printf("%lf\n", fun());
     // return 0;
 }

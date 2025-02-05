@@ -8,7 +8,7 @@ import os, threading, csv
 TEMP_DATA_FILE = "temp_data.csv"
 
 
-# delete temp_data.csv when finish the search
+# delete temp_data.csv
 def del_csv():
     if os.path.exists(TEMP_DATA_FILE):
         os.remove(TEMP_DATA_FILE)
@@ -40,7 +40,7 @@ def store_data(time, result):
         "time": time,
         "result": result
     }
-    print("new_data:", new_data)
+
     existing_data = read_data()
     if existing_data == []:
         store_data_(new_data, TEMP_DATA_FILE)
@@ -75,9 +75,16 @@ def get_current_result():
             return float(row["result"])
 
 # check the current result is nearly equal to old result
-def is_nearly_equal(old_result):
-    return is_nearly_equal_to(get_current_result(), old_result)
+def is_nearly_equal(old_result, thres):
+    return is_nearly_equal_to(get_current_result(), old_result, thres)
 
 # check the new result is nearly equal to old result
-def is_nearly_equal_to(new_result, old_result):
-    return int(new_result) == int(old_result)
+# use relative error to compare
+def is_nearly_equal_to(new_result, old_result, thres):
+    threshold = float(thres)
+    # if old_result is 0, then use absolute error to compare
+    if old_result == 0:
+        return abs(new_result) <= threshold
+    # if old_result is not 0, then use relative error to compare
+    relative_error = abs((new_result - old_result) / old_result)
+    return relative_error <= threshold
