@@ -40,6 +40,8 @@ private:
 
     bool repairCasts(Function &F);
 
+    Type* translateTypeName(std::string typeName, LLVMContext& context);
+
     std::set<std::string> includedFunctions;
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later

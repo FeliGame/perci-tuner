@@ -5,7 +5,7 @@ Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features 
 
 # User Manual
 
-First things first, install LLVM (recommended version: 17.0.1).
+First things first, install LLVM (recommended version: 17.0.6).
 
 ## Add Environment Variable
 

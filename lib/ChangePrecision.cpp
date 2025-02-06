@@ -56,9 +56,16 @@ void ChangePrecision::parseTypeConfig() {
 
 bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
     auto *var = DDI->getAddress();
-    auto align = Align(newType->getPrimitiveSizeInBits() / 8);
-    bool modified = false;
+    Align align;
 
+    if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
+        auto *elementType = arrayType->getElementType();
+        align = Align(elementType->getPrimitiveSizeInBits() / 8);
+    } else {
+        align = Align(newType->getPrimitiveSizeInBits() / 8);
+    }
+
+    bool modified = false;
 
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
         errs() << "Changing AllocInst: " << *alloca << "\n";
@@ -96,6 +103,40 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                 errs() << "repair users of load: " << *newLoad << "\n";
                 for (auto *loadUser : newLoad->users()) {
                     repairUserType(loadUser);
+                }
+            }
+            else if (auto call = dyn_cast<CallInst>(user)) {
+                // Handle llvm.memcpy calls(it generated while alloc array size)
+                errs() << "call name: " << call->getName() << "\n";
+                if (auto *callee = call->getCalledFunction()) {
+                    if (callee->getName() == "llvm.memcpy.p0.p0.i64") {
+                        errs() << "Changing llvm.memcpy call: " << *call << "\n";
+
+                        auto *dest = call->getArgOperand(0);
+                        auto *src = call->getArgOperand(1);
+                        auto *size = call->getArgOperand(2);
+
+                        uint64_t newSize = 0;
+                        if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
+                            newSize = arrayType->getNumElements() * arrayType->getElementType()->getPrimitiveSizeInBits() / 8;
+                        } else {
+                            newSize = newType->getPrimitiveSizeInBits() / 8;
+                        }
+
+                        // Create a new constant for the new size
+                        auto *newSizeConstant = ConstantInt::get(size->getType(), newSize);
+
+                        // Create a new llvm.memcpy call with the updated parameters
+                        auto *newCall = CallInst::Create(callee, {dest, src, newSizeConstant, call->getArgOperand(3)}, "", call);
+
+                        // Replace the old call with the new one
+                        call->replaceAllUsesWith(newCall);
+                        errs() << "erase later: " << *call << "\n";
+                        instToErase.insert(call);    // erase later to avoid broken iterator
+                        modified = true;
+
+                        errs() << "New llvm.memcpy call: " << *newCall << "\n";
+                    }
                 }
             }
             // else {
@@ -322,6 +363,35 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
     return modified;
 }
 
+// translate typename into llvm type
+Type* ChangePrecision::translateTypeName(string typeName, LLVMContext& context)
+{
+    Type* targetType = nullptr;
+    if (typeName.find("float") == 0) {
+        targetType = Type::getFloatTy(context);
+    } else if (typeName.find("double") == 0) {
+        targetType = Type::getDoubleTy(context);
+    } else if (typeName.find("long double") == 0) {
+        targetType = Type::getFP128Ty(context);
+    } else {  // TODO: Add more type such as const/array/pointer...
+        errs() << "Unknown type: " << typeName << "\n";
+        return nullptr;
+    }
+    
+    if (typeName.find("[") == string::npos) return targetType;
+
+    // Extract the size of the array
+    size_t openBracket = typeName.find('[');
+    size_t closeBracket = typeName.find(']');
+    if (openBracket != string::npos && closeBracket != string::npos) {
+        string sizeStr = typeName.substr(openBracket + 1, closeBracket - openBracket - 1);
+        int arraySize = std::stoi(sizeStr);
+        ArrayType *arrayType = ArrayType::get(targetType, arraySize);
+        return arrayType;
+    }
+    return nullptr;
+}
+
 bool ChangePrecision::runOnFunction(Function &F) {
     auto &context = F.getContext();
     auto functionConfig = config["local"][demangle(F.getName())];
@@ -341,16 +411,8 @@ bool ChangePrecision::runOnFunction(Function &F) {
                             auto typeName = configEntry["type"].get<string>();
 
                             if (typeName == parseDITypeName(DV->getType())) continue;
-                            if (typeName == "float") {
-                                targetType = Type::getFloatTy(context);
-                            } else if (typeName == "double") {
-                                targetType = Type::getDoubleTy(context);
-                            } else if (typeName == "long double") {
-                                targetType = Type::getFP128Ty(context);
-                            } else {  // TODO: Add more type such as const/array/pointer...
-                                errs() << "Unknown type: " << typeName << "\n";
-                                continue;
-                            }
+                            targetType = translateTypeName(typeName, context);
+                            if (targetType == nullptr) continue;
 
                             errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
                             modified |= changeAllocaInst(DDI, targetType);

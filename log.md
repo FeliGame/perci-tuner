@@ -107,3 +107,7 @@
 ### 5
 
 * CP: change precision of fmuladd won't crash (caused by wild pointers in instToErase , I keep it in DenseSet to solve this). However, multiple unreferenced insts are kept.
+
+### 7
+
+* CP: Support floating-point's array.
