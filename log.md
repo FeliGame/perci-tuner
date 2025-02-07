@@ -111,3 +111,7 @@
 ### 7
 
 * CP: Support floating-point's array.
+* Issue: ParseDITypeName parse 'const float[2]' as 'const float[0]'.
+* Issue: Crash when add change 'getelementptr' inst in CP.
+* Knowledge: local static will be marked as '@local_func_name.static_var_name internal global...', global static will be marked as '@static_var_name internal global...', global non-static will be marked as '@global_var_name dso_local global...'.
+* CPC: Support static var.

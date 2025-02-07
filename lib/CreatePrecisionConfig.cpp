@@ -24,41 +24,59 @@ using namespace llvm;
 
 cl::opt<string> ConfigFileName("config-file", cl::value_desc("filename"), cl::desc("Config file"), cl::init("config.json"));
 
+// Find Local vars and local static vars
 void CreatePrecisionConfig::findLocalVariables(Function &F) {
     nlohmann::json function;
     auto funcName = demangle(F.getName());
 
     for (auto &BB : F) {
         for (auto &I : BB) {
-            if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
-                if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
-                    auto varName = DV->getName();
-                    auto typeName = parseDITypeName(DV->getType());
-                    
-                    if (varName == "this") continue;
-                    if (typeName == "int") continue;
-                    if (typeName == "long") continue;
-                    if (typeName == "long long") continue;
-                    
-                    auto DL = DDI->getDebugLoc();
-                    unsigned lineNo = DL.getLine();
-                    auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
-                    auto *file = localScope->getNonLexicalBlockFileScope()->getFile();
+            std::string varName = "";
+            std::string typeName = "";
+            DebugLoc DL;
+            bool isStatic;
 
-                    nlohmann::json localVar;
-                    localVar["name"] = varName;
-                    localVar["type"] = typeName;
-                    localVar["line"] = std::to_string(lineNo);
-                    localVar["file"] = file->getFilename().str();
-                
-                    function.emplace_back(localVar); 
+            if (auto *GV = dyn_cast<GlobalVariable>(I.getOperand(0))) {
+                // Check local static vars
+                if (GV->hasInternalLinkage()) {
+                    // Skip global static vars
+                    if (GV->getName().find(F.getName()) == std::string::npos) continue;
+                    // "func_name.var_name" -> "var_name"
+                    std::string prefix = F.getName().str() + ".";
+                    size_t prefixLen = prefix.length();
+                    varName = GV->getName().substr(prefixLen);
+                    typeName = parseTypeName(GV->getValueType());
+
+                    DL = I.getDebugLoc();
+                    isStatic = true;
                 }
             }
-            // No use in Perci-Tuner, only for DEBUG 
-            else if (auto *DVI = llvm::dyn_cast<llvm::DbgValueInst>(&I)) {
-                if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DVI->getVariable())) {
-                    errs() << "Local variable(val): " << DV->getName() << "\n";
+            else if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
+                if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
+                    varName = DV->getName();
+                    typeName = parseDITypeName(DV->getType());
+                    
+                    if (varName == "this") continue;
+                    
+                    DL = DDI->getDebugLoc();
+                    isStatic = false;
                 }
+            }
+            
+            // Save to config
+            if (varName != "" && typeName!= "") {
+                unsigned lineNo = DL.getLine();
+                auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
+                auto *file = localScope->getNonLexicalBlockFileScope()->getFile();
+
+                nlohmann::json localVar;
+                localVar["name"] = varName;
+                localVar["type"] = typeName;
+                localVar["line"] = std::to_string(lineNo);
+                localVar["file"] = file->getFilename().str();
+                localVar["isStatic"] = isStatic;
+            
+                function.emplace_back(localVar); 
             }
         }
     }
@@ -79,8 +97,8 @@ void CreatePrecisionConfig::findGlobalVariables(Module &M) {
         nlohmann::json globalVar;
         globalVar["name"] = name;
         globalVar["type"] = parseTypeName(GV.getValueType());
+        globalVar["isStatic"] = GV.hasInternalLinkage();
 
-        // 获取与全局变量关联的调试信息
         SmallVector<DIGlobalVariableExpression *, 1> GVs;
         GV.getDebugInfo(GVs);
         if (!GVs.empty()) {

@@ -105,6 +105,12 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                     repairUserType(loadUser);
                 }
             }
+            // else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
+            // will crash, don't know why
+            //     gep->setSourceElementType(newType);
+            //     errs() << "Changed GetElementPtrInst type " << *newType << " of " << *gep << "\n";
+            //     modified = true;
+            // }
             else if (auto call = dyn_cast<CallInst>(user)) {
                 // Handle llvm.memcpy calls(it generated while alloc array size)
                 errs() << "call name: " << call->getName() << "\n";

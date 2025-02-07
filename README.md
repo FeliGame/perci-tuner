@@ -1,6 +1,6 @@
 # Perci-Tuner
 
-Perci-Tuner increases program's runtime speed while keeping errors within an acceptable range, by reducing floating-point precision.
+Perci-Tuner increases C program's runtime speed while keeping errors within an acceptable range, by reducing floating-point precision.
 Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features a modular design for easier expansion and modification.
 
 # User Manual
