@@ -106,7 +106,7 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                 }
             }
             // else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
-            // will crash, don't know why
+            // will crash report: 'GEP is not of right type for indices!', don't know why
             //     gep->setSourceElementType(newType);
             //     errs() << "Changed GetElementPtrInst type " << *newType << " of " << *gep << "\n";
             //     modified = true;
@@ -165,7 +165,7 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
     } else if (argType == Type::getFP128Ty(call->getContext())) {
         newCallName = "llvm.fmuladd.f128";
     } else {
-        errs() << "repairFMulAdd(): Unsupported arg type: " << *argType << "\n";
+        errs() << "RepairFMulAdd(): Unsupported arg type: " << *argType << "\n";
         return false;
     }
 
@@ -188,7 +188,7 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
     newCall->takeName(call);
     newCall->setDebugLoc(call->getDebugLoc());
 
-    errs() << "repairFMulAdd(): replace " << *call << " with " << *newCall << "\n";
+    errs() << "RepairFMulAdd(): replace " << *call << " with " << *newCall << "\n";
     call->replaceAllUsesWith(newCall);
     errs() << "erase later: " << *call << "\n";
     instToErase.insert(call);    // erase later to avoid broken iterator
@@ -235,6 +235,9 @@ bool ChangePrecision::repairUserType(User *user) {
     }
 
     auto *inst = cast<Instruction>(user);
+    
+    if (instRepaired.contains(inst)) return false;
+    instRepaired.insert(inst);
 
     if (isa<FPExtInst>(inst) || isa<FPTruncInst>(inst)) {
         errs() << "RepairUser: skip cast inst: " << *inst << "\n";
@@ -304,7 +307,6 @@ bool ChangePrecision::repairUserType(User *user) {
     }
     // repair llvm.fmuladd
     else if (auto *call = dyn_cast<CallInst>(inst)) {
-        bool modified = false;
         auto *callee = call->getCalledFunction();
 
         if (callee && callee->getName().startswith("llvm.fmuladd")) {

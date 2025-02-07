@@ -3,9 +3,6 @@
 #include <string.h>
 #include "snippet.h"
 
-static int g = 10;
-int gv = 10;
-
 
 struct MY_STRUCT {
     double s1;
@@ -27,7 +24,7 @@ static double fp_test()
 {
     long double a = 3.1f, b = 0.4f;
     long double ld = 33.3;
-    static double c[2] = {0.1, 0.3};
+    double c[2] = {0.1, 0.3};
     static double arr[2][3];
 
     // double add = a + b;
@@ -38,7 +35,7 @@ static double fp_test()
     // double add2 = a + b + ld;
 
 // double e = comp_test(a, b) / c[0];
-    return a + b * c[0] + arr[0][0] + g + gv;
+    return a + b * c[0] + arr[0][0];
 }
 
 double fun()

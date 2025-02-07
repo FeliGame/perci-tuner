@@ -115,3 +115,7 @@
 * Issue: Crash when add change 'getelementptr' inst in CP.
 * Knowledge: local static will be marked as '@local_func_name.static_var_name internal global...', global static will be marked as '@static_var_name internal global...', global non-static will be marked as '@global_var_name dso_local global...'.
 * CPC: Support static var.
+
+### 8
+
+* CP: Introduce DenseSet to record all insts repaired to avoid duplicate unreferenced insts.
