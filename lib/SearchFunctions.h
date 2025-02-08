@@ -31,6 +31,8 @@ private:
     void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth);
 
     std::set<std::string> calledFunctions;
+
+    std::set<std::string> excludedFunctions;
 };
 
 } // namespace llvm

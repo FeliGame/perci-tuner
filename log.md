@@ -118,4 +118,8 @@
 
 ### 8
 
-* CP: Introduce DenseSet to record all insts repaired to avoid duplicate unreferenced insts.
+* CP: Introduce DenseSet to record all insts repaired to avoid duplicate unreferenced insts. May cause some crash e.g. fadd operands type not same.
+* SF: Support excluding functions to search.
+* CP: ReturnInst's type mustn't be repaired.
+* Python scripts: csv show changes.
+* Introduce funarc benchmark from Precimonious.

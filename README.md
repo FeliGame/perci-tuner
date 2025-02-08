@@ -23,17 +23,25 @@ This will generate a pass.so under build/ directory.
 
 ## Run Perci-Tuner
 
-`sh scripts/run.sh /path/to/src1.cpp /path/to/src2.c ... "Optional Flags"`
+`sh scripts/run.sh /path/to/src1.c /path/to/src2.c ... "Optional Flags"`
 
 This will generate results (IR and related files) under the src folder.
+
+`python3 scripts/dd.py output.bc config.json 1e-2`
+
+Run this will generate optimized precision config file and runnable .bc file, which based on delta-debugging algorithm from Precimonious. The threshold is used for calculating the relative error of cmd output.
 
 ## Optional Flags
 
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
-### --search-entry=fun(TypeList if C++)
+### --search-entry=func_name
 
-Customize running entry function for searching, from Pass:search_functions, implemented in CreateCallDependency.
+Customize running entry function for searching, from Pass:search_functions, implemented in SearchFunctions.
+
+### --excluded-functions=excluded_functions.txt
+
+Customize excluded functions for searching, from Pass:search_functions, implemented in SearchFunctions.
 
 ### --config-file
 

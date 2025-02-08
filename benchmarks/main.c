@@ -35,7 +35,7 @@ static double fp_test()
     // double add2 = a + b + ld;
 
 // double e = comp_test(a, b) / c[0];
-    return a + b * c[0] + arr[0][0];
+    return a;
 }
 
 double fun()

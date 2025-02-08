@@ -102,7 +102,20 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
 
                 errs() << "repair users of load: " << *newLoad << "\n";
                 for (auto *loadUser : newLoad->users()) {
-                    repairUserType(loadUser);
+                    if (auto ret = dyn_cast<ReturnInst>(loadUser))
+                    {
+                        // 获取函数的返回类型
+                        auto *funcReturnType = ret->getFunction()->getReturnType();
+
+                        // 如果返回值类型与函数返回类型不一致，插入类型转换
+                        if (newType != funcReturnType) {
+                            if (auto *castValue = insertCast(newLoad, funcReturnType, ret)) {
+                                ret->setOperand(0, castValue);  // 设置转换后的值为返回值
+                                modified = true;
+                            }
+                        }
+                    }
+                    else repairUserType(loadUser);
                 }
             }
             // else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {

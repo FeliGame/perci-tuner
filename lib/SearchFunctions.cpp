@@ -1,6 +1,7 @@
 // @Author: Guocheng - NUDT
 // Usage: Tell the function call chain in run-time order.
-// Input(Optional): "--search-entry=function(TypeList if C++)"
+// Input(Optional): "--search-entry=main",
+//                  "--exclude-functions=excluded_functions.txt"
 // Output: searched_functions.txt
 
 #include "SearchFunctions.h"
@@ -20,6 +21,7 @@ using namespace llvm;
 
 
 cl::opt<string> CallEntryName("search-entry", cl::value_desc("name"), cl::desc("Name of program entry"), cl::init("main"));
+cl::opt<string> ExcludeFunctionsName("exclude-functions", cl::value_desc("name"), cl::desc("Name of functions to be excluded"), cl::init("excluded_functions.txt"));
 
 
 // Print to command line, only for DEBUG!
@@ -52,9 +54,25 @@ void SearchFunctions::collectCalledFunctions(Function &F, std::set<Function*> &v
 
 // Write call dependency set into file
 void SearchFunctions::writeToFile() {
+    // Parse excluded functions file
+    if (!ExcludeFunctionsName.empty()) {
+        ifstream excludedFunctionsFile(ExcludeFunctionsName);
+        if (excludedFunctionsFile.is_open()) {
+            string functionName;
+            while (getline(excludedFunctionsFile, functionName)) {
+                excludedFunctions.insert(functionName);
+            }
+            excludedFunctionsFile.close();
+        } else {
+            errs() << "Error: Unable to open excluded functions file: " << ExcludeFunctionsName << "\n";
+        }
+    }
+    
+
     ofstream searchedFunctionsFile ("searched_functions.txt");
     if (searchedFunctionsFile.is_open()) {
         for (auto &function : calledFunctions) {
+            if (excludedFunctions.find(function) != excludedFunctions.end()) continue;
             searchedFunctionsFile << function << "\n";
         }
         searchedFunctionsFile.close();

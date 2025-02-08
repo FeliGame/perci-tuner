@@ -14,8 +14,9 @@ PASSES = "search_functions,config,change_precision,ir_timing"
 TEMP_BC_PATH = "temp_output.bc"
 TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "./ir_timing.txt"
-RUNNING_TIMES = 10
+RUNNING_TIMES = 5
 
+global run_config_result
 
 # read the main function running time from the file 
 # printed by ir_timing pass
@@ -38,8 +39,8 @@ def read_result(text):
 
 
 # run the current variable config and get the result
-def transform(bitcode_file, var_config):
-
+def transform(bitcode_file, var_config, diff):
+    global run_config_result
     # write the config to the temp file 
     config_utils.print_config(var_config, TEMP_CONFIG_FILE)
 
@@ -52,7 +53,7 @@ def transform(bitcode_file, var_config):
         return -1
 
     time = 0
-    result = None
+
     # run modified bitcode
     for i in range(RUNNING_TIMES):
         command = ['lli', TEMP_BC_PATH]
@@ -69,13 +70,13 @@ def transform(bitcode_file, var_config):
         if i == RUNNING_TIMES - 1:
             output_text = output.decode()
             print(output_text)
-            result = read_result(output_text)
-            if result is None:
+            run_config_result = read_result(output_text)
+            if run_config_result is None:
                 # return -4 if the result is not found
                 return -4
 
     
     # store the running time and result
-    data_utils.store_data(time/RUNNING_TIMES, result)
+    data_utils.store_data(time/RUNNING_TIMES, run_config_result, diff)
 
     return 1

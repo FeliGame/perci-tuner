@@ -57,14 +57,20 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
                     typeName = parseDITypeName(DV->getType());
                     
                     if (varName == "this") continue;
-                    
                     DL = DDI->getDebugLoc();
                     isStatic = false;
                 }
             }
-            
+            // Skip integer type
+            if (typeName.find("short") != std::string::npos) continue;
+            if (typeName.find("int") != std::string::npos) continue;
+            if (typeName.find("long") != std::string::npos && typeName.find("long double") == std::string::npos) continue;
+            if (typeName.find("long long") != std::string::npos) continue;
+            if (typeName.find("signed") != std::string::npos) continue;
+            if (typeName.find("unsigned") != std::string::npos) continue;
+                    
             // Save to config
-            if (varName != "" && typeName!= "") {
+            if (varName != "" && typeName != "") {
                 unsigned lineNo = DL.getLine();
                 auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
                 auto *file = localScope->getNonLexicalBlockFileScope()->getFile();

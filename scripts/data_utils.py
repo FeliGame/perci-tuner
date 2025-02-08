@@ -24,8 +24,7 @@ def read_data():
     except csv.Error:
         return []
 
-# store the running time and result to new csv
-def store_data_(data_dict, path):
+def create_new_data(data_dict, path):
     with open(path, 'w', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=list(data_dict.keys()))
         writer.writeheader()
@@ -34,45 +33,45 @@ def store_data_(data_dict, path):
 
 
 # store the running time and result to temp_data.csv
-def store_data(time, result):
+def store_data(time, result, changes):
     new_data= {
         "id": str(threading.get_ident()),
         "time": time,
-        "result": result
+        "result": result,
+        "changes": changes
     }
 
+    # if no temp_data.csv, then create one
     existing_data = read_data()
     if existing_data == []:
-        store_data_(new_data, TEMP_DATA_FILE)
+        create_new_data(new_data, TEMP_DATA_FILE)
         return
 
+    # append new
     updated_data = [new_data]
     for row in existing_data:
         if row["id"] != new_data["id"]:
             updated_data.append(row)
 
-    with open(TEMP_DATA_FILE, 'w', newline='') as csvfile:
+    with open(TEMP_DATA_FILE, 'a', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=list(updated_data[0].keys()))
-        writer.writeheader()
         writer.writerows(updated_data)
 
 # get the current time from temp_data.csv
-def get_current_score():
+def get_current_time():
     existing_data = read_data()
     if existing_data == []:
         return -1
-    for row in existing_data:
-        if row["id"] == str(threading.get_ident()):
-            return float(row["time"])
+    last_row = existing_data[-1]
+    return float(last_row["time"])
 
 # get the current result from temp_data.csv
 def get_current_result():
     existing_data = read_data()
     if existing_data == []:
         return -1
-    for row in existing_data:
-        if row["id"] == str(threading.get_ident()):
-            return float(row["result"])
+    last_row = existing_data[-1]
+    return float(last_row["result"])
 
 # check the current result is nearly equal to old result
 def is_nearly_equal(old_result, thres):
@@ -87,4 +86,5 @@ def is_nearly_equal_to(new_result, old_result, thres):
         return abs(new_result) <= threshold
     # if old_result is not 0, then use relative error to compare
     relative_error = abs((new_result - old_result) / old_result)
+    print("new result rel_error", relative_error, "run_time", get_current_time())
     return relative_error <= threshold
