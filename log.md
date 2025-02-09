@@ -126,3 +126,4 @@
 ### 9
 
 * CP: Support GEP(getelementptr) inst.
+* IRTiming: Only record main() run cycles, to avoid too much file IO.

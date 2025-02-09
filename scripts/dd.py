@@ -107,16 +107,16 @@ def run_config(bitcode, var_config):
 
   result = transform.transform(bitcode, var_config, diff)
   if result == -1:
-    print(">>> Perci-Tuner Error: running LLVM passes failed!")
+    print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
     sys.exit(1)
   elif result == -2:
-    print(">>> Perci-Tuner Error: running modified bitcode failed!")
+    print(">>> Perci-Tuner(Py) Error: running modified bitcode failed!")
     sys.exit(1)
   elif result == -3:
-    print(">>> Perci-Tuner Error: the running time is not found!")
+    print(">>> Perci-Tuner(Py) Error: the running time is not found!")
     sys.exit(1)
   elif result == -4:
-    print(">>> Perci-Tuner Error: the running result is not found!")
+    print(">>> Perci-Tuner(Py) Error: the running result is not found!")
     sys.exit(1)
 
   return result

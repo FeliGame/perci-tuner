@@ -1,0 +1,22 @@
+id,time,result,changes
+281473567577888,206.2,-6.860000,{}
+281473567577888,206.8,-6.860000,{'local.fp_test.2.type': 'long double->double'}
+281473567577888,219.8,-6.860000,"{'local.fp_test.0.type': 'long double->double', 'local.fp_test.1.type': 'long double->double'}"
+281473567577888,235.0,-6.860000,"{'local.fp_test.0.type': 'long double->double', 'local.fp_test.1.type': 'long double->double'}"
+281473567577888,216.4,-6.860000,{'local.fp_test.2.type': 'long double->double'}
+281473567577888,222.2,-6.860000,"{'local.fp_test.1.type': 'long double->double', 'local.fp_test.2.type': 'long double->double'}"
+281473567577888,222.8,-6.860000,{'local.fp_test.0.type': 'long double->double'}
+281473567577888,205.8,-6.860000,"{'local.fp_test.0.type': 'long double->double', 'local.fp_test.2.type': 'long double->double'}"
+281473567577888,193.8,-6.860000,{'local.fp_test.1.type': 'long double->double'}
+281473567577888,199.6,-6.860000,"{'local.fp_test.0.type': 'long double->double', 'local.fp_test.1.type': 'long double->double'}"
+281473567577888,199.4,-6.860000,{'local.fp_test.2.type': 'long double->double'}
+281473567577888,207.0,-6.860000,{}
+281473567577888,198.6,-6.860000,"{'local.fp_test.1.type': 'long double->double', 'local.fp_test.2.type': 'long double->double'}"
+281473567577888,210.4,-6.860000,"{'local.fp_test.0.type': 'long double->double', 'local.fp_test.1.type': 'long double->double'}"
+281473567577888,223.6,-6.860000,"{'local.fp_test.0.type': 'long double->double', 'local.fp_test.1.type': 'long double->double'}"
+281473567577888,221.6,-6.860000,"{'local.fp_test.1.type': 'long double->double', 'local.fp_test.2.type': 'long double->double'}"
+281473567577888,204.6,-6.860000,{'local.fp_test.1.type': 'long double->double'}
+281473567577888,207.2,-6.860000,{}
+281473567577888,189.4,-6.860000,{'local.fp_test.1.type': 'long double->double'}
+281473567577888,193.0,-6.860000,{'local.fp_test.1.type': 'long double->double'}
+281473567577888,187.6,-6.860000,{'local.fp_test.1.type': 'long double->double'}
