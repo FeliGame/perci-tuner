@@ -65,8 +65,6 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
         align = Align(newType->getPrimitiveSizeInBits() / 8);
     }
 
-    bool modified = false;
-
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
         errs() << "Changing AllocInst: " << *alloca << "\n";
         alloca->setAllocatedType(newType);
@@ -81,7 +79,6 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                     if (auto *newValue = insertCast(oldValue, newType, store)) {
                         store->setOperand(0, newValue);
                         store->setAlignment(align);
-                        modified = true;
                     }
                 }
             }
@@ -98,7 +95,6 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                 load->replaceAllUsesWith(newLoad);
                 errs() << "erase later: " << *load << "\n";
                 instToErase.insert(load);    // erase later to avoid broken iterator
-                modified = true;
 
                 errs() << "repair users of load: " << *newLoad << "\n";
                 for (auto *loadUser : newLoad->users()) {
@@ -111,19 +107,30 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                         if (newType != funcReturnType) {
                             if (auto *castValue = insertCast(newLoad, funcReturnType, ret)) {
                                 ret->setOperand(0, castValue);  // 设置转换后的值为返回值
-                                modified = true;
                             }
                         }
                     }
                     else repairUserType(loadUser);
                 }
             }
-            // else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
-            // will crash report: 'GEP is not of right type for indices!', don't know why
-            //     gep->setSourceElementType(newType);
-            //     errs() << "Changed GetElementPtrInst type " << *newType << " of " << *gep << "\n";
-            //     modified = true;
-            // }
+            else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
+                // convert indices into ArrayRef<Value*>
+                SmallVector<Value*, 4> indices;
+                for (auto &index : gep->indices()) {
+                    indices.push_back(index.get());
+                }
+
+                auto* newGEP = GetElementPtrInst::Create(
+                    newType,
+                    gep->getPointerOperand(),
+                    indices,
+                    gep->getName(),         // inst name
+                    gep                     // inst loc
+                );
+
+                gep->replaceAllUsesWith(newGEP);
+                instToErase.insert(gep);
+            }
             else if (auto call = dyn_cast<CallInst>(user)) {
                 // Handle llvm.memcpy calls(it generated while alloc array size)
                 errs() << "call name: " << call->getName() << "\n";
@@ -152,7 +159,6 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                         call->replaceAllUsesWith(newCall);
                         errs() << "erase later: " << *call << "\n";
                         instToErase.insert(call);    // erase later to avoid broken iterator
-                        modified = true;
 
                         errs() << "New llvm.memcpy call: " << *newCall << "\n";
                     }
@@ -163,9 +169,10 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
             //     repairUserType(user);
             // }
         }
+        return true;
     }
     
-    return modified;
+    return false;
 }
 
 bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
@@ -233,7 +240,7 @@ Value *ChangePrecision::insertCast(Value *val, Type *targetType, Instruction *in
         }
     } 
     else {
-        errs() << "InsertCasts(): Unsupported non-floating point type cast: " 
+        errs() << "InsertCast(): Unsupported non-floating point type cast: " 
                << *val->getType() << " -> " << *targetType << "\n";
     }
 
