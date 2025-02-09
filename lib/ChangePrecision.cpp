@@ -66,10 +66,10 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
     }
 
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
-        errs() << "Changing AllocInst: " << *alloca << "\n";
+        errs() << "Changing AllocaInst: " << *alloca << "\n";
         alloca->setAllocatedType(newType);
         alloca->setAlignment(align);
-        errs() << "Changed AllocInst: " << *alloca << "\n";
+        errs() << "Changed AllocaInst: " << *alloca << "\n";
 
         for (auto *user : alloca->users()) {
             if (auto store = dyn_cast<StoreInst>(user)) {
@@ -288,6 +288,9 @@ bool ChangePrecision::repairUserType(User *user) {
     }
 
     if (auto *binOp = dyn_cast<BinaryOperator>(inst)) {
+        bool operandsModified = false;
+        SmallVector<Value*, 2> newOperands;
+        
         for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
             auto *operand = binOp->getOperand(i);
             // type of src operands not match
@@ -295,19 +298,20 @@ bool ChangePrecision::repairUserType(User *user) {
                 errs() << "RepairUser: Operand " << i << " of type " << *operand->getType() 
                        << " != target type " << *highestType<< ", casting...\n";
                 if (auto *newOperand = insertCast(operand, highestType, binOp)) {
-                    binOp->setOperand(i, newOperand);
-                    modified = true;
+                    newOperands.push_back(newOperand);
+                    operandsModified = true;
                 }
+            } else {
+                newOperands.push_back(operand);  // keep original operands
             }
         }
         // type of dst operand not match, replace the binOp with a new one
-        if (binOp->getType() != highestType) {
-            errs() << "RepairUser: binOp type not match: " << *binOp->getType() 
-                   << " != target type " << *highestType << "\n";
+        if (operandsModified || binOp->getType() != highestType) {
+            errs() << "RepairUser: binOp type mismatch\n";
             IRBuilder<> builder(binOp);
             auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
-                                                 binOp->getOperand(0), 
-                                                 binOp->getOperand(1));
+                                                 newOperands[0], 
+                                                 newOperands[1]);
             newBinOp->takeName(binOp);
             if (auto *newBinOpInst = dyn_cast<Instruction>(newBinOp)) {
                 newBinOpInst->setDebugLoc(binOp->getDebugLoc());

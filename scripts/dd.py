@@ -128,15 +128,17 @@ def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_resu
     delta_change_set = []
     complement_delta_change_set = []
     # calculate the size of each part
-    dive_size = int(math.ceil(float(len(change_set))/float(div_num)))
+    div_size = int(math.ceil(float(len(change_set))/float(div_num)))
 
     # divide change set and type set into div_num parts
     # and calculate each part's complement part
     for i in range(div_num-1):
-        delta_change_set.append(change_set[i*dive_size:(i+1)*dive_size])
-        complement_delta_change_set.append(change_set[:i*dive_size] + change_set[(i+1)*dive_size:])
-    delta_change_set.append(change_set[(div_num-1)*dive_size:])
-    complement_delta_change_set.append(change_set[:(div_num-1)*dive_size])
+        start = i * div_size
+        end = (i+1) * div_size
+        delta_change_set.append(change_set[start:end])
+        complement_delta_change_set.append(change_set[:start] + change_set[end:])
+    delta_change_set.append(change_set[(div_num-1)*div_size:])
+    complement_delta_change_set.append(change_set[:(div_num-1)*div_size])
     
     # iterate each delta change and its complement delta change 
     # to find the current minimal change set
@@ -221,8 +223,8 @@ def search_conf(bitcode, change_set, original_var_conf, original_result):
         change_set = remove_confirmed(change_set)
         # remove the highest precision from the search types of the rest variables
         remove_highest_precision_from_selections(change_set)
-        run_config(bitcode, var_conf)
-        time = data_utils.get_current_time()
+        # run_config(bitcode, var_conf)
+        # time = data_utils.get_current_time()
     return var_conf
 
 

@@ -127,3 +127,7 @@
 
 * CP: Support GEP(getelementptr) inst.
 * IRTiming: Only record main() run cycles, to avoid too much file IO.
+
+### 10
+
+* CP: Repair BinOp type mismatch.

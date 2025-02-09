@@ -5,20 +5,20 @@
 
 import os, threading, csv
 
-TEMP_DATA_FILE = "temp_data.csv"
+RUN_HISTORY = "run_history.csv"
 
 
-# delete temp_data.csv
+# delete run_history.csv
 def del_csv():
-    if os.path.exists(TEMP_DATA_FILE):
-        os.remove(TEMP_DATA_FILE)
+    if os.path.exists(RUN_HISTORY):
+        os.remove(RUN_HISTORY)
 
-# read datas from temp_data.csv
+# read datas from run_history.csv
 def read_data():
-    if not os.path.exists(TEMP_DATA_FILE):
+    if not os.path.exists(RUN_HISTORY):
         return []
     try:
-        with open(TEMP_DATA_FILE, 'r', newline='') as csvfile:
+        with open(RUN_HISTORY, 'r', newline='') as csvfile:
             reader = csv.DictReader(csvfile)
             return list(reader)
     except csv.Error:
@@ -32,7 +32,7 @@ def create_new_data(data_dict, path):
     return
 
 
-# store the running time and result to temp_data.csv
+# store the running time and result to run_history.csv
 def store_data(time, result, changes):
     new_data= {
         "id": str(threading.get_ident()),
@@ -41,10 +41,10 @@ def store_data(time, result, changes):
         "changes": changes
     }
 
-    # if no temp_data.csv, then create one
+    # if no run_history.csv, then create one
     existing_data = read_data()
     if existing_data == []:
-        create_new_data(new_data, TEMP_DATA_FILE)
+        create_new_data(new_data, RUN_HISTORY)
         return
 
     # append new
@@ -53,11 +53,11 @@ def store_data(time, result, changes):
         if row["id"] != new_data["id"]:
             updated_data.append(row)
 
-    with open(TEMP_DATA_FILE, 'a', newline='') as csvfile:
+    with open(RUN_HISTORY, 'a', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=list(updated_data[0].keys()))
         writer.writerows(updated_data)
 
-# get the current time from temp_data.csv
+# get the current time from run_history.csv
 def get_current_time():
     existing_data = read_data()
     if existing_data == []:
@@ -65,7 +65,7 @@ def get_current_time():
     last_row = existing_data[-1]
     return float(last_row["time"])
 
-# get the current result from temp_data.csv
+# get the current result from run_history.csv
 def get_current_result():
     existing_data = read_data()
     if existing_data == []:
