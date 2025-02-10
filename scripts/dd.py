@@ -7,6 +7,8 @@ import config_utils, data_utils, transform
 
 # the initial divide number for delta debugging change set
 INITIAL_DIV_NUM= 2
+# the optimized bitcode & config file prefix
+OPT_PREFIX = "dd_valid_"
 
 global run_times
 run_times = 0
@@ -15,6 +17,9 @@ min_time = float('inf')
 global thres
 
 global original_var_conf
+runned_var_confs = set()
+
+global bitcode_name # the original bitcode's filename
 
 
 # change each element's type to the highest precision in change set
@@ -93,33 +98,46 @@ def compare_json(original, current, diff, prefix=""):
 
 # run the current variable config and get the result
 def run_config(bitcode, var_config):
-  global run_times, original_var_conf
-  run_times += 1
+    global run_times, original_var_conf, runned_var_confs
+    # check if the config has been runned
+    config_key = json.dumps(var_config, sort_keys=False)
+    if config_key in runned_var_confs: return
+    
+    runned_var_confs.add(config_key)
+    run_times += 1
 
-  # Initialize diff as an empty dictionary
-  diff = {}
+    # Initialize diff as an empty dictionary
+    diff = {}
 
-  # Compare var_config with original_var_conf and store differences in diff
-  compare_json(original_var_conf, var_config, diff)
+    # Compare var_config with original_var_conf and store differences in diff
+    compare_json(original_var_conf, var_config, diff)
 
-  # Convert diff to JSON format if needed
-  diff_json = json.dumps(diff, indent=4)
+    # Convert diff to JSON format if needed
+    diff_json = json.dumps(diff, indent=4)
 
-  result = transform.transform(bitcode, var_config, diff)
-  if result == -1:
-    print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
-    sys.exit(1)
-  elif result == -2:
-    print(">>> Perci-Tuner(Py) Error: running modified bitcode failed!")
-    sys.exit(1)
-  elif result == -3:
-    print(">>> Perci-Tuner(Py) Error: the running time is not found!")
-    sys.exit(1)
-  elif result == -4:
-    print(">>> Perci-Tuner(Py) Error: the running result is not found!")
-    sys.exit(1)
+    result = transform.transform(bitcode, var_config, diff)
+    if result == -1:
+      print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
+      sys.exit(1)
+    elif result == -2:
+      print(">>> Perci-Tuner(Py) Error: running modified bitcode failed!")
+      sys.exit(1)
+    elif result == -3:
+      print(">>> Perci-Tuner(Py) Error: the running time is not found!")
+      sys.exit(1)
+    elif result == -4:
+      print(">>> Perci-Tuner(Py) Error: the running result is not found!")
+      sys.exit(1)
 
-  return result
+    return result
+
+# update the best ir code file
+def update_opt_bc():
+    global OPT_PREFIX, bitcode_name
+    with open(transform.TEMP_BC_PATH, 'r') as source_file:
+        content = source_file.read()
+    with open(OPT_PREFIX + bitcode_name, 'w') as target_file:
+        target_file.write(content)
 
 # using delta debugging algorithm to find the minimal change set
 def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_result):
@@ -153,28 +171,29 @@ def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_resu
             change_to_2nd_highest_precision(change_set)
             change_to_highest_precision(delta_change)
             new_var_config = config_utils.rebuild(change_set, var_config)
-            run_config(bitcode, new_var_config)
-            if data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
+            
+            if run_config(bitcode, new_var_config) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
                 # if delta change set is better 
                 # continue to search the delta change
                 min_time = data_utils.get_current_time()
                 new_change_set = delta_change
                 new_div_num = INITIAL_DIV_NUM
                 have_better_set = True
+                update_opt_bc()
         
         if len(complement_delta_change) > 0:
             change_to_2nd_highest_precision(change_set)
             change_to_highest_precision(complement_delta_change)
             new_var_config = config_utils.rebuild(change_set, var_config)
-            run_config(bitcode, new_var_config)
 
-            if data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
+            if run_config(bitcode, new_var_config) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
                 # if complement delta change set is better
                 # continue to search the complement delta change
                 min_time = data_utils.get_current_time()
                 new_change_set = complement_delta_change
                 new_div_num = div_num - 1
                 have_better_set = True
+                update_opt_bc()
 
     # if delta change or it's complement change is better
     # continue to search the current minimal change set
@@ -229,7 +248,7 @@ def search_conf(bitcode, change_set, original_var_conf, original_result):
 
 
 def main():
-    global run_times, min_time, thres, original_var_conf
+    global run_times, min_time, thres, original_var_conf, bitcode_name
     if len(sys.argv) != 4:
         print("Usage: python dd2.py <bitcode> <conf_file> <threshold, e.g. 1e-6>")
         sys.exit(1)
@@ -259,12 +278,12 @@ def main():
 
     # searching until every variables's search types is empty
     min_time = original_time
+    bitcode_name = os.path.basename(bitcode)
     new_var_conf = search_conf(bitcode, change_set, original_var_conf, original_result)
-    bitcode_name =  os.path.basename(bitcode)
-    config_utils.print_config(new_var_conf, "dd_valid_" + bitcode_name + ".json")
+    config_utils.print_config(new_var_conf, OPT_PREFIX + bitcode_name + ".json")
     
     print(">>> Perci-Tuner(Py): Running delta-debugging algorithm finished! Run times:", run_times, "Change set len:", changes_set_len)
-    print(">>> Perci-Tuner(Py): Config: dd_valid_" + bitcode_name + ".json", "Optimized_time:", min_time, "Original_time:", original_time)
+    print(">>> Perci-Tuner(Py): Config: " + OPT_PREFIX + bitcode_name + ".json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time)
 
 if __name__ == "__main__":
   main()

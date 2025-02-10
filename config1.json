@@ -1,0 +1,72 @@
+{
+    "global": null,
+    "local": {
+        "fun": [
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "9",
+                "name": "x",
+                "type": "long double"
+            },
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "12",
+                "name": "t1",
+                "type": "long double"
+            },
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "12",
+                "name": "d1",
+                "type": "long double"
+            }
+        ],
+        "main": [
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "42",
+                "name": "h",
+                "type": "long double"
+            },
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "42",
+                "name": "t1",
+                "type": "long double"
+            },
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "42",
+                "name": "t2",
+                "type": "long double"
+            },
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "42",
+                "name": "dppi",
+                "type": "long double"
+            },
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "44",
+                "name": "s1",
+                "type": "long double"
+            },
+            {
+                "file": "benchmarks/funarc.c",
+                "isStatic": false,
+                "line": "47",
+                "name": "result",
+                "type": "double"
+            }
+        ]
+    }
+}

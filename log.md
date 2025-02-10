@@ -131,3 +131,5 @@
 ### 10
 
 * CP: Repair BinOp type mismatch.
+* dd.py: Prune runned configs to accelerate.
+* dd.py: Generate optimized IR.
