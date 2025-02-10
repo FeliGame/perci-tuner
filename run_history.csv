@@ -1,8 +1,0 @@
-id,time,result,changes
-281473285609248,193.0,-6.860000,{}
-281473285609248,224.0,-6.860000,{'local.fp_test.2.type': 'long double->double'}
-281473285609248,194.0,-6.860000,"{'local.fp_test.0.type': 'long double->double', 'local.fp_test.1.type': 'long double->double'}"
-281473285609248,275.0,-6.860000,"{'local.fp_test.1.type': 'long double->double', 'local.fp_test.2.type': 'long double->double'}"
-281473285609248,199.0,-6.860000,{'local.fp_test.0.type': 'long double->double'}
-281473285609248,213.0,-6.860000,"{'local.fp_test.0.type': 'long double->double', 'local.fp_test.2.type': 'long double->double'}"
-281473285609248,167.0,-6.860000,{'local.fp_test.1.type': 'long double->double'}

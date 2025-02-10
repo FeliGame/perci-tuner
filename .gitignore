@@ -1,3 +1,7 @@
 build/
 scripts/__pycache__/
 *.txt
+*.csv
+*.bc
+*.json
+benchmarks/*.bc
