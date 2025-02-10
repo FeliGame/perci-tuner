@@ -247,6 +247,53 @@ Value *ChangePrecision::insertCast(Value *val, Type *targetType, Instruction *in
     return nullptr;
 }
 
+Type* ChangePrecision::findHighestPrecisionType(BinaryOperator *binOp) {
+    Type *highestType = nullptr;
+    for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
+        auto *operand = binOp->getOperand(i);
+        if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+            highestType = operand->getType();
+        }
+    }
+    return highestType;
+}
+// Same as BinOp
+Type* ChangePrecision::findHighestPrecisionType(FCmpInst *fcmp) {
+    Type *highestType = nullptr;
+    for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
+        auto *operand = fcmp->getOperand(i);
+        if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+            highestType = operand->getType();
+        }
+    }
+    return highestType;
+}
+
+Type* ChangePrecision::findHighestPrecisionType(CallInst *call) {
+    Type *highestType = nullptr;
+    auto *callee = call->getCalledFunction();
+    if (callee && callee->getName().startswith("llvm.fmuladd")) {
+        for (unsigned i = 0; i < 3; ++i) {  // 有4个操作数，但第四个固定为ptr，使用最高精度
+            auto *operand = call->getOperand(i);
+            if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+                highestType = operand->getType();
+            }
+        }
+    }
+    return highestType;
+}
+
+Type* ChangePrecision::findHighestPrecisionType(PHINode* phi) {
+    Type *highestType = nullptr;
+    for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
+        Value* val = phi->getIncomingValue(i);
+        if (!highestType || val->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+            highestType = val->getType();
+        }
+    }
+    return highestType;
+}
+
 // Make inst operands type consistent
 bool ChangePrecision::repairUserType(User *user) {
     if (!isa<Instruction>(user)) {
@@ -266,30 +313,22 @@ bool ChangePrecision::repairUserType(User *user) {
 
     bool modified = false;
 
-    // Find the highest precision operand type
-    Type *highestType = nullptr;
-    if (auto *binOp = dyn_cast<BinaryOperator>(inst)) {
-        for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
-            auto *operand = binOp->getOperand(i);
-            if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
-                highestType = operand->getType();
-            }
-        }
-    } else if (auto *call = dyn_cast<CallInst>(inst)) {
-        auto *callee = call->getCalledFunction();
-        if (callee && callee->getName().startswith("llvm.fmuladd")) {
-            for (unsigned i = 0; i < 3; ++i) {  // 有4个操作数，但第四个固定为ptr，使用最高精度
-                auto *operand = call->getOperand(i);
-                if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
-                    highestType = operand->getType();
-                }
+    if (auto *unaOp = dyn_cast<UnaryOperator>(inst)) {
+        auto *operand = unaOp->getOperand(0);
+        if (operand->getType() != unaOp->getType()) {
+            errs() << "RepairUser: Operand type mismatch\n";
+            IRBuilder<> builder(unaOp);
+            auto *newOperand = insertCast(operand, unaOp->getType(), unaOp);
+            if (newOperand) {
+                unaOp->setOperand(0, newOperand);
+                modified = true;
             }
         }
     }
-
-    if (auto *binOp = dyn_cast<BinaryOperator>(inst)) {
+    else if (auto *binOp = dyn_cast<BinaryOperator>(inst)) {
         bool operandsModified = false;
         SmallVector<Value*, 2> newOperands;
+        auto *highestType = findHighestPrecisionType(binOp);
         
         for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
             auto *operand = binOp->getOperand(i);
@@ -305,7 +344,7 @@ bool ChangePrecision::repairUserType(User *user) {
                 newOperands.push_back(operand);  // keep original operands
             }
         }
-        // type of dst operand not match, replace the binOp with a new one
+
         if (operandsModified || binOp->getType() != highestType) {
             errs() << "RepairUser: binOp type mismatch\n";
             IRBuilder<> builder(binOp);
@@ -329,10 +368,56 @@ bool ChangePrecision::repairUserType(User *user) {
             }
         }
     }
+    // Same as BinOp
+    else if (auto *fcmp = dyn_cast<FCmpInst>(inst)) {
+        bool operandsModified = false;
+        SmallVector<Value*, 2> newOperands;
+        auto *highestType = findHighestPrecisionType(fcmp);
+        
+        for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
+            auto *operand = fcmp->getOperand(i);
+            if (operand->getType() != highestType) {
+                errs() << "RepairUser: FCmp operand " << i << " of type " << *operand->getType() 
+                    << " != target type " << *highestType << ", casting...\n";
+                if (auto *newOperand = insertCast(operand, highestType, fcmp)) {
+                    newOperands.push_back(newOperand);
+                    operandsModified = true;
+                } else {
+                    newOperands.push_back(operand);
+                }
+            } else {
+                newOperands.push_back(operand);
+            }
+        }
+
+        if (operandsModified || fcmp->getType() != Type::getInt1Ty(fcmp->getContext())) {
+            errs() << "RepairUser: FCmp type mismatch\n";
+            IRBuilder<> builder(fcmp);
+            auto *newFcmp = builder.CreateFCmp(fcmp->getPredicate(), 
+                                                newOperands[0], 
+                                                newOperands[1]);
+            newFcmp->takeName(fcmp);
+            if (auto *newFcmpInst = dyn_cast<Instruction>(newFcmp)) {
+                newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
+            }
+
+            fcmp->replaceAllUsesWith(newFcmp);
+            errs() << "erase later: " << *fcmp << "\n";
+            instToErase.insert(fcmp);
+            modified = true;
+
+            for (auto *fcmpUser : newFcmp->users()) {
+                if (fcmpUser->getType() != Type::getInt1Ty(fcmpUser->getContext())) {
+                    repairUserType(fcmpUser);
+                }
+            }
+        }
+    }
+
     // repair llvm.fmuladd
     else if (auto *call = dyn_cast<CallInst>(inst)) {
         auto *callee = call->getCalledFunction();
-
+        auto *highestType = findHighestPrecisionType(call);
         if (callee && callee->getName().startswith("llvm.fmuladd")) {
             modified |= repairFMulAdd(call, highestType);        
             if (modified) {
@@ -345,8 +430,40 @@ bool ChangePrecision::repairUserType(User *user) {
             }
         }
     }
+    else if (auto phi = dyn_cast<PHINode>(inst)) {
+        auto *highestType = findHighestPrecisionType(phi);
 
-    // 其它指令（如 GEP、Select、FCmp 等）可在这里继续扩展
+        bool changed = false;
+
+        // 检查是否需要创建新的 PHINode
+        for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
+            Value* oldVal = phi->getIncomingValue(i);
+            if (oldVal->getType() != highestType) {
+                changed = true;
+                break;
+            }
+        }
+
+        if (changed) {
+            // 创建新的 PHINode，类型为 highestType
+            auto* newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi);
+            for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
+                auto* oldVal = phi->getIncomingValue(i);
+                auto* newVal = oldVal;
+                // pay attention: insertCast shouldn't at 'phi', will cause 'Instruction does not dominate all uses!'
+                if (oldVal->getType() != highestType) {
+                    auto* incomingBlock = phi->getIncomingBlock(i);
+                    auto* insertBefore = incomingBlock->getTerminator();
+                    newVal = insertCast(oldVal, highestType, insertBefore);
+                }
+
+                newPhi->addIncoming(newVal, phi->getIncomingBlock(i));
+            }
+            phi->replaceAllUsesWith(newPhi);
+            instToErase.insert(phi);
+        }
+    }
+
     return modified;
 }
 

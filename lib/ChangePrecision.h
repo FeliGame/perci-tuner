@@ -36,6 +36,14 @@ private:
 
     Value *insertCast(Value *val, Type *targetType, Instruction *insertBefore);
 
+    Type* findHighestPrecisionType(BinaryOperator*);
+    
+    Type* findHighestPrecisionType(FCmpInst*);
+
+    Type* findHighestPrecisionType(CallInst*);
+
+    Type* findHighestPrecisionType(PHINode*);
+
     bool repairUserType(User *user);
 
     bool repairCasts(Function &F);

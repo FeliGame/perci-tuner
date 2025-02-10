@@ -14,7 +14,7 @@ PASSES = "search_functions,config,change_precision,ir_timing"
 TEMP_BC_PATH = "temp_output.bc"
 TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "./ir_timing.txt"
-RUNNING_TIMES = 1
+RUNNING_TIMES = 5
 
 global run_config_result
 
