@@ -17,38 +17,33 @@ min_time = float('inf')
 global thres
 
 global original_var_conf
-runned_var_confs = set()
+runned_change_set = set()
 
 global bitcode_name # the original bitcode's filename
 
 
 # change each element's type to the highest precision in change set
 def change_to_highest_precision(change_set):
-    for i in range(0, len(change_set)):
-        c = change_set[i]
+    for c in change_set:
         t = c["search_types"]
         if len(t) > 0:
             c["type"] = t[-1]
 
 # change each element's type to the 2nd highest precision in change set
 def change_to_2nd_highest_precision(change_set):
-    for i in range(0, len(change_set)):
-        c = change_set[i]
+    for c in change_set:
         t = c["search_types"]
         if len(t) > 1:
             c["type"] = t[-2]
 
 # remove the highest precision from the search types of the variables
 def remove_highest_precision_from_selections(change_set):
-    for i in range(0, len(change_set)):
-        c= change_set[i]
-        t= c["search_types"]
-        if len(t) > 0:
-            c["search_types"] = t[:-1]
+    for c in change_set:
+        if len(c["search_types"]) > 0:
+            c["search_types"].pop()  # remove current highest precision
 
-# remove elements in change_set whose type is already confirmed
 # can only be used in searching period
-def remove_confirmed(change_set):
+def remove_unchangable(change_set):
     new_change_set = []
     for c in change_set:
         t = c["search_types"]
@@ -56,16 +51,14 @@ def remove_confirmed(change_set):
             new_change_set.append(c)
     return new_change_set
 
-# remove elements in change_set whose type is already confirmed
 # can only be used in searching period
-def get_confirmed_change_set(change_set):
-    confirmed_change_set = []
-    for i in range(0, len(change_set)):
-        c = change_set[i]
+def get_unchangable_set(change_set):
+    unchangbale_set = []
+    for c in change_set:
         t = c["search_types"]
         if t == [] or c["type"] == t[-1]:
-            confirmed_change_set.append(c)
-    return confirmed_change_set
+            unchangbale_set.append(c)
+    return unchangbale_set
 
 def compare_json(original, current, diff, prefix=""):
     """
@@ -97,13 +90,14 @@ def compare_json(original, current, diff, prefix=""):
             diff[prefix[:-1]] = f"{original}->{current}"
 
 # run the current variable config and get the result
-def run_config(bitcode, var_config):
-    global run_times, original_var_conf, runned_var_confs
-    # check if the config has been runned
-    config_key = json.dumps(var_config, sort_keys=False)
-    if config_key in runned_var_confs: return
+def run_config(bitcode, var_config, change_set):
+    global run_times, original_var_conf, runned_change_set
     
-    runned_var_confs.add(config_key)
+    # check if the config has been runned
+    key = json.dumps(change_set, sort_keys=False)
+    if key in runned_change_set: return
+    runned_change_set.add(key)
+
     run_times += 1
 
     # Initialize diff as an empty dictionary
@@ -147,75 +141,75 @@ def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_resu
     complement_delta_change_set = []
     # calculate the size of each part
     div_size = int(math.ceil(float(len(change_set))/float(div_num)))
-
+    print(f'\nchange set size: {len(change_set)}, div num: {div_num}, div size: {div_size}')
     # divide change set and type set into div_num parts
     # and calculate each part's complement part
-    for i in range(div_num-1):
-        start = i * div_size
-        end = (i+1) * div_size
+    # Lin's version
+    # for i in range(div_num-1):
+    #     start = i * div_size
+    #     end = (i+1) * div_size
+    #     delta_change_set.append(change_set[start:end])
+    #     complement_delta_change_set.append(change_set[:start] + change_set[end:])
+    # delta_change_set.append(change_set[(div_num-1)*div_size:])
+    # complement_delta_change_set.append(change_set[:(div_num-1)*div_size])
+
+    # Guo's version
+    for i in range(0, len(change_set), div_size):
+        start = i
+        end = i + div_size
         delta_change_set.append(change_set[start:end])
         complement_delta_change_set.append(change_set[:start] + change_set[end:])
-    delta_change_set.append(change_set[(div_num-1)*div_size:])
-    complement_delta_change_set.append(change_set[:(div_num-1)*div_size])
-    
+
     # iterate each delta change and its complement delta change 
     # to find the current minimal change set
     new_change_set = []
     new_div_num = div_num
     have_better_set = False
-    for i in range(div_num):
+    print(f'delta size: {len(delta_change_set)}, complement delta size: {len(complement_delta_change_set)}')
+
+    for i in range(len(delta_change_set)):
         delta_change = delta_change_set[i]
         complement_delta_change = complement_delta_change_set[i]
 
-        if len(delta_change) > 0:
-            change_to_2nd_highest_precision(change_set)
-            change_to_highest_precision(delta_change)
-            new_var_config = config_utils.rebuild(change_set, var_config)
-            
-            if run_config(bitcode, new_var_config) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
-                # if delta change set is better 
-                # continue to search the delta change
-                min_time = data_utils.get_current_time()
-                new_change_set = delta_change
-                new_div_num = INITIAL_DIV_NUM
-                have_better_set = True
-                update_opt_bc()
+        # if len(delta_change) > 0:
+        change_to_2nd_highest_precision(change_set)
+        change_to_highest_precision(delta_change)
+        new_var_config = config_utils.rebuild(change_set, var_config)
+        if run_config(bitcode, new_var_config, change_set) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
+            min_time = data_utils.get_current_time()
+            new_change_set = delta_change
+            new_div_num = INITIAL_DIV_NUM
+            have_better_set = True
+            print('delta better')
+            update_opt_bc()
         
-        if len(complement_delta_change) > 0:
-            change_to_2nd_highest_precision(change_set)
-            change_to_highest_precision(complement_delta_change)
-            new_var_config = config_utils.rebuild(change_set, var_config)
+        # if len(complement_delta_change) > 0:
+        change_to_2nd_highest_precision(change_set)
+        change_to_highest_precision(complement_delta_change)
+        new_var_config = config_utils.rebuild(change_set, var_config)
+        if run_config(bitcode, new_var_config, change_set) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
+            min_time = data_utils.get_current_time()
+            new_change_set = complement_delta_change
+            new_div_num = div_num - 1  # to optimize performance
+            have_better_set = True
+            print('comp_delta better')
+            update_opt_bc()
 
-            if run_config(bitcode, new_var_config) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
-                # if complement delta change set is better
-                # continue to search the complement delta change
-                min_time = data_utils.get_current_time()
-                new_change_set = complement_delta_change
-                new_div_num = div_num - 1
-                have_better_set = True
-                update_opt_bc()
-
-    # if delta change or it's complement change is better
-    # continue to search the current minimal change set
     if have_better_set:
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(new_change_set)
         new_var_config = config_utils.rebuild(change_set, var_config)
-        if len(new_change_set) > 1:
-            search_minimal_change_set(bitcode, new_change_set, new_var_config, new_div_num, old_result)
-        return 
-    
-    # if delta change or it's complement change is not better
-    # and the current div_num smaller than the change set's size
-    # increase the div_num and continue to search the current minimal change set
-    #
-    # else if the current div_num is not smaller than the change set's size
-    # the current change set is the minimal change set
-    if div_num >= len(change_set):
-        change_to_highest_precision(change_set)
+        div_num = new_div_num
+        change_set = new_change_set
+        if len(change_set) <= 1: return
     else:
-        search_minimal_change_set(bitcode, change_set, var_config, div_num * 2, old_result)
-    return
+        print("none better")
+        if div_num >= len(change_set):
+            change_to_highest_precision(change_set)  # to be removed in 'remove_unchangable'
+            return
+        else:
+            div_num *= 2
+    search_minimal_change_set(bitcode, change_set, var_config, div_num, old_result)
 
 
 # is every variables's search types empty
@@ -228,18 +222,14 @@ def is_type_empty(change_set):
 # search the new variable config
 def search_conf(bitcode, change_set, original_var_conf, original_result):
     var_conf= original_var_conf
-
-    print("Search_conf tell change_set: ", len(change_set))
-
     # searching until every variables's search types is empty
     while not is_type_empty(change_set):
-        # search the variables need highest precision 
+        # search the variables need highest precision & try to lower others' precision
         search_minimal_change_set(bitcode, change_set, var_conf, INITIAL_DIV_NUM, original_result)
         # rebuild the new variable config from new change set
-        var_conf = config_utils.rebuild(get_confirmed_change_set(change_set), var_conf)
-        # remove the variables whose type is already confirmed
-        # these variables that comfirmed to be highest precision
-        change_set = remove_confirmed(change_set)
+        var_conf = config_utils.rebuild(get_unchangable_set(change_set), var_conf)
+        # remove highest precision variables
+        change_set = remove_unchangable(change_set)
         # remove the highest precision from the search types of the rest variables
         remove_highest_precision_from_selections(change_set)
         # run_config(bitcode, var_conf)
@@ -268,7 +258,7 @@ def main():
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)
-    run_config(bitcode, original_var_conf)
+    run_config(bitcode, original_var_conf, change_set)
     original_time = data_utils.get_current_time()
     original_result = data_utils.get_current_result()
     print("original time:", original_time, "original result:", original_result)

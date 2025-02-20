@@ -72,7 +72,12 @@ int main()
   }
 
 
-  printf("%.20Lf", result);
+  if (sizeof(typeof(result)) == sizeof(long double))
+    printf("%Lf", result);
+  else if (sizeof(typeof(result)) == sizeof(double))
+    printf("%lf", result);
+  else if (sizeof(typeof(result)) == sizeof(float))
+    printf("%f", result);
 
   // print score (diff) to a file
   // FILE* file;

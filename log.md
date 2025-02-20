@@ -133,3 +133,11 @@
 * CP: Repair BinOp/UnaryOp/FCmp/PHINode type mismatch.
 * dd.py: Prune runned configs to accelerate.
 * dd.py: Generate optimized IR.
+
+### 19
+
+* dd.py: Only use change-precision pass while search config to accelerate tools.
+
+### 20
+
+* dd.py: Correct delta-debugging algorithm.

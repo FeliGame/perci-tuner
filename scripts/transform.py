@@ -10,11 +10,11 @@ import config_utils
 import re
 
 PER_TUNE_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
-PASSES = "search_functions,config,change_precision,ir_timing"
+PASSES = "change_precision,ir_timing"
 TEMP_BC_PATH = "temp_output.bc"
 TEMP_CONFIG_FILE = "temp_config.json"
-TIME_FILE_PATH = "./ir_timing.txt"
-RUNNING_TIMES = 5
+TIME_FILE_PATH = "ir_timing.txt"
+RUNNING_TIMES = 1
 
 global run_config_result
 
@@ -46,8 +46,8 @@ def transform(bitcode_file, var_config, diff):
 
     # run LLVM passes
     #opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_functions,config,change_precision' $FLAGS output.bc -o temp_output.bc
-    command = ['opt','-load-pass-plugin', PER_TUNE_PATH, "-S", "-passes=" + PASSES, "--target-config=" + TEMP_CONFIG_FILE , bitcode_file, "-o", TEMP_BC_PATH]
-    retval = subprocess.call(command, stdin=None, stdout=None, stderr=None)
+    command = ['opt', '-load-pass-plugin', PER_TUNE_PATH, "-S", "-passes=" + PASSES, "--target-config=" + TEMP_CONFIG_FILE , bitcode_file, "-o", TEMP_BC_PATH]
+    retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     # return -1 if running LLVM passes fails
     if retval != 0:
         return -1

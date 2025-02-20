@@ -24,19 +24,18 @@ def read_data():
     except csv.Error:
         return []
 
-def create_new_data(data_dict, path):
+def create_new_data(new_line, path):
     with open(path, 'w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=list(data_dict.keys()))
+        writer = csv.DictWriter(csvfile, fieldnames=list(new_line.keys()))
         writer.writeheader()
-        writer.writerows([data_dict])
+        writer.writerow(new_line)
     return
 
 
 # store the running time and result to run_history.csv
 def store_data(time, result, changes):
-    new_data= {
-        "id": str(threading.get_ident()),
-        "time": time,
+    new_line= {
+        "cycles": f"{time:.2e}",
         "result": result,
         "changes": changes
     }
@@ -44,18 +43,12 @@ def store_data(time, result, changes):
     # if no run_history.csv, then create one
     existing_data = read_data()
     if existing_data == []:
-        create_new_data(new_data, RUN_HISTORY)
+        create_new_data(new_line, RUN_HISTORY)
         return
 
-    # append new
-    updated_data = [new_data]
-    for row in existing_data:
-        if row["id"] != new_data["id"]:
-            updated_data.append(row)
-
     with open(RUN_HISTORY, 'a', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=list(updated_data[0].keys()))
-        writer.writerows(updated_data)
+        writer = csv.DictWriter(csvfile, fieldnames=list(new_line.keys()))
+        writer.writerow(new_line)
 
 # get the current time from run_history.csv
 def get_current_time():
@@ -63,7 +56,7 @@ def get_current_time():
     if existing_data == []:
         return -1
     last_row = existing_data[-1]
-    return float(last_row["time"])
+    return float(last_row["cycles"])
 
 # get the current result from run_history.csv
 def get_current_result():
@@ -86,5 +79,5 @@ def is_nearly_equal_to(new_result, old_result, thres):
         return abs(new_result) <= threshold
     # if old_result is not 0, then use relative error to compare
     relative_error = abs((new_result - old_result) / old_result)
-    print("new result rel_error", relative_error, "run_time", get_current_time())
+    print("new result rel_error", relative_error)
     return relative_error <= threshold
