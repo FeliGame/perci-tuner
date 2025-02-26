@@ -151,3 +151,5 @@
 * config_utils.py: recognize & transform array types.
 * dd.py: add parameter: run times of IR per iteration.
 * dd.py: supports transform floating-type const & array.
+* Add Benchmarks: FPBench & GSL.
+* CP: Repair crash when function args' type changed.

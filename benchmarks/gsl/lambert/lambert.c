@@ -1,0 +1,257 @@
+/* specfunc/lambert.c
+ *
+ * Copyright (C) 2007 Brian Gough
+ * Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001 Gerard Jungman
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ */
+
+/* Author:  G. Jungman */
+
+#include <math.h>
+#include <gsl/gsl_math.h>
+#include <gsl/gsl_errno.h>
+#include <gsl/gsl_sf_lambert.h>
+
+#include <time.h>
+#include <stdbool.h>
+
+/* Started with code donated by K. Briggs; added
+ * error estimates, GSL foo, and minor tweaks.
+ * Some Lambert-ology from
+ *  [Corless, Gonnet, Hare, and Jeffrey, "On Lambert's W Function".]
+ */
+
+/* Halley iteration (eqn. 5.12, Corless et al) */
+static int
+halley_iteration(
+    double x,
+    double w_initial,
+    unsigned int max_iters,
+    gsl_sf_result *result)
+{
+  double w = w_initial;
+  unsigned int i;
+
+  for (i = 0; i < max_iters; i++)
+  {
+    double tol;
+    const double e = exp(w);
+    const double p = w + 1.0;
+    double t = w * e - x;
+    /* printf("FOO: %20.16g  %20.16g\n", w, t); */
+
+    if (w > 0)
+    {
+      t = (t / p) / e; /* Newton iteration */
+    }
+    else
+    {
+      t /= e * p - 0.5 * (p + 1.0) * t / p; /* Halley iteration */
+    };
+
+    w -= t;
+
+    tol = 10 * GSL_DBL_EPSILON * GSL_MAX_DBL(fabs(w), 1.0 / (fabs(p) * e));
+
+    if (fabs(t) < tol)
+    {
+      result->val = w;
+      result->err = 2.0 * tol;
+      return GSL_SUCCESS;
+    }
+  }
+
+  /* should never get here */
+  result->val = w;
+  result->err = fabs(w);
+  return GSL_EMAXITER;
+}
+
+/* series which appears for q near zero;
+ * only the argument is different for the different branches
+ */
+static double
+series_eval(double r)
+{
+  static const double c[12] = {
+      -1.0,
+      2.331643981597124203363536062168,
+      -1.812187885639363490240191647568,
+      1.936631114492359755363277457668,
+      -2.353551201881614516821543561516,
+      3.066858901050631912893148922704,
+      -4.175335600258177138854984177460,
+      5.858023729874774148815053846119,
+      -8.401032217523977370984161688514,
+      12.250753501314460424,
+      -18.100697012472442755,
+      27.029044799010561650};
+  const double t_8 = c[8] + r * (c[9] + r * (c[10] + r * c[11]));
+  const double t_5 = c[5] + r * (c[6] + r * (c[7] + r * t_8));
+  const double t_1 = c[1] + r * (c[2] + r * (c[3] + r * (c[4] + r * t_5)));
+  return c[0] + r * t_1;
+}
+
+/*-*-*-*-*-*-*-*-*-*-*-* Functions with Error Codes *-*-*-*-*-*-*-*-*-*-*-*/
+
+int gsl_sf_lambert_W0_e(double x, gsl_sf_result *result)
+{
+  const double one_over_E = 1.0 / M_E;
+  const double q = x + one_over_E;
+
+  if (x == 0.0)
+  {
+    result->val = 0.0;
+    result->err = 0.0;
+    return GSL_SUCCESS;
+  }
+  else if (q < 0.0)
+  {
+    /* Strictly speaking this is an error. But because of the
+     * arithmetic operation connecting x and q, I am a little
+     * lenient in case of some epsilon overshoot. The following
+     * answer is quite accurate in that case. Anyway, we have
+     * to return GSL_EDOM.
+     */
+    result->val = -1.0;
+    result->err = sqrt(-q);
+    return GSL_EDOM;
+  }
+  else if (q == 0.0)
+  {
+    result->val = -1.0;
+    result->err = GSL_DBL_EPSILON; /* cannot error is zero, maybe q == 0 by "accident" */
+    return GSL_SUCCESS;
+  }
+  else if (q < 1.0e-03)
+  {
+    /* series near -1/E in sqrt(q) */
+    const double r = sqrt(q);
+    result->val = series_eval(r);
+    result->err = 2.0 * GSL_DBL_EPSILON * fabs(result->val);
+    return GSL_SUCCESS;
+  }
+  else
+  {
+    static const unsigned int MAX_ITERS = 10;
+    double w;
+
+    if (x < 1.0)
+    {
+      /* obtain initial approximation from series near x=0;
+       * no need for extra care, since the Halley iteration
+       * converges nicely on this branch
+       */
+      const double p = sqrt(2.0 * M_E * q);
+      w = -1.0 + p * (1.0 + p * (-1.0 / 3.0 + p * 11.0 / 72.0));
+    }
+    else
+    {
+      /* obtain initial approximation from rough asymptotic */
+      w = log(x);
+      if (x > 3.0)
+        w -= log(w);
+    }
+
+    return halley_iteration(x, w, MAX_ITERS, result);
+  }
+}
+
+/*-*-*-*-*-*-*-*-*-* Functions w/ Natural Prototypes *-*-*-*-*-*-*-*-*-*-*/
+
+int main()
+{
+
+  /****** BEGIN PRECIMONIOUOS PREAMBLE ******/
+  // variables for logging/checking
+  double epsilon = 1.0e-12;
+
+  // variables for timing measurement
+  clock_t start_time, end_time;
+  double cpu_time_used;
+
+  start_time = clock();
+
+  // dummy calls to alternative functions
+  sqrtf(0);
+  acosf(0);
+  sinf(0);
+  /****** END PRECIMONIOUOS PREAMBLE ******/
+
+  // 测试单个 x 值
+  double x = 1.0;
+
+  // 创建 gsl_sf_result 结构体，用于存储计算结果和误差
+  gsl_sf_result result;
+  int status = 99;
+  int count = 5000000;
+
+  while (count--)
+  {
+    /* code */
+    status = gsl_sf_lambert_W0_e(x, &result);
+  }
+
+  // 根据返回状态判断是否计算成功
+  if (status == GSL_SUCCESS)
+  {
+    // 输出计算结果和误差
+    printf("W_{-1}(%f) = %.13e, error = %e\n", x, result.val, result.err);
+  }
+  else
+  {
+    // 输出错误信息
+    printf("Error for W_{-1}(%f)\n", x);
+  }
+
+  /***** BEGIN PRECIMONIOUS ACCURACY CHECKING AND LOGGING ******/
+
+  // record in file verified, result, err
+  double zeta_verify_value = 5.6714329040978e-01;
+  double err;
+  bool verified;
+  err = fabs(result.val - zeta_verify_value) / fabs(zeta_verify_value);
+  if (err <= epsilon)
+  {
+    verified = true;
+    printf(" VERIFICATION SUCCESSFUL\n");
+    printf(" Zeta is    %20.13E\n", result.val);
+    printf(" Error is   %20.13E\n", err);
+  }
+  else
+  {
+    verified = false;
+    printf(" VERIFICATION FAILED\n");
+    printf(" Zeta                %20.13E\n", result.val);
+    printf(" The correct zeta is %20.13E\n", zeta_verify_value);
+    printf(" Error is   %20.13E\n", err);
+  }
+  FILE *fp = fopen("./log.txt", "w");
+  fputs(verified ? "true\n" : "false\n", fp);
+  fprintf(fp, "%20.13E\n", result.val);
+  fprintf(fp, "%20.13E\n", err);
+
+  // record time
+  end_time = clock();
+  cpu_time_used = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
+  printf("%f s\n", cpu_time_used);
+  FILE *fp_t = fopen("./time.txt", "w");
+  fprintf(fp_t, "%f\n", cpu_time_used);
+
+  /****** END PRECIMONIOUS ACCURACY CHECKING AND LOGGING ******/
+
+  return 0;
+}

@@ -76,6 +76,7 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                 auto *oldValue = store->getOperand(0);
                 if (oldValue->getType() == newType) continue;
                 if (oldValue->getType()->isFloatingPointTy() && newType->isFloatingPointTy()) {
+                    errs() << "Changing StoreInst: " << *store << "\n";
                     if (auto *newValue = insertCast(oldValue, newType, store)) {
                         store->setOperand(0, newValue);
                         store->setAlignment(align);
@@ -105,6 +106,7 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
 
                         // 如果返回值类型与函数返回类型不一致，插入类型转换
                         if (newType != funcReturnType) {
+                            errs() << "ret inst type not same: " << *newType << "!=" << *funcReturnType << "\n";
                             if (auto *castValue = insertCast(newLoad, funcReturnType, ret)) {
                                 ret->setOperand(0, castValue);  // 设置转换后的值为返回值
                             }
@@ -133,7 +135,6 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
             }
             else if (auto call = dyn_cast<CallInst>(user)) {
                 // Handle llvm.memcpy calls(it generated while alloc array size)
-                errs() << "call name: " << call->getName() << "\n";
                 if (auto *callee = call->getCalledFunction()) {
                     if (callee->getName() == "llvm.memcpy.p0.p0.i64") {
                         errs() << "Changing llvm.memcpy call: " << *call << "\n";
@@ -311,12 +312,13 @@ bool ChangePrecision::repairUserType(User *user) {
         return false;
     }
 
+    errs() << "RepairUser: " << *inst << "\n";
     bool modified = false;
 
     if (auto *unaOp = dyn_cast<UnaryOperator>(inst)) {
         auto *operand = unaOp->getOperand(0);
         if (operand->getType() != unaOp->getType()) {
-            errs() << "RepairUser: Operand type mismatch\n";
+            errs() << "RepairUser: Unary operand type mismatch\n";
             IRBuilder<> builder(unaOp);
             auto *newOperand = insertCast(operand, unaOp->getType(), unaOp);
             if (newOperand) {
@@ -334,7 +336,7 @@ bool ChangePrecision::repairUserType(User *user) {
             auto *operand = binOp->getOperand(i);
             // type of src operands not match
             if (operand->getType() != highestType) {
-                errs() << "RepairUser: Operand " << i << " of type " << *operand->getType() 
+                errs() << "RepairUser: Binary operand " << i << " of type " << *operand->getType() 
                        << " != target type " << *highestType<< ", casting...\n";
                 if (auto *newOperand = insertCast(operand, highestType, binOp)) {
                     newOperands.push_back(newOperand);
@@ -414,18 +416,71 @@ bool ChangePrecision::repairUserType(User *user) {
         }
     }
 
-    // repair llvm.fmuladd
     else if (auto *call = dyn_cast<CallInst>(inst)) {
         auto *callee = call->getCalledFunction();
         auto *highestType = findHighestPrecisionType(call);
-        if (callee && callee->getName().startswith("llvm.fmuladd")) {
-            modified |= repairFMulAdd(call, highestType);        
-            if (modified) {
-                for (auto *callUser : call->users()) {
-                    if (callUser->getType()!= highestType) {
-                        errs() << "repair fmuladd(): incorrect user detected.\n";
-                        repairUserType(callUser);
+        if (callee) {
+            if (callee->getName().startswith("llvm.fmuladd")) {
+                modified |= repairFMulAdd(call, highestType);        
+                if (modified) {
+                    for (auto *callUser : call->users()) {
+                        if (callUser->getType()!= highestType) {
+                            errs() << "repair fmuladd(): incorrect user detected.\n";
+                            repairUserType(callUser);
+                        }
                     }
+                }
+            } else {
+                bool needRepair = false;
+                SmallVector<Type *, 4> newParamTypes;
+                SmallVector<Value *, 4> newArgs;
+
+                unsigned numArgs = call->getNumOperands() - 1; // Subtract 1 for the function itself
+
+                // Check if the function is variadic（such as declare i32 @printf(ptr noundef, ...) ）
+                bool isVarArg = callee->isVarArg();
+
+                // Check if any argument type mismatch with the function parameter type
+                for (unsigned i = 0; i < numArgs; ++i) {
+                    Value *arg = call->getArgOperand(i);
+                    Type *paramType = nullptr;
+
+                    // For non-variadic functions, get the parameter type from the function signature
+                    if (!isVarArg && i < callee->getFunctionType()->getNumParams()) {
+                        paramType = callee->getFunctionType()->getParamType(i);
+                    } else {
+                        // For variadic functions, use the original argument type
+                        paramType = arg->getType();
+                    }
+
+                    if (arg->getType() != paramType) {
+                        needRepair = true;
+                        // Insert a cast to convert the argument to the expected type
+                        if (auto *castValue = insertCast(arg, paramType, call)) {
+                            newArgs.push_back(castValue); // Use the casted value
+                        } else {
+                            newArgs.push_back(arg); // Use the original argument if cast fails
+                        }
+                    } else {
+                        newArgs.push_back(arg); // Use the original argument
+                    }
+                }
+
+                if (needRepair) {
+                    modified = true;
+                    CallInst *newCall = CallInst::Create(callee, newArgs, "", call);
+                    newCall->setCallingConv(call->getCallingConv());
+                    newCall->setAttributes(call->getAttributes());
+    
+                    // Copy debug information
+                    if (MDNode *debugLoc = call->getDebugLoc().getAsMDNode()) {
+                        newCall->setDebugLoc(DebugLoc(debugLoc));
+                    }
+                    call->replaceAllUsesWith(newCall);
+                    instToErase.insert(call);
+    
+                    modified = true;
+                    errs() << "Repaired call instruction with cast: " << *newCall << "\n";
                 }
             }
         }
@@ -452,6 +507,8 @@ bool ChangePrecision::repairUserType(User *user) {
                 auto* newVal = oldVal;
                 // pay attention: insertCast shouldn't at 'phi', will cause 'Instruction does not dominate all uses!'
                 if (oldVal->getType() != highestType) {
+                    errs() << "RepairUser: PHI operand " << i << " of type " << *oldVal->getType()
+                        << "!= target type " << *highestType << ", casting...\n";
                     auto* incomingBlock = phi->getIncomingBlock(i);
                     auto* insertBefore = incomingBlock->getTerminator();
                     newVal = insertCast(oldVal, highestType, insertBefore);

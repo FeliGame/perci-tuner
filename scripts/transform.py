@@ -2,10 +2,10 @@
 
 # @Author: LinLanfeng —— NUDT
 
-import os, time
+import sys
+import os
 import data_utils
 import subprocess
-import numpy as np
 import config_utils
 import re
 
@@ -34,6 +34,8 @@ def read_result(text):
     if match:
         float_number = match.group(1)
         return float_number
+    elif "nan" or "inf" in text:
+        return sys.maxsize
     else:
         return None
 

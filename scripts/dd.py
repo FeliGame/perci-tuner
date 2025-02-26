@@ -106,9 +106,6 @@ def run_config(bitcode, var_config, change_set):
     # Compare var_config with original_var_conf and store differences in diff
     compare_json(original_var_conf, var_config, diff)
 
-    # Convert diff to JSON format if needed
-    diff_json = json.dumps(diff, indent=4)
-
     result = transform.transform(bitcode, var_config, diff)
     if result == -1:
       print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
