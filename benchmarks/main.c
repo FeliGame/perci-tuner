@@ -23,7 +23,7 @@ int comp_test(int a, int b)
 
 static double fp_test()
 {
-    long double a = 3.1f, b = 2L + 1e-20L, c = 2L, d = 1.0f, e = 0.3f;
+    const long double a = 3.1f, b = 2L + 1e-20L, c = 2L, d = 1.0f, e = 0.3f;
     double arr[2] = {0.1, 0.3};
     static double s_arr[2][3];
 

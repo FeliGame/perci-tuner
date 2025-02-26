@@ -141,3 +141,13 @@
 ### 20
 
 * dd.py: Correct delta-debugging algorithm.
+
+### 23
+
+* CreatePrecisionConfigByPragma(Unfinished): compatible with 3 new #pragma intrinsic functions.
+
+### 26
+
+* config_utils.py: recognize & transform array types.
+* dd.py: add parameter: run times of IR per iteration.
+* dd.py: supports transform floating-type const & array.

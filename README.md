@@ -27,9 +27,9 @@ This will generate a pass.so under build/ directory.
 
 This will generate results (IR and related files) under the src folder.
 
-`python3 scripts/dd.py output.bc config.json 1e-2`
+`python3 scripts/dd.py output.bc config.json 1e-2 10`
 
-Run this will generate optimized precision config file and runnable .bc file, which based on delta-debugging algorithm from Precimonious. The threshold is used for calculating the relative error of cmd output.
+Run this will generate optimized precision config file and runnable .bc file, which based on delta-debugging algorithm from Precimonious. The threshold is used for calculating the relative error of cmd output. Last parameter defines the IR's running time during each search iteration.
 
 ## Optional Flags
 

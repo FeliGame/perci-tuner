@@ -239,13 +239,14 @@ def search_conf(bitcode, change_set, original_var_conf, original_result):
 
 def main():
     global run_times, min_time, thres, original_var_conf, bitcode_name
-    if len(sys.argv) != 4:
-        print("Usage: python dd2.py <bitcode> <conf_file> <threshold, e.g. 1e-6>")
+    if len(sys.argv) != 5:
+        print("Usage: python dd2.py <bitcode> <conf_file> <relative_threshold, e.g. 1e-6> <run times per iteration>")
         sys.exit(1)
     bitcode = sys.argv[1]
     original_var_conf_file = sys.argv[2]
-    # the threshold for the result
+    # relative threshold for the result
     thres = sys.argv[3]
+    transform.RUNNING_TIMES = int(sys.argv[4])
 
     data_utils.del_csv()
 
