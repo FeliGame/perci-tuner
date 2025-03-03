@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.20)
 
 project(PerciTuner)
 
@@ -26,6 +26,7 @@ add_llvm_pass_plugin(PerciTuner
     lib/CreatePrecisionConfig.cpp
     lib/ChangePrecision.cpp
     lib/IRTiming.cpp
+    lib/MergeMultiVersion.cpp
 )
 
 # Link against LLVM libraries

@@ -14,6 +14,7 @@
 #include "CreatePrecisionConfig.h"
 #include "ChangePrecision.h"
 #include "IRTiming.h"
+#include "MergeMultiVersion.h"
 
 using namespace llvm;
 
@@ -56,6 +57,11 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 						if (Name == "ir_timing")
 						{
 							PM.addPass(IRTiming());
+							return true;
+						}
+						if (Name == "merge_multi")
+						{
+							PM.addPass(MergeMultiVersion());
 							return true;
 						}
 						return false;

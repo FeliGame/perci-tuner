@@ -31,6 +31,12 @@ This will generate results (IR and related files) under the src folder.
 
 Run this will generate optimized precision config file and runnable .bc file, which based on delta-debugging algorithm from Precimonious. The threshold is used for calculating the relative error of cmd output. Last parameter defines the IR's running time during each search iteration.
 
+`sh scripts/run_multi_version.sh output.bc dd_valid_output.bc function_name`
+
+(Optional) If you want to merge the orginal IR and the optimized IR into a merged IR, you can run this command. Set environment value to decide which IR to use(implemented in mvselect.c):
+
+`export PERCI_TUNER_SPEED_FIRST=TRUE`
+
 ## Optional Flags
 
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
@@ -49,8 +55,18 @@ Customize searched result's output filename, from Pass:config, implemented in Cr
 
 ### --target-config
 
-Customize target precision input filename, from Pass:change-precision, implemented in ChangePrecision.
+Customize target precision input filename, from Pass:change_precision, implemented in ChangePrecision.
 
 ### --ir-timing-result
 
-Customize IR timing result's output filename, from Pass:ir-timing, implemented in IRTiming.
+Customize IR timing result's output filename, from Pass:ir_timing, implemented in IRTiming.
+
+### --ir-multi
+
+Customize another version input IR filename, from
+Pass: merge_multi, implemented in MergeMultiVersion.
+
+### --function-multi
+
+Decide which function should be merged from another version input IR, from
+Pass: merge_multi, implemented in MergeMultiVersion.

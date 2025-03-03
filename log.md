@@ -153,3 +153,9 @@
 * dd.py: supports transform floating-type const & array.
 * Add Benchmarks: FPBench & GSL.
 * CP: Repair crash when function args' type changed.
+
+## Mar, 2025
+
+# 3
+
+* Add Pass: MergeMultiVersion.
