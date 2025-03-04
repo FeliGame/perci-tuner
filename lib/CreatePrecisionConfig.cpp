@@ -1,6 +1,6 @@
 // @Author: Guocheng - NUDT
 // Usage: Tell declared variables' type.
-// Input: searched_functions.txt
+// Input: function_call.json
 // Output: config.json
 
 #include "CreatePrecisionConfig.h"
@@ -14,7 +14,6 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/ValueSymbolTable.h>
 #include <llvm/Demangle/Demangle.h>
-#include <llvm/BinaryFormat/Dwarf.h>
 
 #include <fstream>
 
@@ -131,16 +130,19 @@ bool CreatePrecisionConfig::runOnFunction(Function &F) {
 }
 
 bool CreatePrecisionConfig::runOnModule(Module &module) {
-    ifstream inFile("searched_functions.txt");
+    ifstream inFile("function_call.json");
     string name;
 
     if (!inFile) {
-        errs() << "Unable to open searched_functions.txt\n";
+        errs() << "Unable to open function_call.json\n";
         exit(1);
     }
 
-    while(inFile >> name) {
-        includedFunctions.insert(name);
+    nlohmann::json functionCalls;
+    inFile >> functionCalls;
+    
+    for (auto& call : functionCalls) {
+        includedFunctions.insert(call["callee"].get<std::string>());
     }
 
     findGlobalVariables(module);

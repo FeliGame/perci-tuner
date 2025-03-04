@@ -159,3 +159,11 @@
 # 3
 
 * Add Pass: MergeMultiVersion.
+
+# 4
+
+* CP: Repair bug that const floating declarations won't be changed.
+* Add Pass: ChangeFunctionCall(Unfinished).
+* SearchFunctions is renamed to: SearchFunctionCall, update its output as function_call.json.
+* ChangePrecision: only depend to config.json, exclude searched_functions.txt.
+* Accelerate Passes by using DenseSet rather than std::set.

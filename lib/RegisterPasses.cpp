@@ -10,9 +10,10 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "SearchFunctions.h"
+#include "SearchFunctionCall.h"
 #include "CreatePrecisionConfig.h"
 #include "ChangePrecision.h"
+#include "ChangeFunctionCall.h"
 #include "IRTiming.h"
 #include "MergeMultiVersion.h"
 
@@ -39,9 +40,9 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 					[](StringRef Name, llvm::ModulePassManager &PM,
 					   ArrayRef<llvm::PassBuilder::PipelineElement>)
 					{
-						if (Name == "search_functions")
+						if (Name == "search_function_call")
 						{
-							PM.addPass(SearchFunctions());
+							PM.addPass(SearchFunctionCall());
 							return true;
 						}
 						if (Name == "config")
@@ -52,6 +53,11 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 						if (Name == "change_precision")
 						{
 							PM.addPass(ChangePrecision());
+							return true;
+						}
+						if (Name == "change_function_call")
+						{
+							PM.addPass(ChangeFunctionCall());
 							return true;
 						}
 						if (Name == "ir_timing")

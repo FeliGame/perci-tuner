@@ -5,8 +5,8 @@
 
 #include "ChangePrecision.h"
 #include "utils/ParseTypeName.hpp"
-
 #include "nlohmann/json.hpp"
+
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
@@ -27,21 +27,7 @@ using namespace llvm;
 
 cl::opt<string> TargetConfigName("target-config", cl::value_desc("filename"), cl::desc("Target Type Config"), cl::init("config.json"));
 
-void ChangePrecision::parseIncludedFunctions() {
-    ifstream inFile("searched_functions.txt");
-    string name;
-
-    if (!inFile) {
-        errs() << "Unable to open searched_functions.txt\n";
-        exit(1);
-    }
-
-    while(inFile >> name) {
-        includedFunctions.insert(name);
-    }
-}
-
-void ChangePrecision::parseTypeConfig() {
+void ChangePrecision::parseConfig() {
     std::ifstream configFile(TargetConfigName.c_str());
     if (!configFile.is_open()) {
         errs() << "Failed to open " << TargetConfigName << "\n";
@@ -52,6 +38,9 @@ void ChangePrecision::parseTypeConfig() {
     configFile.close();
     
     config = nlohmann::json::parse(configContent);
+    for (auto &entry : config["local"].items()) {
+        includedFunctions.insert(entry.key());
+    }
 }
 
 bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
@@ -572,6 +561,13 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
 // translate typename into llvm type
 Type* ChangePrecision::translateTypeName(string typeName, LLVMContext& context)
 {
+    size_t constPos;
+    while ((constPos = typeName.find("const")) != string::npos) {
+        typeName.erase(constPos, 5);  // Remove 'const'
+    }
+    // Remove spaces
+    typeName.erase(remove(typeName.begin(), typeName.end(), ' '), typeName.end());
+
     Type* targetType = nullptr;
     if (typeName.find("float") == 0) {
         targetType = Type::getFloatTy(context);
@@ -579,7 +575,7 @@ Type* ChangePrecision::translateTypeName(string typeName, LLVMContext& context)
         targetType = Type::getDoubleTy(context);
     } else if (typeName.find("long double") == 0) {
         targetType = Type::getFP128Ty(context);
-    } else {  // TODO: Add more type such as const/array/pointer...
+    } else {
         errs() << "Unknown type: " << typeName << "\n";
         return nullptr;
     }
@@ -635,8 +631,7 @@ bool ChangePrecision::runOnFunction(Function &F) {
 }
 
 bool ChangePrecision::runOnModule(Module &module) {
-    parseIncludedFunctions();
-    parseTypeConfig();
+    parseConfig();
     bool modified = false;
     for(auto f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();

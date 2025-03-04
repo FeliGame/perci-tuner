@@ -26,9 +26,7 @@ public:
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
 private:
-    void parseIncludedFunctions();
-
-    void parseTypeConfig();
+    void parseConfig();
 
     bool changeAllocaInst(DbgDeclareInst *DDI, Type *newType);
 
@@ -50,7 +48,7 @@ private:
 
     Type* translateTypeName(std::string typeName, LLVMContext& context);
 
-    std::set<std::string> includedFunctions;
+    DenseSet<StringRef> includedFunctions;
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
 

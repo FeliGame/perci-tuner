@@ -1,10 +1,10 @@
 // @Author: Guocheng - NUDT
-// Usage: Tell the function call chain in run-time order.
+// Usage: Tell the function CallInst & their location.
 // Input(Optional): "--search-entry=main",
 //                  "--exclude-functions=excluded_functions.txt"
-// Output: searched_functions.txt
+// Output: function_call.json
 
-#include "SearchFunctions.h"
+#include "SearchFunctionCall.h"
 
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
@@ -25,7 +25,7 @@ cl::opt<string> ExcludeFunctionsName("exclude-functions", cl::value_desc("name")
 
 
 // Print to command line, only for DEBUG!
-void SearchFunctions::printCalledFunction(Function* callee, int depth) {
+void SearchFunctionCall::printCalledFunction(Function* callee, int depth) {
     for (int i = 0; i < depth; ++i)
     {
         errs() << "\t";
@@ -34,18 +34,26 @@ void SearchFunctions::printCalledFunction(Function* callee, int depth) {
 }
 
 // Visit function calls recursively
-void SearchFunctions::collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth) {
-    // if (!visited.insert(&F).second) {
-    //     return;  // exit if visited
-    // }
+void SearchFunctionCall::collectCalledFunctions(Function &F, int depth) {
     for (auto &BB : F) {
         for (auto &I : BB) {
             if (auto *call = dyn_cast<CallInst>(&I)) {
                 auto *callee = call->getCalledFunction();
                 if (callee && !callee->isIntrinsic()) { // LLVM intrinsic: such as llvm.fmuladd.f32
-                    calledFunctions.insert(callee->getName().str());
+                    DebugLoc loc = call->getDebugLoc();
+                    nlohmann::json callInfo;
+
+                    callInfo["caller"] = F.getName().str();
+                    callInfo["callee"] = callee->getName().str();
+                    if (loc) {
+                        callInfo["file"] = loc.get()->getFilename().str();
+                        callInfo["line"] = loc.get()->getLine();
+                        callInfo["column"] = loc.getCol();
+                    }
+                    config.push_back(callInfo);
+                    
                     printCalledFunction(callee, depth);
-                    collectCalledFunctions(*callee, visited, depth + 1);
+                    collectCalledFunctions(*callee, depth + 1);  // DFS
                 }
             }
         }
@@ -53,7 +61,7 @@ void SearchFunctions::collectCalledFunctions(Function &F, std::set<Function*> &v
 }
 
 // Write call dependency set into file
-void SearchFunctions::writeToFile() {
+void SearchFunctionCall::writeToFile() {
     // Parse excluded functions file
     if (!ExcludeFunctionsName.empty()) {
         ifstream excludedFunctionsFile(ExcludeFunctionsName);
@@ -64,50 +72,52 @@ void SearchFunctions::writeToFile() {
             }
             excludedFunctionsFile.close();
         } else {
-            errs() << "Error: Unable to open excluded functions file: " << ExcludeFunctionsName << "\n";
+            errs() << "Warning: Unable to open excluded functions file: " << ExcludeFunctionsName << ", ignored\n";
         }
     }
     
-
-    ofstream searchedFunctionsFile ("searched_functions.txt");
-    if (searchedFunctionsFile.is_open()) {
-        for (auto &function : calledFunctions) {
-            if (excludedFunctions.find(function) != excludedFunctions.end()) continue;
-            searchedFunctionsFile << function << "\n";
-        }
-        searchedFunctionsFile.close();
+    ofstream jsonFile("function_call.json");
+    if (jsonFile.is_open()) {
+        jsonFile << config.dump(4);
+        jsonFile.close();
     }
 }
 
-bool SearchFunctions::runOnFunction(Function &F) {
+bool SearchFunctionCall::runOnFunction(Function &F) {
     if (demangle(F.getName()) != CallEntryName) {
         return false;
     }
 
     errs() << "Call Dependency Tree:\n" << demangle(F.getName()) << "\n";
-    calledFunctions.insert(F.getName().str());
+    
+    nlohmann::json entryInfo;
+    entryInfo["callee"] = F.getName().str();
+    entryInfo["caller"] = "PROGRAM_ENTRY";
+    if (auto *SP = F.getSubprogram()) {
+        entryInfo["file"] = SP->getFilename().str();
+        entryInfo["line"] = SP->getLine();
+    }
+    config.push_back(entryInfo);
 
-    std::set<Function*> visited;
-    collectCalledFunctions(F, visited, 1);
-
+    collectCalledFunctions(F, 1);
     writeToFile();
 
     return false;
 }
 
-bool SearchFunctions::runOnModule(Module &module) {
+bool SearchFunctionCall::runOnModule(Module &module) {
     for(Module::iterator f = module.begin(), fe = module.end(); f != fe; f++) {
         runOnFunction(*f);
     }
     return false;  // hasn't changed IR
 }  
 
-void SearchFunctions::getAnalysisUsage(AnalysisUsage &AU) const {
+void SearchFunctionCall::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();  // hasn't changed IR
 }
 
-PreservedAnalyses SearchFunctions::run(Module &M, ModuleAnalysisManager &) {
-    errs() << ">>> Perci-Tuner: Running SearchFunctions Pass...\n";
+PreservedAnalyses SearchFunctionCall::run(Module &M, ModuleAnalysisManager &) {
+    errs() << ">>> Perci-Tuner: Running SearchFunctionCall Pass...\n";
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();

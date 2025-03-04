@@ -5,7 +5,7 @@ Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features 
 
 # User Manual
 
-First things first, install LLVM (recommended version: 17.0.6).
+First things first, install LLVM (recommended version: 17.0.6) with `-DCMAKE_BUILD_TYPE=Release` option, or Perci-Tuner might crash.
 
 ## Add Environment Variable
 
@@ -43,11 +43,11 @@ Each Optional Flag should be enclosed in double quotes, and it must start with '
 
 ### --search-entry=func_name
 
-Customize running entry function for searching, from Pass:search_functions, implemented in SearchFunctions.
+Customize running entry function for searching, from Pass:search_function_call, implemented in SearchFunctions.
 
 ### --excluded-functions=excluded_functions.txt
 
-Customize excluded functions for searching, from Pass:search_functions, implemented in SearchFunctions.
+Customize excluded functions for searching, from Pass:search_function_call, implemented in SearchFunctions.
 
 ### --config-file
 

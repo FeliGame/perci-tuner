@@ -1,7 +1,9 @@
 // @Author: Guocheng - NUDT
 
-#ifndef LLVM_CREATE_CALL_DEPENDENCY_H
-#define LLVM_CREATE_CALL_DEPENDENCY_H
+#ifndef LLVM_SEARCH_FUNCTION_CALL_H
+#define LLVM_SEARCH_FUNCTION_CALL_H
+
+#include "nlohmann/json.hpp"
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
@@ -13,7 +15,7 @@
 namespace llvm {
 
 
-class SearchFunctions : public PassInfoMixin<SearchFunctions> {
+class SearchFunctionCall : public PassInfoMixin<SearchFunctionCall> {
 public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager
 
@@ -28,13 +30,13 @@ private:
 
     void writeToFile();
     
-    void collectCalledFunctions(Function &F, std::set<Function*> &visited, int depth);
+    void collectCalledFunctions(Function &F, int depth);
 
-    std::set<std::string> calledFunctions;
+    DenseSet<StringRef> excludedFunctions;
 
-    std::set<std::string> excludedFunctions;
+    nlohmann::json config;
 };
 
 } // namespace llvm
 
-#endif // LLVM_CREATE_CALL_DEPENDENCY_H
+#endif // LLVM_SEARCH_FUNCTION_CALL_H

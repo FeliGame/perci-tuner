@@ -47,7 +47,6 @@ def transform(bitcode_file, var_config, diff):
     config_utils.print_config(var_config, TEMP_CONFIG_FILE)
 
     # run LLVM passes
-    #opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_functions,config,change_precision' $FLAGS output.bc -o temp_output.bc
     command = ['opt', '-load-pass-plugin', PER_TUNE_PATH, "-S", "-passes=" + PASSES, "--target-config=" + TEMP_CONFIG_FILE , bitcode_file, "-o", TEMP_BC_PATH]
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     # return -1 if running LLVM passes fails

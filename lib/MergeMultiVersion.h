@@ -29,7 +29,7 @@ public:
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
 private:
-    std::set<CallInst*> processed;  // to avoid processing the same CallInst multiple times
+    DenseSet<CallInst*> processed;  // to avoid processing the same CallInst multiple times
     
     Function* mvSelectFunction;
 };
