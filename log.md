@@ -171,5 +171,8 @@
 # 5
 
 * CPC: Safely search static Global vars to avoid invalid operand count. Add 'isParam' key into config.json.
-* Make benchmarks runnable: FPBench, GSL. Pay attention that run GSL should add 2 options `-load /usr/local/lib/libgsl.so -load /usr/local/lib/libgslcblas.so` in lli command.
+* Make benchmarks runnable: FPBench, GSL. Pay attention that run GSL should add 2 options: `-load /usr/local/lib/libgsl.so -load /usr/local/lib/libgslcblas.so` in lli command (should install GSL).
 * Rename dd.py to search.py.
+* CPC: RepairUser of StoreInst's alignment. Remove instRepaired, which caused Inst can't be changed multi times. (such as FCmp & BinOp, both ops' type changed).
+* ParseDITypeName supports dwarf::DW_TAG_typedef (such as gsl/root.c: const gsl_root_fsolver_type*).
+* search.py: Ignore pointer-type & non-floating-type to reduce change-set size (accelerate searching).

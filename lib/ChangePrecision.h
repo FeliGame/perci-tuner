@@ -52,8 +52,6 @@ private:
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
 
-    DenseSet<Instruction*> instRepaired;   // Inst repaired by repairUserType()
-
     nlohmann::json config;
 };
 

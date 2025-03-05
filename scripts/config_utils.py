@@ -47,6 +47,11 @@ def parse_var_conf(var_conf):
     if func_vars is None:
       continue
     for i in range(0, len(func_vars)):
+      # Skip pointer-type & non-floating-type (though they are shown in config.json)
+      type_str = func_vars[i]['type']
+      if (('struct' not in type_str and '*' in type_str) 
+          or not any(p in type_str for p in PRECISIONS)):
+         continue
       change_set_vars = copy.deepcopy(func_vars[i])
       change_set_vars['fvar_index'] = i
       change_set_vars['func'] = func

@@ -18,6 +18,7 @@
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APSInt.h>
+#include <llvm/IR/Verifier.h>
 
 #include <fstream>
 
@@ -31,7 +32,7 @@ void ChangePrecision::parseConfig() {
     std::ifstream configFile(TargetConfigName.c_str());
     if (!configFile.is_open()) {
         errs() << "Failed to open " << TargetConfigName << "\n";
-        return;
+        exit(1);
     }
 
     std::string configContent((std::istreambuf_iterator<char>(configFile)), std::istreambuf_iterator<char>());
@@ -55,17 +56,14 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
     }
 
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
-        errs() << "Changing AllocaInst: " << *alloca << "\n";
         alloca->setAllocatedType(newType);
         alloca->setAlignment(align);
-        errs() << "Changed AllocaInst: " << *alloca << "\n";
 
         for (auto *user : alloca->users()) {
             if (auto store = dyn_cast<StoreInst>(user)) {
                 auto *oldValue = store->getOperand(0);
                 if (oldValue->getType() == newType) continue;
                 if (oldValue->getType()->isFloatingPointTy() && newType->isFloatingPointTy()) {
-                    errs() << "Changing StoreInst: " << *store << "\n";
                     if (auto *newValue = insertCast(oldValue, newType, store)) {
                         store->setOperand(0, newValue);
                         store->setAlignment(align);
@@ -83,10 +81,9 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                 }
 
                 load->replaceAllUsesWith(newLoad);
-                errs() << "erase later: " << *load << "\n";
                 instToErase.insert(load);    // erase later to avoid broken iterator
 
-                errs() << "repair users of load: " << *newLoad << "\n";
+                errs() << "repair users of new load: " << *newLoad << "\n";
                 for (auto *loadUser : newLoad->users()) {
                     if (auto ret = dyn_cast<ReturnInst>(loadUser))
                     {
@@ -95,7 +92,6 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
 
                         // 如果返回值类型与函数返回类型不一致，插入类型转换
                         if (newType != funcReturnType) {
-                            errs() << "ret inst type not same: " << *newType << "!=" << *funcReturnType << "\n";
                             if (auto *castValue = insertCast(newLoad, funcReturnType, ret)) {
                                 ret->setOperand(0, castValue);  // 设置转换后的值为返回值
                             }
@@ -147,21 +143,15 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
 
                         // Replace the old call with the new one
                         call->replaceAllUsesWith(newCall);
-                        errs() << "erase later: " << *call << "\n";
                         instToErase.insert(call);    // erase later to avoid broken iterator
 
                         errs() << "New llvm.memcpy call: " << *newCall << "\n";
                     }
                 }
             }
-            // else {
-            //     errs() << "repair else inst's user: " << *user << "\n";
-            //     repairUserType(user);
-            // }
         }
         return true;
     }
-    
     return false;
 }
 
@@ -200,7 +190,6 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
 
     errs() << "RepairFMulAdd(): replace " << *call << " with " << *newCall << "\n";
     call->replaceAllUsesWith(newCall);
-    errs() << "erase later: " << *call << "\n";
     instToErase.insert(call);    // erase later to avoid broken iterator
 
     return true;
@@ -292,10 +281,6 @@ bool ChangePrecision::repairUserType(User *user) {
     }
 
     auto *inst = cast<Instruction>(user);
-    
-    if (instRepaired.contains(inst)) return false;
-    instRepaired.insert(inst);
-
     if (isa<FPExtInst>(inst) || isa<FPTruncInst>(inst)) {
         errs() << "RepairUser: skip cast inst: " << *inst << "\n";
         return false;
@@ -348,7 +333,6 @@ bool ChangePrecision::repairUserType(User *user) {
             }
 
             binOp->replaceAllUsesWith(newBinOp);
-            errs() << "erase later: " << *binOp << "\n";
             instToErase.insert(binOp);
             modified = true;
 
@@ -393,7 +377,6 @@ bool ChangePrecision::repairUserType(User *user) {
             }
 
             fcmp->replaceAllUsesWith(newFcmp);
-            errs() << "erase later: " << *fcmp << "\n";
             instToErase.insert(fcmp);
             modified = true;
 
@@ -609,11 +592,10 @@ bool ChangePrecision::runOnFunction(Function &F) {
                     // TODO: Iterate each var to match, can be more efficient
                     for (auto &configEntry : functionConfig) {
                         if (configEntry["name"] == varName && configEntry["line"] == std::to_string(lineNo)) {
-                            Type *targetType = nullptr;
                             auto typeName = configEntry["type"].get<string>();
 
                             if (typeName == parseDITypeName(DV->getType())) continue;
-                            targetType = translateTypeName(typeName, context);
+                            auto *targetType = translateTypeName(typeName, context);
                             if (targetType == nullptr) continue;
 
                             errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
@@ -642,6 +624,15 @@ bool ChangePrecision::runOnModule(Module &module) {
 
     for (auto* inst : instToErase) {
         inst->eraseFromParent();
+    }
+
+    // module.print(errs(), nullptr);
+    if (verifyModule(module, &errs()))
+    {
+        errs() << "Module verify failed!\n";
+        exit(1);
+    } else {
+        errs() << "Module verify success!\n";
     }
 
     return modified;

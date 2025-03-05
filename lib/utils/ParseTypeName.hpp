@@ -55,11 +55,21 @@ inline string parseTypeName(Type* type) {
 
 inline string parseDITypeName(DIType* type) {
     if (auto *derivedType = llvm::dyn_cast<llvm::DIDerivedType>(type)) {
-        if (auto baseType = derivedType->getBaseType()) {
-            if(derivedType->getTag() == dwarf::DW_TAG_const_type) {
-                return "const " + parseDITypeName(baseType);
+        switch (derivedType->getTag()) {
+            case dwarf::DW_TAG_typedef: {
+                return derivedType->getName().str();
             }
-            return parseDITypeName(baseType) + "*";
+            case dwarf::DW_TAG_const_type: {
+                return "const " + parseDITypeName(derivedType->getBaseType());
+            }
+            case dwarf::DW_TAG_pointer_type: {
+                return parseDITypeName(derivedType->getBaseType()) + "*";
+            }
+            default: {
+                if (auto baseType = derivedType->getBaseType()) {
+                    return parseDITypeName(baseType);
+                }
+            }
         }
     }
     if (auto *compositeType = llvm::dyn_cast<llvm::DICompositeType>(type)) {

@@ -43,7 +43,7 @@ if ! opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_f
     exit 1
 fi
 
-if ! lli output.bc; then
+if ! lli -load /usr/local/lib/libgsl.so output.bc; then
     echo "lli command failed. Exiting script."
     exit 1
 fi

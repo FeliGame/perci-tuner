@@ -33,3 +33,9 @@ add_llvm_pass_plugin(MyPass
     lib/MyPass.cpp
 )
 ```
+
+## Best Practice
+
+* `module.print(errs(), nullptr)` prints changed IR before LLVM verifier, which is helpful while LLVM crashes.
+
+* `verifyModule(module, &errs()))` return false if verifier fails.
