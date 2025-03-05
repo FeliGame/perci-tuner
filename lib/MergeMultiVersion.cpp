@@ -22,7 +22,7 @@
 using namespace std;
 using namespace llvm;
 
-cl::opt<string> MultiVersionIRName("ir-multi", cl::value_desc("filename"), cl::desc("The other IR to be merged"), cl::init("dd_valid_output.bc"));
+cl::opt<string> MultiVersionIRName("ir-multi", cl::value_desc("filename"), cl::desc("The other IR to be merged"), cl::init("optimized_output.bc"));
 cl::opt<string> MultiVersionFunction("function-multi", cl::value_desc("function name"), cl::desc("Function need multi-version"), cl::init("main"));
 
 bool MergeMultiVersion::runOnModule(Module &module)

@@ -165,7 +165,7 @@ int main(void)
   F.params = 0;
 
   double x = 3.0;
-  int count = 5000000;
+  int count = 50000;
   while (count--)
   {
     /* code */

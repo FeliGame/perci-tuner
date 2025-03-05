@@ -39,7 +39,7 @@ double ex0(double u) {
 int main() {
 
     double u = 1.0; // 设置输入参数 u
-	int count = 1000000;
+	int count = 100000;
 	double result = 0;
 	while (count--)
 	{

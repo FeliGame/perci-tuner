@@ -27,11 +27,11 @@ This will generate a pass.so under build/ directory.
 
 This will generate results (IR and related files) under the src folder.
 
-`python3 scripts/dd.py output.bc config.json 1e-2 10`
+`python3 scripts/search.py output.bc config.json 1e-2 10`
 
 Run this will generate optimized precision config file and runnable .bc file, which based on delta-debugging algorithm from Precimonious. The threshold is used for calculating the relative error of cmd output. Last parameter defines the IR's running time during each search iteration.
 
-`sh scripts/run_multi_version.sh output.bc dd_valid_output.bc function_name`
+`sh scripts/run_multi_version.sh output.bc optimized_output.bc function_name`
 
 (Optional) If you want to merge the orginal IR and the optimized IR into a merged IR, you can run this command. Set environment value to decide which IR to use(implemented in mvselect.c):
 

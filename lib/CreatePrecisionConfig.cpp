@@ -33,21 +33,24 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
             std::string varName = "";
             std::string typeName = "";
             DebugLoc DL;
-            bool isStatic;
+            bool isStatic = false, isParam = false;
+            // Get pointer safely
+            if (auto *SI = dyn_cast<StoreInst>(&I)) {
+                Value *Addr = SI->getPointerOperand();
+                if (auto *GV = dyn_cast<GlobalVariable>(Addr)) {
+                    // Check local static vars
+                    if (GV->hasInternalLinkage()) {
+                        // Skip global static vars
+                        if (GV->getName().find(F.getName()) == std::string::npos) continue;
+                        // "func_name.var_name" -> "var_name"
+                        std::string prefix = F.getName().str() + ".";
+                        size_t prefixLen = prefix.length();
+                        varName = GV->getName().substr(prefixLen);
+                        typeName = parseTypeName(GV->getValueType());
 
-            if (auto *GV = dyn_cast<GlobalVariable>(I.getOperand(0))) {
-                // Check local static vars
-                if (GV->hasInternalLinkage()) {
-                    // Skip global static vars
-                    if (GV->getName().find(F.getName()) == std::string::npos) continue;
-                    // "func_name.var_name" -> "var_name"
-                    std::string prefix = F.getName().str() + ".";
-                    size_t prefixLen = prefix.length();
-                    varName = GV->getName().substr(prefixLen);
-                    typeName = parseTypeName(GV->getValueType());
-
-                    DL = I.getDebugLoc();
-                    isStatic = true;
+                        DL = I.getDebugLoc();
+                        isStatic = true;
+                    }
                 }
             }
             else if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
@@ -58,6 +61,7 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
                     if (varName == "this") continue;
                     DL = DDI->getDebugLoc();
                     isStatic = false;
+                    isParam = DV->isParameter();
                 }
             }
             // Skip integer type
@@ -80,6 +84,7 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
                 localVar["line"] = std::to_string(lineNo);
                 localVar["file"] = file->getFilename().str();
                 localVar["isStatic"] = isStatic;
+                localVar["isParam"] = isParam;
             
                 function.emplace_back(localVar); 
             }

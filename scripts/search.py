@@ -8,7 +8,7 @@ import config_utils, data_utils, transform
 # the initial divide number for delta debugging change set
 INITIAL_DIV_NUM= 2
 # the optimized bitcode & config file prefix
-OPT_PREFIX = "dd_valid_"
+OPT_PREFIX = "optimized_"
 
 global run_times
 run_times = 0
@@ -237,7 +237,7 @@ def search_conf(bitcode, change_set, original_var_conf, original_result):
 def main():
     global run_times, min_time, thres, original_var_conf, bitcode_name
     if len(sys.argv) != 5:
-        print("Usage: python dd2.py <bitcode> <conf_file> <relative_threshold, e.g. 1e-6> <run times per iteration>")
+        print("Usage: python search.py <bitcode> <conf_file> <relative_threshold, e.g. 1e-6> <run times per iteration>")
         sys.exit(1)
     bitcode = sys.argv[1]
     original_var_conf_file = sys.argv[2]

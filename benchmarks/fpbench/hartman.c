@@ -38,7 +38,7 @@ int main()
     }
 
     // 输出结果
-    printf("%f", result);
+    printf("%.13f", result);
 
     return 0;
 }

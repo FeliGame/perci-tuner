@@ -1,12 +1,12 @@
 CC = gcc
-CFLAGS = -lm
-SOURCES = funarc.c
-EXECUTABLE = funarc
+CFLAGS = -I /usr/local/include/ -L /usr/local/lib -lgsl -lgslcblas -lm
+TARGET = bessel
+SRC = bessel.c
 
-all: $(SOURCES) $(EXECUTABLE)
+all: $(TARGET) 
 
-$(EXECUTABLE): $(SOURCES)
-	$(CC) -o $@ $^ $(CFLAGS)
+$(TARGET): $(SRC)
+	$(CC) $(SRC) -o $(TARGET) $(CFLAGS)
 
 clean:
-	rm -f $(EXECUTABLE) *.txt *.out
+	rm -f $(TARGET) *.txt *.out

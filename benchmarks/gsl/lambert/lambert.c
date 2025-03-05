@@ -192,12 +192,12 @@ int main()
   /****** END PRECIMONIOUOS PREAMBLE ******/
 
   // 测试单个 x 值
-  double x = 1.0;
+  double x = 1.5;
 
   // 创建 gsl_sf_result 结构体，用于存储计算结果和误差
   gsl_sf_result result;
   int status = 99;
-  int count = 5000000;
+  int count = 10000;
 
   while (count--)
   {
@@ -209,49 +209,13 @@ int main()
   if (status == GSL_SUCCESS)
   {
     // 输出计算结果和误差
-    printf("W_{-1}(%f) = %.13e, error = %e\n", x, result.val, result.err);
+    printf("%.13e", result.val);
   }
   else
   {
     // 输出错误信息
     printf("Error for W_{-1}(%f)\n", x);
   }
-
-  /***** BEGIN PRECIMONIOUS ACCURACY CHECKING AND LOGGING ******/
-
-  // record in file verified, result, err
-  double zeta_verify_value = 5.6714329040978e-01;
-  double err;
-  bool verified;
-  err = fabs(result.val - zeta_verify_value) / fabs(zeta_verify_value);
-  if (err <= epsilon)
-  {
-    verified = true;
-    printf(" VERIFICATION SUCCESSFUL\n");
-    printf(" Zeta is    %20.13E\n", result.val);
-    printf(" Error is   %20.13E\n", err);
-  }
-  else
-  {
-    verified = false;
-    printf(" VERIFICATION FAILED\n");
-    printf(" Zeta                %20.13E\n", result.val);
-    printf(" The correct zeta is %20.13E\n", zeta_verify_value);
-    printf(" Error is   %20.13E\n", err);
-  }
-  FILE *fp = fopen("./log.txt", "w");
-  fputs(verified ? "true\n" : "false\n", fp);
-  fprintf(fp, "%20.13E\n", result.val);
-  fprintf(fp, "%20.13E\n", err);
-
-  // record time
-  end_time = clock();
-  cpu_time_used = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
-  printf("%f s\n", cpu_time_used);
-  FILE *fp_t = fopen("./time.txt", "w");
-  fprintf(fp_t, "%f\n", cpu_time_used);
-
-  /****** END PRECIMONIOUS ACCURACY CHECKING AND LOGGING ******/
 
   return 0;
 }

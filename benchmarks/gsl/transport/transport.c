@@ -280,7 +280,7 @@ int main()
 
   // 调用 gsl_sf_transport_2_e 函数
   int status = 99;
-  int count = 10000000;
+  int count = 50000;
 
   while (count--)
   {
@@ -292,7 +292,7 @@ int main()
   if (status == GSL_SUCCESS)
   {
     // 输出计算结果和误差
-    printf("transport_2(%f) = %.13E, error = %e\n", x, result.val, result.err);
+    printf("%.13E\n",result.val);
   }
   else
   {

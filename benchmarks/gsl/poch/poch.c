@@ -438,7 +438,7 @@ int main()
   gsl_sf_result result;
 
   int status = 99;
-  int count = 5000000;
+  int count = 50000;
 
   while (count--)
   {
@@ -450,12 +450,12 @@ int main()
   if (status == GSL_SUCCESS)
   {
     // 输出计算结果和误差
-    printf("Pochhammer(%.2f, %.2f) = %.13e, error = %e\n", a, x, result.val, result.err);
+    printf("%.13e", result.val);
   }
   else
   {
     // 输出错误信息
-    printf("Error calculating Pochhammer(%.2f, %.2f)\n", a, x);
+    printf("Error calculating Pochhammer(%.2f, %.2f)", a, x);
   }
 
   return 0;

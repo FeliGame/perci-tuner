@@ -81,7 +81,7 @@ int main() {
 
     // 创建 gsl_sf_result 结构体，用于保存结果和误差
     gsl_sf_result result;
-    int count = 50000000;
+    int count = 50000;
     int status = 99;
 
     while (count--)
@@ -92,7 +92,7 @@ int main() {
     // 根据返回状态判断是否成功
     if (status == GSL_SUCCESS) {
         // 输出结果和误差
-        printf("Result: %.13E\n", result.val);
+        printf("%.13E\n", result.val);
         // printf("Error: %f\n", result.err);
     } else {
         printf("Error in computation\n");

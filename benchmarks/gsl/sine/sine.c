@@ -208,14 +208,14 @@ int main()
   double x = 2*M_PI / 5;
 
   // 计算正弦值并输出
-  int count = 10000000;
+  int count = 100000;
   double result = 0;
   while (count--)
   {
     /* code */
     result = gsl_sf_sin(x);
   }
-  printf("%20.13E\n", result);
+  printf("%.13E\n", result);
 
   // // 计算指数值并输出
   // result = gsl_sf_exp(x);

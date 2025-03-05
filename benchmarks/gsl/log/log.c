@@ -197,7 +197,7 @@ int main() {
         
     // 调用 gsl_sf_log_1plusx_e 函数
     int status = 99;
-    int count = 50000000;
+    int count = 10000000;
 
     while (count--)
     {
@@ -208,7 +208,7 @@ int main() {
     // 根据返回状态判断是否计算成功
     if (status == GSL_SUCCESS) {
         // 输出计算结果和误差
-        printf("log(1 + %f) = %.13e, error = %e\n", x, result.val, result.err);
+        printf("%.13e\n", result.val);
       } else {
         // 输出错误信息
         printf("Error for log(1 + %f)\n", x);

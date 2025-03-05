@@ -34,7 +34,7 @@ int main() {
 
     double c1 = 2.0;  // 示例1
 
-	int count = 50000000;
+	int count = 1000;
 	double result = 0;
 	while (count--)
 	{

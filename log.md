@@ -131,16 +131,16 @@
 ### 10
 
 * CP: Repair BinOp/UnaryOp/FCmp/PHINode type mismatch.
-* dd.py: Prune runned configs to accelerate.
-* dd.py: Generate optimized IR.
+* search.py: Prune runned configs to accelerate.
+* search.py: Generate optimized IR.
 
 ### 19
 
-* dd.py: Only use change-precision pass while search config to accelerate tools.
+* search.py: Only use change-precision pass while search config to accelerate tools.
 
 ### 20
 
-* dd.py: Correct delta-debugging algorithm.
+* search.py: Correct delta-debugging algorithm.
 
 ### 23
 
@@ -149,8 +149,8 @@
 ### 26
 
 * config_utils.py: recognize & transform array types.
-* dd.py: add parameter: run times of IR per iteration.
-* dd.py: supports transform floating-type const & array.
+* search.py: add parameter: run times of IR per iteration.
+* search.py: supports transform floating-type const & array.
 * Add Benchmarks: FPBench & GSL.
 * CP: Repair crash when function args' type changed.
 
@@ -167,3 +167,9 @@
 * SearchFunctions is renamed to: SearchFunctionCall, update its output as function_call.json.
 * ChangePrecision: only depend to config.json, exclude searched_functions.txt.
 * Accelerate Passes by using DenseSet rather than std::set.
+
+# 5
+
+* CPC: Safely search static Global vars to avoid invalid operand count. Add 'isParam' key into config.json.
+* Make benchmarks runnable: FPBench, GSL. Pay attention that run GSL should add 2 options `-load /usr/local/lib/libgsl.so -load /usr/local/lib/libgslcblas.so` in lli command.
+* Rename dd.py to search.py.

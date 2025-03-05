@@ -73,7 +73,7 @@ int gsl_root_test_residual(double f, double epsabs)
 int main(void)
 {
 
-  int count = 2000000;
+  int count = 20000;
   int status;
   double result = 0;
   while (count--)
@@ -123,6 +123,6 @@ int main(void)
 
     gsl_root_fsolver_free(s);
   }
-
+  printf("%.13f", result);
   return status;
 }
