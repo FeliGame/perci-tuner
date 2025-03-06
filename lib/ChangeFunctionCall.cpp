@@ -1,6 +1,6 @@
 // @Author: Guocheng - NUDT
 // Usage: Change CallInst if necessary.
-// Input: function_call.json
+// Input: config.json (calls)
 // Output: CallInst-changed IR
 
 #include "ChangeFunctionCall.h"
@@ -22,44 +22,100 @@ using namespace llvm;
 
 bool ChangeFunctionCall::runOnFunction(Function &F) {
     bool modified = false;
-    
+    auto &Context = F.getContext();
+    auto funcName = demangle(F.getName());
+    nlohmann::json funcInfo = config[funcName];
+
     for (auto &BB : F) {
+        SmallVector<CallInst*, 4> toDelete;  // Delete later to avoid break iterator
         for (auto &I : BB) {
             if (auto *call = dyn_cast<CallInst>(&I)) {
-                DebugLoc loc = call->getDebugLoc();
+                StringRef oldCallee = call->getCalledFunction()->getName();
+                
+                if (!mathFunctions.contains(oldCallee)) continue;
+
+                auto loc = call->getDebugLoc();
                 if (!loc) continue;
 
-                auto *oldFunc = call->getCalledFunction();
-                if (!oldFunc) {
-                    errs() << "No called function\n";
-                    continue; // TODO: It's strange
-                }
-                auto oldFuncName = oldFunc->getName();
-                
-                // TODO: Can be more efficient
-                for (auto& entry : config) {
-                    // Locating the CallInst
-                    if (entry["file"] == loc->getFilename().str() && 
-                        entry["line"] == loc->getLine() &&
-                        entry["column"] == loc->getColumn()) {
-                        string targetCallee = entry["callee"].get<string>();
-                        errs() << "checking: " << oldFuncName << " -> " << targetCallee << "\n";
-                        
-                        if (oldFuncName != targetCallee) {
-                            errs() << oldFunc->getName() << " changed to: " << targetCallee << "\n";
-                            FunctionCallee newFunc = F.getParent()->getOrInsertFunction(
-                                targetCallee, 
-                                oldFunc->getFunctionType()
-                            );
-                            call->setDebugLoc(loc);
-                            call->setCalledFunction(newFunc);
+                for (auto& entry : funcInfo) {
+                    if (entry["file"] == loc->getFilename().str() &&
+                        entry["line"] == loc.getLine() &&
+                        entry["column"] == loc.getCol()) {
+                        string targetCallee = entry["type"].get<string>();
+                        // If target is same as original or non-math, skip
+                        if (targetCallee == oldCallee || !mathFunctions.contains(targetCallee)) continue;
 
-                            modified = true;
-                            break;
+                        auto getBaseName = [](StringRef name) {
+                            if (name.size() > 0 && (name.back() == 'f' || name.back() == 'l')) {
+                                return name.drop_back(); // 去除精度后缀
+                            }
+                            return name;
+                        };
+                    
+                        StringRef oldBase = getBaseName(oldCallee);
+                        StringRef newBase = getBaseName(targetCallee);
+                    
+                        if (oldBase != newBase) {
+                            errs() << "Ignored: Base name mismatch [" 
+                                   << oldCallee << " vs " << targetCallee << "]\n";
+                            continue;
+                        }                    
+                        errs() << "current: " << oldCallee << ", changed to: " << targetCallee << "\n";
+
+                        Type *paramType;
+                        if (targetCallee.back() == 'f') {
+                            paramType = Type::getFloatTy(Context);
+                        } else if (targetCallee.back() == 'l') {
+                            paramType = Type::getFP128Ty(Context); 
+                        } else {
+                            paramType = Type::getDoubleTy(Context);
                         }
+                        
+                        // TODO: Only support single para, not support hypot(2 paras)
+                        auto *newFuncType = FunctionType::get(
+                            paramType,  // ret type
+                            {paramType}, // param type
+                            false
+                        );
+                        
+                        // Insert cast for para, we expect that cast always happen
+                        IRBuilder<> Builder(call);
+                        auto *castedArg = Builder.CreateFPCast(
+                            call->getArgOperand(0), 
+                            paramType
+                        );
+                        
+                        auto newFunc = F.getParent()->getOrInsertFunction(
+                            targetCallee, 
+                            newFuncType
+                        );
+                        
+                        auto *newCall = Builder.CreateCall(
+                            newFuncType, 
+                            newFunc.getCallee(), 
+                            {castedArg}
+                        );
+                        
+                        // ret type cast
+                        Value *finalResult = newCall;
+                        if (call->getType() != newCall->getType()) {
+                            finalResult = Builder.CreateFPCast(
+                                newCall, 
+                                call->getType()
+                            );
+                        }
+                        
+                        // 替换原指令
+                        call->replaceAllUsesWith(finalResult);
+                        toDelete.push_back(call);
+                        modified = true;
                     }
                 }
             }
+        }
+
+        for (auto *call : toDelete) {
+            call->eraseFromParent();
         }
     }
 
@@ -67,14 +123,13 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
 }
 
 bool ChangeFunctionCall::runOnModule(Module &module) {
-    ifstream inFile("function_call.json");
-
+    ifstream inFile("config.json");
     if (!inFile) {
-        errs() << "Error: Unable to open function_call.json\n";
+        errs() << "Error: Unable to open config.json\n";
         exit(1);
     }
-
     inFile >> config;
+    config = config["calls"];
     
     bool modified = false;
     for(auto &F: module) {

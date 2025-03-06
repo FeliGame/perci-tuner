@@ -10,7 +10,7 @@ import config_utils
 import re
 
 PER_TUNE_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
-PASSES = "change_precision,ir_timing"
+PASSES = "change_precision,change_function_call,ir_timing"
 TEMP_BC_PATH = "temp_output.bc"
 TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "ir_timing.txt"

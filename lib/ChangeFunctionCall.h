@@ -32,6 +32,15 @@ public:
 
 private:
     nlohmann::json config;
+    // Same as config_utils.py
+    DenseSet<StringRef> mathFunctions = {
+        "sin", "sinf", "sinl",
+        "cos", "cosf", "cosl",
+        "tan", "tanf", "tanl",
+        "sqrt","sqrtf","sqrtl",
+        "exp", "expf", "expl",
+        "log", "logf", "logl"
+    };
 };
 
 } // namespace llvm

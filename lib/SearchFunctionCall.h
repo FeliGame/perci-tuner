@@ -26,13 +26,11 @@ public:
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
 private:
-    void printCalledFunction(Function* callee, int depth);
+    void parseExcludedFunctions();
 
     void writeToFile();
-    
-    void collectCalledFunctions(Function &F, int depth);
 
-    DenseSet<StringRef> excludedFunctions;
+    std::set<std::string> excludedFunctions;
 
     nlohmann::json config;
 };

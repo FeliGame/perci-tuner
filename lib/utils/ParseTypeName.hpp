@@ -54,16 +54,22 @@ inline string parseTypeName(Type* type) {
 }
 
 inline string parseDITypeName(DIType* type) {
+    if (!type) return "";
+
     if (auto *derivedType = llvm::dyn_cast<llvm::DIDerivedType>(type)) {
         switch (derivedType->getTag()) {
             case dwarf::DW_TAG_typedef: {
                 return derivedType->getName().str();
             }
             case dwarf::DW_TAG_const_type: {
-                return "const " + parseDITypeName(derivedType->getBaseType());
+                if (auto baseType = derivedType->getBaseType())
+                    return "const " + parseDITypeName(baseType);
+                break;
             }
             case dwarf::DW_TAG_pointer_type: {
-                return parseDITypeName(derivedType->getBaseType()) + "*";
+                if (auto baseType = derivedType->getBaseType())
+                    return parseDITypeName(baseType) + "*";
+                break;
             }
             default: {
                 if (auto baseType = derivedType->getBaseType()) {
@@ -74,12 +80,14 @@ inline string parseDITypeName(DIType* type) {
     }
     if (auto *compositeType = llvm::dyn_cast<llvm::DICompositeType>(type)) {
         if (auto baseType = compositeType->getBaseType()) {
-            auto arraySize = compositeType->getSizeInBits() / baseType->getSizeInBits();
-            return parseDITypeName(baseType) + "["+ std::to_string(arraySize) + "]";
+            if (baseType->getSizeInBits() > 0) {
+                auto arraySize = compositeType->getSizeInBits() / baseType->getSizeInBits();
+                return parseDITypeName(baseType) + "["+ std::to_string(arraySize) + "]";
+            }
         }
     }
 
-    return type->getName().str();
+    return type->getName().empty() ? "" : type->getName().str();
 }
 
 #endif // INCLUDE_PARSE_TYPENAME_HPP_

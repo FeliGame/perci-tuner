@@ -1,7 +1,7 @@
 // @Author: Guocheng - NUDT
 // Usage: Tell declared variables' type.
-// Input: function_call.json
-// Output: config.json
+// Input: config.json (calls)
+// Output: config.json (vars)
 
 #include "CreatePrecisionConfig.h"
 #include "utils/ParseTypeName.hpp"
@@ -20,8 +20,6 @@
 using namespace std;
 using namespace llvm;
 
-
-cl::opt<string> ConfigFileName("config-file", cl::value_desc("filename"), cl::desc("Config file"), cl::init("config.json"));
 
 // Find Local vars and local static vars
 void CreatePrecisionConfig::findLocalVariables(Function &F) {
@@ -135,19 +133,18 @@ bool CreatePrecisionConfig::runOnFunction(Function &F) {
 }
 
 bool CreatePrecisionConfig::runOnModule(Module &module) {
-    ifstream inFile("function_call.json");
+    ifstream inFile("config.json");
     string name;
 
     if (!inFile) {
-        errs() << "Unable to open function_call.json\n";
+        errs() << "Unable to open config.json\n";
         exit(1);
     }
 
-    nlohmann::json functionCalls;
-    inFile >> functionCalls;
+    inFile >> config;
     
-    for (auto& call : functionCalls) {
-        includedFunctions.insert(call["callee"].get<std::string>());
+    for (auto& [funcName, _] : config["calls"].items()) {
+        includedFunctions.insert(funcName);
     }
 
     findGlobalVariables(module);
@@ -157,11 +154,11 @@ bool CreatePrecisionConfig::runOnModule(Module &module) {
         if(!f->isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
             runOnFunction(*f);
         }
-        
-        std::error_code errorInfo; 
-        raw_fd_ostream outfile(ConfigFileName.c_str(), errorInfo);
-        outfile << config.dump(4);  // 4 space = 1 indent
     }
+
+    std::error_code errorInfo; 
+    raw_fd_ostream outfile("config.json", errorInfo);
+    outfile << config.dump(4);  // 4 space = 1 indent
 
     return false;  // hasn't changed IR
 }  

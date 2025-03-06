@@ -1,6 +1,6 @@
 # Perci-Tuner
 
-Perci-Tuner increases C program's runtime speed while keeping errors within an acceptable range, by reducing floating-point precision.
+Perci-Tuner increases C program's runtime speed while keeping errors within an acceptable range, by reducing floating-point variables & C-Math function calls' precision.
 Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features a modular design for easier expansion and modification.
 
 # User Manual
@@ -41,17 +41,9 @@ Run this will generate optimized precision config file and runnable .bc file, wh
 
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
-### --search-entry=func_name
-
-Customize running entry function for searching, from Pass:search_function_call, implemented in SearchFunctions.
-
 ### --excluded-functions=excluded_functions.txt
 
 Customize excluded functions for searching, from Pass:search_function_call, implemented in SearchFunctions.
-
-### --config-file
-
-Customize searched result's output filename, from Pass:config, implemented in CreatePrecisionConfig.
 
 ### --target-config
 

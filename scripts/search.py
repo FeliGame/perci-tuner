@@ -16,7 +16,7 @@ global min_time
 min_time = float('inf')
 global thres
 
-global original_var_conf
+global original_conf
 runned_change_set = set()
 
 global bitcode_name # the original bitcode's filename
@@ -36,7 +36,7 @@ def change_to_2nd_highest_precision(change_set):
         if len(t) > 1:
             c["type"] = t[-2]
 
-# remove the highest precision from the search types of the variables
+# remove the highest precision from the search types
 def remove_highest_precision_from_selections(change_set):
     for c in change_set:
         if len(c["search_types"]) > 0:
@@ -89,9 +89,9 @@ def compare_json(original, current, diff, prefix=""):
         if original != current:
             diff[prefix[:-1]] = f"{original}->{current}"
 
-# run the current variable config and get the result
-def run_config(bitcode, var_config, change_set):
-    global run_times, original_var_conf, runned_change_set
+# run the current config and get the result
+def run_config(bitcode, current_config, change_set):
+    global run_times, original_conf, runned_change_set
     
     # check if the config has been runned
     key = json.dumps(change_set, sort_keys=False)
@@ -103,10 +103,10 @@ def run_config(bitcode, var_config, change_set):
     # Initialize diff as an empty dictionary
     diff = {}
 
-    # Compare var_config with original_var_conf and store differences in diff
-    compare_json(original_var_conf, var_config, diff)
+    # Compare current_config with original_conf and store differences in diff
+    compare_json(original_conf, current_config, diff)
 
-    result = transform.transform(bitcode, var_config, diff)
+    result = transform.transform(bitcode, current_config, diff)
     if result == -1:
       print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
       sys.exit(1)
@@ -131,7 +131,7 @@ def update_opt_bc():
         target_file.write(content)
 
 # using delta debugging algorithm to find the minimal change set
-def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_result):
+def search_minimal_change_set(bitcode, change_set, current_config, div_num, old_result):
     global min_time
     global thres
     delta_change_set = []
@@ -171,8 +171,8 @@ def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_resu
         # if len(delta_change) > 0:
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(delta_change)
-        new_var_config = config_utils.rebuild(change_set, var_config)
-        if run_config(bitcode, new_var_config, change_set) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
+        new_config = config_utils.rebuild(change_set, current_config)
+        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
             min_time = data_utils.get_current_time()
             new_change_set = delta_change
             new_div_num = INITIAL_DIV_NUM
@@ -183,8 +183,8 @@ def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_resu
         # if len(complement_delta_change) > 0:
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(complement_delta_change)
-        new_var_config = config_utils.rebuild(change_set, var_config)
-        if run_config(bitcode, new_var_config, change_set) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
+        new_config = config_utils.rebuild(change_set, current_config)
+        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(old_result, thres) and data_utils.get_current_time() < min_time:
             min_time = data_utils.get_current_time()
             new_change_set = complement_delta_change
             new_div_num = div_num - 1  # to optimize performance
@@ -195,7 +195,7 @@ def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_resu
     if have_better_set:
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(new_change_set)
-        new_var_config = config_utils.rebuild(change_set, var_config)
+        new_config = config_utils.rebuild(change_set, current_config)
         div_num = new_div_num
         change_set = new_change_set
         if len(change_set) <= 1: return
@@ -206,41 +206,41 @@ def search_minimal_change_set(bitcode, change_set, var_config, div_num, old_resu
             return
         else:
             div_num *= 2
-    search_minimal_change_set(bitcode, change_set, var_config, div_num, old_result)
+    search_minimal_change_set(bitcode, change_set, current_config, div_num, old_result)
 
-
-# is every variables's search types empty
+# is every search types empty
 def is_type_empty(change_set):
     for change in change_set:
         if len(change["search_types"]) > 0:
             return False
     return True
 
-# search the new variable config
-def search_conf(bitcode, change_set, original_var_conf, original_result):
-    var_conf= original_var_conf
-    # searching until every variables's search types is empty
+# search the new config
+def search_conf(bitcode, change_set, original_result):
+    global original_conf
+    new_conf= original_conf
+    # searching until every search types is empty
     while not is_type_empty(change_set):
-        # search the variables need highest precision & try to lower others' precision
-        search_minimal_change_set(bitcode, change_set, var_conf, INITIAL_DIV_NUM, original_result)
-        # rebuild the new variable config from new change set
-        var_conf = config_utils.rebuild(get_unchangable_set(change_set), var_conf)
-        # remove highest precision variables
+        # search which need highest precision & try to lower others' precision
+        search_minimal_change_set(bitcode, change_set, new_conf, INITIAL_DIV_NUM, original_result)
+        # rebuild the new config from new change set
+        new_conf = config_utils.rebuild(get_unchangable_set(change_set), new_conf)
+        # remove highest precision
         change_set = remove_unchangable(change_set)
-        # remove the highest precision from the search types of the rest variables
+        # remove the highest precision from the search types of the rest
         remove_highest_precision_from_selections(change_set)
-        # run_config(bitcode, var_conf)
+        # run_config(bitcode, new_conf)
         # time = data_utils.get_current_time()
-    return var_conf
+    return new_conf
 
 
 def main():
-    global run_times, min_time, thres, original_var_conf, bitcode_name
+    global run_times, min_time, thres, original_conf, bitcode_name
     if len(sys.argv) != 5:
         print("Usage: python search.py <bitcode> <conf_file> <relative_threshold, e.g. 1e-6> <run times per iteration>")
         sys.exit(1)
     bitcode = sys.argv[1]
-    original_var_conf_file = sys.argv[2]
+    original_conf_file = sys.argv[2]
     # relative threshold for the result
     thres = sys.argv[3]
     transform.RUNNING_TIMES = int(sys.argv[4])
@@ -248,15 +248,15 @@ def main():
     data_utils.del_csv()
 
     # load the original config from file
-    original_var_conf = json.loads(open(original_var_conf_file, 'r').read())
+    original_conf = json.loads(open(original_conf_file, 'r').read())
 
-    # change_set keep var that need to change precision and available precisions
-    change_set = config_utils.parse_var_conf(original_var_conf)
+    # change_set keep those need to change precision and available precisions
+    change_set = config_utils.parse_config(original_conf)
     changes_set_len = len(change_set)
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)
-    run_config(bitcode, original_var_conf, change_set)
+    run_config(bitcode, original_conf, change_set)
     original_time = data_utils.get_current_time()
     original_result = data_utils.get_current_result()
     print("original time:", original_time, "original result:", original_result)
@@ -264,11 +264,11 @@ def main():
     # start searching
     print(">>> Perci-Tuner(Py): Running delta-debugging algorithm searching for valid configuration ...")
 
-    # searching until every variables's search types is empty
+    # searching until all search types is empty
     min_time = original_time
     bitcode_name = os.path.basename(bitcode)
-    new_var_conf = search_conf(bitcode, change_set, original_var_conf, original_result)
-    config_utils.print_config(new_var_conf, OPT_PREFIX + bitcode_name + ".json")
+    new_conf = search_conf(bitcode, change_set, original_result)
+    config_utils.print_config(new_conf, OPT_PREFIX + bitcode_name + ".json")
     
     print(">>> Perci-Tuner(Py): Running delta-debugging algorithm finished! Run times:", run_times, "Change set len:", changes_set_len)
     print(">>> Perci-Tuner(Py): Config: " + OPT_PREFIX + bitcode_name + ".json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time)

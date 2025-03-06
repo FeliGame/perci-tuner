@@ -8,6 +8,15 @@ import copy, json, re
 PRECISIONS = ["float", "double", "long double"]
 CONST_PRECISIONS = ["const " + p for p in PRECISIONS]
 POINTER_PRECISIONS = [p + "*" for p in PRECISIONS]
+# Same as ChangeFunctionCall.h
+FUNCTION_PRECISIONS = [
+    "sin", "sinf", "sinl",
+    "cos", "cosf", "cosl",
+    "tan", "tanf", "tanl",
+    "sqrt","sqrtf","sqrtl",
+    "exp", "expf", "expl",
+    "log", "logf", "logl"
+]
 
 # Helper function to extract the size from an (const) array type (e.g., "const float[6]" -> 6)
 def extract_array_size(type_str):
@@ -18,7 +27,7 @@ def extract_array_size(type_str):
 
 # fill search types for each variable
 # and delete the variables that don't need to change precisions
-def parse_search_var_conf(change_set):
+def set_var_search_types(change_set):
     for change_var in change_set:
         type_str = change_var['type']
         size = extract_array_size(type_str)  # Extract the array size
@@ -39,11 +48,10 @@ def parse_search_var_conf(change_set):
     # ii. the variables' 'search_types' only have one option for the variable
     return [change_var for change_var in change_set if len(change_var.get('search_types', [])) > 1]
 
-# parse variable config file to change set
-def parse_var_conf(var_conf):
+def parse_config(config):
   change_set = []
   # TODO: put global into change_set
-  for func, func_vars in var_conf['local'].items():
+  for func, func_vars in config['local'].items():
     if func_vars is None:
       continue
     for i in range(0, len(func_vars)):
@@ -52,24 +60,68 @@ def parse_var_conf(var_conf):
       if (('struct' not in type_str and '*' in type_str) 
           or not any(p in type_str for p in PRECISIONS)):
          continue
-      change_set_vars = copy.deepcopy(func_vars[i])
-      change_set_vars['fvar_index'] = i
-      change_set_vars['func'] = func
-      change_set_vars['search_types'] = []
-      change_set.append(change_set_vars)
-  return parse_search_var_conf(change_set)
+      change_entry = copy.deepcopy(func_vars[i])
+      change_entry['fvar_index'] = i
+      change_entry['func'] = func
+      change_entry['search_types'] = []
+      change_set.append(change_entry)
+  change_set = set_var_search_types(change_set)
 
-# rebuild variable config from change set
-def rebuild(change_set, var_config):
-  new_var_config = copy.deepcopy(var_config)
-  for change_var in change_set:
-    if new_var_config['local'][change_var['func']] != None:
-      var_info = new_var_config['local'][change_var['func']][change_var['fvar_index']]
-      if  var_info['type'] != change_var['type']:
-        var_info['type'] = change_var['type']
-  return new_var_config
+  for caller, call_insts in config['calls'].items():
+      if call_insts is None:
+        continue
+      for i in range(0, len(call_insts)):
+        change_entry = copy.deepcopy(call_insts[i])
+        func_name = change_entry['type']
+        if func_name not in FUNCTION_PRECISIONS:
+            continue
+        # Remove precision suffix
+        base_name = func_name.rstrip('fl') if func_name.endswith(('f', 'l')) else func_name
+        if func_name.endswith('f'):
+            max_level = 0  # float
+        elif func_name.endswith('l'):
+            max_level = 2  # long double
+        else:
+            max_level = 1  # double
+        precision_versions = [
+            base_name + 'f',
+            base_name,
+            base_name + 'l'
+        ][:max_level+1]  # Important slice!
+        change_entry['fcall_index'] = i
+        change_entry['caller'] = caller
+        change_entry['search_types'] = precision_versions
+        change_set.append(change_entry)
 
-# print variable config to file
-def print_config(var_config, file_name):
+  return change_set
+
+# rebuild config from change set
+def rebuild(change_set, config):
+  new_config = copy.deepcopy(config)
+  for item in change_set:
+    if 'func' in item:
+        func = item['func']
+        local_vars = new_config['local'].get(func)  # 添加临时变量
+        if local_vars is not None:
+            fvar_index = item['fvar_index']
+            if fvar_index < len(local_vars):
+                var_info = local_vars[fvar_index]  # 使用临时变量
+                if var_info['type'] != item['type']:
+                    var_info['type'] = item['type']
+                    
+    if 'caller' in item:
+        caller = item['caller']
+        call_entries = new_config['calls'].get(caller)  # 添加临时变量
+        if call_entries is not None:
+            fcall_index = item['fcall_index']
+            if fcall_index < len(call_entries):
+                callee_info = call_entries[fcall_index]  # 使用临时变量
+                if callee_info['type'] != item['type']:
+                    callee_info['type'] = item['type']
+       
+  return new_config
+
+# print config to file
+def print_config(config, file_name):
     with open(file_name, "w") as f:
-        json.dump(var_config, f, indent=4)
+        json.dump(config, f, indent=4)
