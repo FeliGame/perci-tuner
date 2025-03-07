@@ -26,7 +26,7 @@ static double fp_test()
     const long double a = 3.1f, b = 2L + 1e-20L, c = 2L, d = 1.0f, e = 0.3f;
     double arr[2] = {0.1, 0.3};
     static double s_arr[2][3];
-
+fmod(a, arr[0]);
     // double add = a + b;
     // double mul = a * b;
     // double div = a / b;

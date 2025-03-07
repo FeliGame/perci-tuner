@@ -189,3 +189,4 @@
 
 * Accelerate search.py: Keep current run's result & time rather than IO in run_config.json.
 * Users can set the last arg in search.py to disable run_history.csv.
+* CFC: Support 2-arg math function calls.

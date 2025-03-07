@@ -11,12 +11,31 @@ CONST_PRECISIONS = ["const " + p for p in PRECISIONS]
 POINTER_PRECISIONS = [p + "*" for p in PRECISIONS]
 # Same as ChangeFunctionCall.h
 FUNCTION_PRECISIONS = [
-    "sin", "sinf", "sinl",
-    "cos", "cosf", "cosl",
-    "tan", "tanf", "tanl",
-    "sqrt","sqrtf","sqrtl",
-    "exp", "expf", "expl",
-    "log", "logf", "logl"
+    # 三角函数
+    "sin", "sinf", "sinl", "cos", "cosf", "cosl", "tan", "tanf", "tanl",
+    "asin", "asinf", "asinl", "acos", "acosf", "acosl", "atan", "atanf", "atanl",
+
+    # 双曲函数
+    "sinh", "sinhf", "sinhl", "cosh", "coshf", "coshl", "tanh", "tanhf", "tanhl",
+
+    # 指数对数
+    "exp", "expf", "expl", "log", "logf", "logl", 
+    "exp2", "exp2f", "exp2l", "log2", "log2f", "log2l",
+    "log10", "log10f", "log10l",
+
+    # 幂和根
+    "sqrt","sqrtf","sqrtl", "cbrt", "cbrtf", "cbrtl",
+    "pow", "powf", "powl", "hypot", "hypotf", "hypotl",
+
+    # 其他
+    "fabs", "fabsf", "fabsl",        # 绝对值
+    # "ceil", "ceilf", "ceill",       # 向上取整（llvm.ceil.xx）
+    # "floor", "floorf", "floorl",     # 向下取整（llvm.floor.xx）
+    "round", "roundf", "roundl",     # 四舍五入
+    "fmod", "fmodf", "fmodl",       # 浮点余数
+    "atan2", "atan2f", "atan2l",    # 二参数反正切
+    "erf", "erff", "erfl",          # 误差函数（C99）
+    "tgamma", "tgammaf", "tgammal"  # gamma函数（C99）
 ]
 
 
@@ -79,14 +98,30 @@ def parse_config(config):
         func_name = change_entry['type']
         if func_name not in FUNCTION_PRECISIONS:
             continue
-        # Remove precision suffix
-        base_name = func_name.rstrip('fl') if func_name.endswith(('f', 'l')) else func_name
-        if func_name.endswith('f'):
+
+        precision_suffix = None 
+        # Handle funcs end with f, l
+        if func_name.startswith('ceil'):
+            base_name = 'ceil'
+            precision_suffix = func_name[4:]
+        elif func_name.startswith('erf'):
+            base_name = 'erf'
+            precision_suffix = func_name[3:]
+        else:  # Handle others
+          if func_name.endswith('f'):
+              precision_suffix = 'f'
+          elif func_name.endswith('l'):
+              precision_suffix = 'l' 
+        # set max_level by precision_suffix        
+        if precision_suffix == 'f':
             max_level = 0  # float
-        elif func_name.endswith('l'):
+        elif precision_suffix == 'l':
             max_level = 2  # long double
         else:
             max_level = 1  # double
+        # set base_name by precision_suffix
+        base_name = func_name[:-1] if precision_suffix else func_name
+
         precision_versions = [
             base_name + 'f',
             base_name,

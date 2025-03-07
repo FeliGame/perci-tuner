@@ -70,20 +70,27 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
                         } else {
                             paramType = Type::getDoubleTy(Context);
                         }
+                        // All args are of same type
+                        SmallVector<Type*, 2> paramTypes;
+                        for (auto &op : call->args()) {
+                            paramTypes.push_back(paramType);
+                        }
                         
-                        // TODO: Only support single para, not support hypot(2 paras)
                         auto *newFuncType = FunctionType::get(
                             paramType,  // ret type
-                            {paramType}, // param type
+                            paramTypes, // paras' type
                             false
                         );
                         
-                        // Insert cast for para, we expect that cast always happen
+                        // Insert cast for paras, we expect that cast always happen
                         IRBuilder<> Builder(call);
-                        auto *castedArg = Builder.CreateFPCast(
-                            call->getArgOperand(0), 
-                            paramType
-                        );
+                        SmallVector<Value*, 2> castedArgs;
+                        
+                        for (auto& arg : call->args()) {
+                            castedArgs.push_back(
+                                Builder.CreateFPCast(arg, paramType)
+                            );
+                        }
                         
                         auto newFunc = F.getParent()->getOrInsertFunction(
                             targetCallee, 
@@ -91,9 +98,8 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
                         );
                         
                         auto *newCall = Builder.CreateCall(
-                            newFuncType, 
-                            newFunc.getCallee(), 
-                            {castedArg}
+                            newFunc, 
+                            castedArgs
                         );
                         
                         // ret type cast
@@ -105,7 +111,6 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
                             );
                         }
                         
-                        // 替换原指令
                         call->replaceAllUsesWith(finalResult);
                         toDelete.push_back(call);
                         modified = true;
