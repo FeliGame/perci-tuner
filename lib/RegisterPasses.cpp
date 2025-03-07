@@ -11,8 +11,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "SearchFunctionCall.h"
-#include "CreatePrecisionConfig.h"
-#include "ChangePrecision.h"
+#include "SearchVariableDecl.h"
+#include "ChangeVariableDecl.h"
 #include "ChangeFunctionCall.h"
 #include "IRTiming.h"
 #include "MergeMultiVersion.h"
@@ -45,14 +45,14 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 							PM.addPass(SearchFunctionCall());
 							return true;
 						}
-						if (Name == "config")
+						if (Name == "search_variable_decl")
 						{
-							PM.addPass(CreatePrecisionConfig());
+							PM.addPass(SearchVariableDecl());
 							return true;
 						}
-						if (Name == "change_precision")
+						if (Name == "change_variable_decl")
 						{
-							PM.addPass(ChangePrecision());
+							PM.addPass(ChangeVariableDecl());
 							return true;
 						}
 						if (Name == "change_function_call")

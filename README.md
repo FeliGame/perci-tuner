@@ -45,9 +45,13 @@ Each Optional Flag should be enclosed in double quotes, and it must start with '
 
 Customize excluded functions for searching, from Pass:search_function_call, implemented in SearchFunctions.
 
-### --target-config
+### --variable-config
 
-Customize target precision input filename, from Pass:change_precision, implemented in ChangePrecision.
+Customize target precision input filename, from Pass:change_variable_decl, implemented in ChangeVariableDecl.
+
+### --function-config
+
+Customize target function calls input filename, from Pass:change_function_call, implemented in ChangeFunctionCall.
 
 ### --ir-timing-result
 

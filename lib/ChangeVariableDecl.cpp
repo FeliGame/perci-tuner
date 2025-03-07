@@ -1,9 +1,9 @@
 // @Author: Guocheng & Guosiyuan NUDT
 // Usage: Change variables' precision according to json.
-// Input: Variable target type config
+// Input: Variable's type config
 // Output: Precision-Changed IR
 
-#include "ChangePrecision.h"
+#include "ChangeVariableDecl.h"
 #include "utils/ParseTypeName.hpp"
 #include "nlohmann/json.hpp"
 
@@ -26,12 +26,12 @@ using namespace std;
 using namespace llvm;
 
 
-cl::opt<string> TargetConfigName("target-config", cl::value_desc("filename"), cl::desc("Target Type Config"), cl::init("config.json"));
+cl::opt<string> VariableConfigName("variable-config", cl::value_desc("filename"), cl::desc("Variable's Type Config"), cl::init("config.json"));
 
-void ChangePrecision::parseConfig() {
-    std::ifstream configFile(TargetConfigName.c_str());
+void ChangeVariableDecl::parseConfig() {
+    std::ifstream configFile(VariableConfigName.c_str());
     if (!configFile.is_open()) {
-        errs() << "Failed to open " << TargetConfigName << "\n";
+        errs() << "Error: Failed to open " << VariableConfigName << "\n";
         exit(1);
     }
 
@@ -44,7 +44,7 @@ void ChangePrecision::parseConfig() {
     }
 }
 
-bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
+bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
     auto *var = DDI->getAddress();
     Align align;
 
@@ -155,7 +155,7 @@ bool ChangePrecision::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
     return false;
 }
 
-bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
+bool ChangeVariableDecl::repairFMulAdd(CallInst *call, Type* argType) {
     SmallVector<Value*, 3> args;
     string newCallName;
     if(argType == Type::getFloatTy(call->getContext())) {
@@ -172,12 +172,12 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
     // Insert cast for args
     for (auto i = 0; i < 3; ++i) {
         auto *arg = call->getOperand(i);
-        if (arg->getType()->getPrimitiveSizeInBits() < argType->getPrimitiveSizeInBits()) {
-            args.push_back(new FPExtInst(arg, argType, "", call));
-        } else if (arg->getType()->getPrimitiveSizeInBits() > argType->getPrimitiveSizeInBits()) {
-            args.push_back(new FPTruncInst(arg, argType, "", call));
+        // 统一使用insertCast处理类型转换
+        if (auto *castedArg = insertCast(arg, argType, call)) {
+            args.push_back(castedArg);
         } else {
-            args.push_back(arg);
+            args.push_back(arg); // 转换失败时保持原参数
+            errs() << "Failed to cast argument " << i << " for fmuladd\n";
         }
     }
 
@@ -196,37 +196,34 @@ bool ChangePrecision::repairFMulAdd(CallInst *call, Type* argType) {
 }
 
 // Insert fpext/fptrunc cast if needed
-Value *ChangePrecision::insertCast(Value *val, Type *targetType, Instruction *insertBefore) {
+Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction *insertBefore) {
     if (val->getType() == targetType) {
         return val; 
     }
 
     if (auto *constantVal = dyn_cast<Constant>(val)) {
-        if (constantVal->getType() == targetType) {
+        if (constantVal->getType() == targetType)
             return val;
+        
+        if (targetType->isFloatingPointTy()) {
+            return ConstantExpr::getFPCast(constantVal, targetType);
         }
+        return nullptr;
     }
 
     IRBuilder<> builder(insertBefore);
 
     if (val->getType()->isFloatingPointTy() && targetType->isFloatingPointTy()) {
-        if (val->getType()->getPrimitiveSizeInBits() < targetType->getPrimitiveSizeInBits()) {
-            errs() << "Insert fpext: " << *(val->getType()) << "->" << *targetType << "\n";
-            return builder.CreateFPExt(val, targetType, "ext");
-        } else if (val->getType()->getPrimitiveSizeInBits() > targetType->getPrimitiveSizeInBits()) {
-            errs() << "Insert fptrunc: " << *val << " of type "<< *(val->getType()) << "->" << *targetType << "\n";
-            return builder.CreateFPTrunc(val, targetType, "trunc");
-        }
-    } 
-    else {
-        errs() << "InsertCast(): Unsupported non-floating point type cast: " 
-               << *val->getType() << " -> " << *targetType << "\n";
+        errs() << "Insert FP cast: " << *val->getType() << "->" << *targetType << "\n";
+        return builder.CreateFPCast(val, targetType, "fp_cast");
     }
-
+    
+    errs() << "InsertCast(): Unsupported non-floating point type cast: " 
+           << *val->getType() << " -> " << *targetType << "\n";
     return nullptr;
 }
 
-Type* ChangePrecision::findHighestPrecisionType(BinaryOperator *binOp) {
+Type* ChangeVariableDecl::findHighestPrecisionType(BinaryOperator *binOp) {
     Type *highestType = nullptr;
     for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
         auto *operand = binOp->getOperand(i);
@@ -236,8 +233,9 @@ Type* ChangePrecision::findHighestPrecisionType(BinaryOperator *binOp) {
     }
     return highestType;
 }
+
 // Same as BinOp
-Type* ChangePrecision::findHighestPrecisionType(FCmpInst *fcmp) {
+Type* ChangeVariableDecl::findHighestPrecisionType(FCmpInst *fcmp) {
     Type *highestType = nullptr;
     for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
         auto *operand = fcmp->getOperand(i);
@@ -248,7 +246,7 @@ Type* ChangePrecision::findHighestPrecisionType(FCmpInst *fcmp) {
     return highestType;
 }
 
-Type* ChangePrecision::findHighestPrecisionType(CallInst *call) {
+Type* ChangeVariableDecl::findHighestPrecisionType(CallInst *call) {
     Type *highestType = nullptr;
     auto *callee = call->getCalledFunction();
     if (callee && callee->getName().startswith("llvm.fmuladd")) {
@@ -262,7 +260,7 @@ Type* ChangePrecision::findHighestPrecisionType(CallInst *call) {
     return highestType;
 }
 
-Type* ChangePrecision::findHighestPrecisionType(PHINode* phi) {
+Type* ChangeVariableDecl::findHighestPrecisionType(PHINode* phi) {
     Type *highestType = nullptr;
     for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
         Value* val = phi->getIncomingValue(i);
@@ -274,7 +272,7 @@ Type* ChangePrecision::findHighestPrecisionType(PHINode* phi) {
 }
 
 // Make inst operands type consistent
-bool ChangePrecision::repairUserType(User *user) {
+bool ChangeVariableDecl::repairUserType(User *user) {
     if (!isa<Instruction>(user)) {
         errs() << "RepairUser: User is not an inst.\n";
         return false;
@@ -497,41 +495,35 @@ bool ChangePrecision::repairUserType(User *user) {
 }
 
 // Remove redundant & Replace wrong fpext/fptrunc insts
-bool llvm::ChangePrecision::repairCasts(Function &F)
+bool llvm::ChangeVariableDecl::repairCasts(Function &F)
 {
     bool modified = false;
+    IRBuilder<> builder(F.getContext());
 
     for (auto &BB : F) {
         for (auto &I : BB) {
-            if (auto *fpext = dyn_cast<FPExtInst>(&I)) {
-                if (fpext->getSrcTy() == fpext->getDestTy()) {
-                    errs() << "Remove redundant fpext: " << *fpext << "\n";
-                    fpext->replaceAllUsesWith(fpext->getOperand(0));
-                    instToErase.insert(fpext);
+            if (auto *castInst = dyn_cast<CastInst>(&I)) {
+                if (!castInst->getSrcTy()->isFloatingPointTy() || 
+                    !castInst->getDestTy()->isFloatingPointTy()) 
+                    continue;
+
+                if (castInst->getSrcTy() == castInst->getDestTy()) {
+                    errs() << "Remove redundant cast: " << *castInst << "\n";
+                    castInst->replaceAllUsesWith(castInst->getOperand(0));
+                    instToErase.insert(castInst);
                     modified = true;
-                }
-                else if (fpext->getSrcTy()->getPrimitiveSizeInBits() > fpext->getDestTy()->getPrimitiveSizeInBits()) {
-                    errs() << "Replace incorrect fpext with fptrunc: " << *fpext << "\n";
-                    IRBuilder<> builder(fpext);
-                    auto *truncatedValue = builder.CreateFPTrunc(fpext->getOperand(0), fpext->getDestTy(), "trunc");
-                    fpext->replaceAllUsesWith(truncatedValue);
-                    instToErase.insert(fpext);
-                    modified = true;
-                }
-            }
-            else if (auto *fptrunc = dyn_cast<FPTruncInst>(&I)) {
-                if (fptrunc->getSrcTy() == fptrunc->getDestTy()) {
-                    errs() << "Remove redundant fptrunc: " << *fptrunc << "\n";
-                    fptrunc->replaceAllUsesWith(fptrunc->getOperand(0));
-                    instToErase.insert(fptrunc);
-                    modified = true;
-                }
-                else if (fptrunc->getSrcTy()->getPrimitiveSizeInBits() < fptrunc->getDestTy()->getPrimitiveSizeInBits()) {
-                    errs() << "Replace incorrect fptrunc with fpext: " << *fptrunc << "\n";
-                    IRBuilder<> builder(fptrunc);
-                    auto *extendedValue = builder.CreateFPExt(fptrunc->getOperand(0), fptrunc->getDestTy(), "ext");
-                    fptrunc->replaceAllUsesWith(extendedValue);
-                    instToErase.insert(fptrunc);
+                } else {
+                    builder.SetInsertPoint(castInst);
+                    Value *newCast = builder.CreateFPCast(
+                        castInst->getOperand(0),
+                        castInst->getDestTy(),
+                        "repair_cast"
+                    );
+                    
+                    errs() << "Replace cast: " << *castInst 
+                           << " -> " << *newCast << "\n";
+                    castInst->replaceAllUsesWith(newCast);
+                    instToErase.insert(castInst);
                     modified = true;
                 }
             }
@@ -542,7 +534,7 @@ bool llvm::ChangePrecision::repairCasts(Function &F)
 }
 
 // translate typename into llvm type
-Type* ChangePrecision::translateTypeName(string typeName, LLVMContext& context)
+Type* ChangeVariableDecl::translateTypeName(string typeName, LLVMContext& context)
 {
     size_t constPos;
     while ((constPos = typeName.find("const")) != string::npos) {
@@ -577,7 +569,7 @@ Type* ChangePrecision::translateTypeName(string typeName, LLVMContext& context)
     return nullptr;
 }
 
-bool ChangePrecision::runOnFunction(Function &F) {
+bool ChangeVariableDecl::runOnFunction(Function &F) {
     auto &context = F.getContext();
     auto functionConfig = config["local"][demangle(F.getName())];
     bool modified = false;
@@ -612,7 +604,7 @@ bool ChangePrecision::runOnFunction(Function &F) {
     return modified;
 }
 
-bool ChangePrecision::runOnModule(Module &module) {
+bool ChangeVariableDecl::runOnModule(Module &module) {
     parseConfig();
     bool modified = false;
     for(auto f = module.begin(), fe = module.end(); f != fe; f++) {
@@ -638,12 +630,12 @@ bool ChangePrecision::runOnModule(Module &module) {
     return modified;
 }  
 
-void ChangePrecision::getAnalysisUsage(AnalysisUsage &AU) const {
+void ChangeVariableDecl::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
 }
 
-PreservedAnalyses ChangePrecision::run(Module &M, ModuleAnalysisManager &MAM) {
-    errs() << ">>> Perci-Tuner: Running ChangePrecision Pass...\n";    
+PreservedAnalyses ChangeVariableDecl::run(Module &M, ModuleAnalysisManager &MAM) {
+    errs() << ">>> Perci-Tuner: Running ChangeVariableDecl Pass...\n";    
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();

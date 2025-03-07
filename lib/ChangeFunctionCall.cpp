@@ -1,6 +1,6 @@
 // @Author: Guocheng - NUDT
-// Usage: Change CallInst if necessary.
-// Input: config.json (calls)
+// Usage: Change CallInst according to json.
+// Input: Function's type config
 // Output: CallInst-changed IR
 
 #include "ChangeFunctionCall.h"
@@ -20,6 +20,9 @@
 using namespace std;
 using namespace llvm;
 
+
+cl::opt<string> FunctionConfigName("function-config", cl::value_desc("filename"), cl::desc("Function's Type Config"), cl::init("config.json"));
+
 bool ChangeFunctionCall::runOnFunction(Function &F) {
     bool modified = false;
     auto &Context = F.getContext();
@@ -30,7 +33,9 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
         SmallVector<CallInst*, 4> toDelete;  // Delete later to avoid break iterator
         for (auto &I : BB) {
             if (auto *call = dyn_cast<CallInst>(&I)) {
-                StringRef oldCallee = call->getCalledFunction()->getName();
+                auto *oldFunc = call->getCalledFunction();
+                if (!oldFunc) continue;
+                StringRef oldCallee = oldFunc->getName();
                 
                 if (!mathFunctions.contains(oldCallee)) continue;
 
@@ -82,13 +87,13 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
                             false
                         );
                         
-                        // Insert cast for paras, we expect that cast always happen
+                        // Insert cast for paras
                         IRBuilder<> Builder(call);
                         SmallVector<Value*, 2> castedArgs;
                         
                         for (auto& arg : call->args()) {
                             castedArgs.push_back(
-                                Builder.CreateFPCast(arg, paramType)
+                                Builder.CreateFPCast(arg, paramType, "arg_cast")
                             );
                         }
                         
@@ -107,10 +112,11 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
                         if (call->getType() != newCall->getType()) {
                             finalResult = Builder.CreateFPCast(
                                 newCall, 
-                                call->getType()
+                                call->getType(),
+                                "ret_cast"
                             );
                         }
-                        
+
                         call->replaceAllUsesWith(finalResult);
                         toDelete.push_back(call);
                         modified = true;
@@ -128,9 +134,9 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
 }
 
 bool ChangeFunctionCall::runOnModule(Module &module) {
-    ifstream inFile("config.json");
+    ifstream inFile(FunctionConfigName.c_str());
     if (!inFile) {
-        errs() << "Error: Unable to open config.json\n";
+        errs() << "Error: Failed to open " << FunctionConfigName << "\n";
         exit(1);
     }
     inFile >> config;

@@ -1,9 +1,9 @@
 // @Author: Guocheng - NUDT
-// Usage: Tell declared variables' type.
+// Usage: Search declared variables' type.
 // Input: config.json (calls)
 // Output: config.json (vars)
 
-#include "CreatePrecisionConfig.h"
+#include "SearchVariableDecl.h"
 #include "utils/ParseTypeName.hpp"
 
 #include <llvm/IR/DebugInfo.h>
@@ -22,7 +22,7 @@ using namespace llvm;
 
 
 // Find Local vars and local static vars
-void CreatePrecisionConfig::findLocalVariables(Function &F) {
+void SearchVariableDecl::findLocalVariables(Function &F) {
     nlohmann::json function;
     auto funcName = demangle(F.getName());
 
@@ -92,7 +92,7 @@ void CreatePrecisionConfig::findLocalVariables(Function &F) {
     config["local"][funcName] = function;
 }
 
-void CreatePrecisionConfig::findGlobalVariables(Module &M) { 
+void SearchVariableDecl::findGlobalVariables(Module &M) { 
     nlohmann::json globalVars;
 
     for (GlobalVariable &GV : M.globals()) {
@@ -127,12 +127,12 @@ void CreatePrecisionConfig::findGlobalVariables(Module &M) {
     config["global"] = globalVars;
 }
 
-bool CreatePrecisionConfig::runOnFunction(Function &F) {
+bool SearchVariableDecl::runOnFunction(Function &F) {
     findLocalVariables(F);
     return false;
 }
 
-bool CreatePrecisionConfig::runOnModule(Module &module) {
+bool SearchVariableDecl::runOnModule(Module &module) {
     ifstream inFile("config.json");
     string name;
 
@@ -163,12 +163,12 @@ bool CreatePrecisionConfig::runOnModule(Module &module) {
     return false;  // hasn't changed IR
 }  
 
-void CreatePrecisionConfig::getAnalysisUsage(AnalysisUsage &AU) const {
+void SearchVariableDecl::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();  // hasn't changed IR
 }
 
-PreservedAnalyses CreatePrecisionConfig::run(Module &M, ModuleAnalysisManager &) {
-    errs() << ">>> Perci-Tuner: Running CreatePrecisionConfig Pass...\n";
+PreservedAnalyses SearchVariableDecl::run(Module &M, ModuleAnalysisManager &) {
+    errs() << ">>> Perci-Tuner: Running SearchVariableDecl Pass...\n";
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();

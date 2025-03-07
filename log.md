@@ -16,7 +16,7 @@
 ### 27
 
 * CreateCallDependency：支持将结果输出到searched_functions.txt，值得注意的是，命令行调试输出的是人类可读形式，而文件中存储的是去重的IR符号形式。
-* 编写样例测试了CCD在跨文件调用类方法的效果。
+* 编写样例测试了CreateCallDependency在跨文件调用类方法的效果。
 * run.sh现支持多源文件命令行参数输入，以进行编译。
 
 ### 28
@@ -40,11 +40,11 @@
 
 ### 1
 
-* CPC: Supports multiple pointers, such as 'MY_STRUCT**'.
+* CreateVariableDecl: Supports multiple pointers, such as 'MY_STRUCT**'.
 
 ### 2
 
-* CPC: Supports array. All of them shown in one dimension, such as: double[3][6](src) -> double[18](config.json).
+* CreateVariableDecl: Supports array. All of them shown in one dimension, such as: double[3][6](src) -> double[18](config.json).
 
 ### 5
 
@@ -52,33 +52,33 @@
 
 ### 8
 
-* CPC: Supports const.
+* CreateVariableDecl: Supports const.
 
 ### 9
 
-* CPC: Supports global vars but not formatted.
-* Issue: Local string decl will cancel CCD's func search progress. (NOT ALLOWED!)
+* CreateVariableDecl: Supports global vars but not formatted.
+* Issue: Local string decl will cancel CreateCallDependency's func search progress. (NOT ALLOWED!)
 * TODO: Analyze struct/class
 
 ### 17
 
 * All vars (except cmd paras) declared in passes should be private.
-* CPC: Add var decl location into config.json, found that type of global pointers aren't defined.
-* Add Pass: ChangePrecision (Unfinished).
+* CreateVariableDecl: Add var decl location into config.json, found that type of global pointers aren't defined.
+* Add Pass: ChangeVariableDecl (Unfinished).
 
 ### 19
 
-* CPC: Variable declare location.
-* CP: Change type of local vars in AllocInst.
+* CreateVariableDecl: Variable declare location.
+* ChangeVariableDecl: Change type of local vars in AllocInst.
 
 ### 20
 
-* CP: Change StoreInst & Replace LoadInst.
+* ChangeVariableDecl: Change StoreInst & Replace LoadInst.
 * Issue: Replace inst may cause fpext/fptrunc crash, solve this need analyze Use Propagation.
 
 ### 25
 
-* CP: Replace LLVM CallInst. (such as fmuladd.f32 < - > fmuladd.f64)
+* ChangeVariableDecl: Replace LLVM CallInst. (such as fmuladd.f32 < - > fmuladd.f64)
 * Issue: While compiling C code, arithmetic inst as 'fmul' will throw error: 'unmatched operand type'.
 
 ### 27
@@ -95,42 +95,42 @@
 
 ### 8
 
-* CP: Insert fpext/fptrunc while change precision.
+* ChangeVariableDecl: Insert fpext/fptrunc while change precision.
 
 ## Feb, 2025
 
 ### 4
 
 * Issue: for an equation 'a + b + c', if a and b changed from ld to d , and c keep ld; then casts comes to a wrong solution: d + d + d; Correct solution: ld + ld + ld. To solve this, I commit changes as below:
-* CP: RepairUserType(): Find the highest operand precision in inst and make other operands consistent.
+* ChangeVariableDecl: RepairUserType(): Find the highest operand precision in inst and make other operands consistent.
 
 ### 5
 
-* CP: change precision of fmuladd won't crash (caused by wild pointers in instToErase , I keep it in DenseSet to solve this). However, multiple unreferenced insts are kept.
+* ChangeVariableDecl: change precision of fmuladd won't crash (caused by wild pointers in instToErase , I keep it in DenseSet to solve this). However, multiple unreferenced insts are kept.
 
 ### 7
 
-* CP: Support floating-point's array.
+* ChangeVariableDecl: Support floating-point's array.
 * Issue: ParseDITypeName parse 'const float[2]' as 'const float[0]'.
 * Knowledge: local static will be marked as '@local_func_name.static_var_name internal global...', global static will be marked as '@static_var_name internal global...', global non-static will be marked as '@global_var_name dso_local global...'.
-* CPC: Support static var.
+* CreateVariableDecl: Support static var.
 
 ### 8
 
-* CP: Introduce DenseSet to record all insts repaired to avoid duplicate unreferenced insts. May cause some crash e.g. fadd operands type not same.
-* SF: Support excluding functions to search.
-* CP: ReturnInst's type mustn't be repaired.
+* ChangeVariableDecl: Introduce DenseSet to record all insts repaired to avoid duplicate unreferenced insts. May cause some crash e.g. fadd operands type not same.
+* SearchFunctionCall: Support excluding functions to search.
+* ChangeVariableDecl: ReturnInst's type mustn't be repaired.
 * Python scripts: csv show changes.
 * Introduce funarc benchmark from Precimonious.
 
 ### 9
 
-* CP: Support GEP(getelementptr) inst.
+* ChangeVariableDecl: Support GEP(getelementptr) inst.
 * IRTiming: Only record main() run cycles, to avoid too much file IO.
 
 ### 10
 
-* CP: Repair BinOp/UnaryOp/FCmp/PHINode type mismatch.
+* ChangeVariableDecl: Repair BinOp/UnaryOp/FCmp/PHINode type mismatch.
 * search.py: Prune runned configs to accelerate.
 * search.py: Generate optimized IR.
 
@@ -152,7 +152,7 @@
 * search.py: add parameter: run times of IR per iteration.
 * search.py: supports transform floating-type const & array.
 * Add Benchmarks: FPBench & GSL.
-* CP: Repair crash when function args' type changed.
+* ChangeVariableDecl: Repair crash when function args' type changed.
 
 ## Mar, 2025
 
@@ -162,24 +162,24 @@
 
 # 4
 
-* CP: Repair bug that const floating declarations won't be changed.
+* ChangeVariableDecl: Repair bug that const floating declarations won't be changed.
 * Add Pass: ChangeFunctionCall(Unfinished).
 * SearchFunctions is renamed to: SearchFunctionCall, update its output as function_call.json.
-* ChangePrecision: only depend to config.json, exclude searched_functions.txt.
+* ChangeVariableDecl: only depend to config.json, exclude searched_functions.txt.
 * Accelerate Passes by using DenseSet rather than std::set.
 
 # 5
 
-* CPC: Safely search static Global vars to avoid invalid operand count. Add 'isParam' key into config.json.
+* CreateVariableDecl: Safely search static Global vars to avoid invalid operand count. Add 'isParam' key into config.json.
 * Make benchmarks runnable: FPBench, GSL. Pay attention that run GSL should add option: `-load /usr/local/lib/libgsl.so` in lli command (should install GSL).
 * Rename dd.py to search.py.
-* CPC: RepairUser of StoreInst's alignment. Remove instRepaired, which caused Inst can't be changed multi times. (such as FCmp & BinOp, both ops' type changed).
+* ChangeVariableDecl: RepairUser of StoreInst's alignment. Remove instRepaired, which caused Inst can't be changed multi times. (such as FCmp & BinOp, both ops' type changed).
 * ParseDITypeName supports dwarf::DW_TAG_typedef (such as gsl/root.c: const gsl_root_fsolver_type*).
 * search.py: Ignore pointer-type & non-floating-type to reduce change-set size (accelerate searching).
 
 # 6
 
-* CFC: Repair bugs.
+* ChangeFunctionCall: Repair bugs.
 * Redesigned SearchFunctionCall: Iterate CallInst rather than visit recursively (Accelerate pass).
 * SearchFunctionCall & ChangeFunctionCall all use config.json. Remove function_call.json.
 * search.py, config_utils.py: Support change function CallInst.
@@ -189,4 +189,6 @@
 
 * Accelerate search.py: Keep current run's result & time rather than IO in run_config.json.
 * Users can set the last arg in search.py to disable run_history.csv.
-* CFC: Support 2-arg math function calls.
+* ChangeFunctionCall: Support 2-arg math function calls.
+* ChangeVariableDecl: Use FPCast to change precisions rather than FPExt/FPtrunc.
+* Rename passes.

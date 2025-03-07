@@ -2,7 +2,7 @@
 
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import sys, math, json, os
+import sys, math, json, os, shutil
 import config_utils, data_utils, transform
 
 # the initial divide number for delta debugging change set
@@ -132,10 +132,7 @@ def run_config(bitcode, current_config, change_set):
 # update the best ir code file
 def update_opt_bc():
     global OPT_PREFIX, bitcode_name
-    with open(transform.TEMP_BC_PATH, 'r') as source_file:
-        content = source_file.read()
-    with open(OPT_PREFIX + bitcode_name, 'w') as target_file:
-        target_file.write(content)
+    shutil.copyfile(transform.TEMP_BC_PATH, OPT_PREFIX + bitcode_name)
 
 
 # using delta debugging algorithm to find the minimal change set

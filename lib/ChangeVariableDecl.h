@@ -1,7 +1,7 @@
 // @Author: Guocheng - NUDT
 
-#ifndef LLVM_CHANGE_PRECISION_H
-#define LLVM_CHANGE_PRECISION_H
+#ifndef LLVM_CHANGE_VARIABLE_DECL_H
+#define LLVM_CHANGE_VARIABLE_DECL_H
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
@@ -15,7 +15,7 @@
 namespace llvm {
 
 
-class ChangePrecision : public PassInfoMixin<ChangePrecision> {
+class ChangeVariableDecl : public PassInfoMixin<ChangeVariableDecl> {
 public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager
 
@@ -57,4 +57,4 @@ private:
 
 } // namespace llvm
 
-#endif // LLVM_CHANGE_PRECISION_H
+#endif // LLVM_CHANGE_VARIABLE_DECL_H

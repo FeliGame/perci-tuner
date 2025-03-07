@@ -1,7 +1,7 @@
 // @Author: Guocheng - NUDT
 
-#ifndef LLVM_CREATE_PRECISION_CONFIG_H
-#define LLVM_CREATE_PRECISION_CONFIG_H
+#ifndef LLVM_SEARCH_VARIABLE_DECL_H
+#define LLVM_SEARCH_VARIABLE_DECL_H
 
 #include "nlohmann/json.hpp"
 
@@ -20,7 +20,7 @@ using namespace std;
 namespace llvm {
 
 
-class CreatePrecisionConfig : public PassInfoMixin<CreatePrecisionConfig> {
+class SearchVariableDecl : public PassInfoMixin<SearchVariableDecl> {
 public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager
 
@@ -44,4 +44,4 @@ private:
 
 } // namespace llvm
 
-#endif // LLVM_CREATE_PRECISION_CONFIG_H
+#endif // LLVM_SEARCH_VARIABLE_DECL_H
