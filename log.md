@@ -184,3 +184,8 @@
 * SearchFunctionCall & ChangeFunctionCall all use config.json. Remove function_call.json.
 * search.py, config_utils.py: Support change function CallInst.
 * Remove passes' options about config.json.
+
+# 7
+
+* Accelerate search.py: Keep current run's result & time rather than IO in run_config.json.
+* Users can set the last arg in search.py to disable run_history.csv.

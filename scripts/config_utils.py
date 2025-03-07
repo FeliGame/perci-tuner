@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+# Handle config.json & change_set
 
-# @Author: LinLanfeng —— NUDT
+# @Author: LinLanfeng, Guocheng —— NUDT
 
 import copy, json, re
 
@@ -18,12 +19,14 @@ FUNCTION_PRECISIONS = [
     "log", "logf", "logl"
 ]
 
+
 # Helper function to extract the size from an (const) array type (e.g., "const float[6]" -> 6)
 def extract_array_size(type_str):
     match = re.match(r"(.+)\[(\d+)\]", type_str)
     if match:
         return match.group(2)  # Return the size as a string
     return None
+
 
 # fill search types for each variable
 # and delete the variables that don't need to change precisions
@@ -47,6 +50,7 @@ def set_var_search_types(change_set):
     # i.  the variables' type is not in the valid precision types
     # ii. the variables' 'search_types' only have one option for the variable
     return [change_var for change_var in change_set if len(change_var.get('search_types', [])) > 1]
+
 
 def parse_config(config):
   change_set = []
@@ -95,6 +99,7 @@ def parse_config(config):
 
   return change_set
 
+
 # rebuild config from change set
 def rebuild(change_set, config):
   new_config = copy.deepcopy(config)
@@ -120,6 +125,7 @@ def rebuild(change_set, config):
                     callee_info['type'] = item['type']
        
   return new_config
+
 
 # print config to file
 def print_config(config, file_name):
