@@ -46,7 +46,11 @@ private:
 
     bool repairCasts(Function &F);
 
-    Type* translateTypeName(std::string typeName, LLVMContext& context);
+    void repairLoadUsers(LoadInst* newLoad, Type* newType);
+
+    Type* translateValidTypeName(std::string typeName, LLVMContext& context);
+
+    bool changeStructDeclarations(Module &module);
 
     DenseSet<StringRef> includedFunctions;
 

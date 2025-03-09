@@ -127,6 +127,26 @@ void SearchVariableDecl::findGlobalVariables(Module &M) {
     config["global"] = globalVars;
 }
 
+void SearchVariableDecl::findStructDeclarations(Module &module) {
+    nlohmann::json structDecls;
+
+    for (auto *sty : module.getIdentifiedStructTypes()) {
+        if (!sty || sty->getName().empty()) continue;
+        nlohmann::json structDecl;
+        unsigned i = 0;
+        for (auto member : sty->elements()) {
+            nlohmann::json memberInfo;
+            memberInfo["member_index"] = i++;
+            memberInfo["type"] = parseTypeName(member);
+            structDecl.push_back(memberInfo);
+        }
+        // Remove 'struct.' prefix
+        structDecls[sty->getName().substr(7)] = structDecl;
+    }
+
+    config["structs"] = structDecls;
+}
+
 bool SearchVariableDecl::runOnFunction(Function &F) {
     findLocalVariables(F);
     return false;
@@ -143,11 +163,12 @@ bool SearchVariableDecl::runOnModule(Module &module) {
 
     inFile >> config;
     
-    for (auto& [funcName, _] : config["calls"].items()) {
+    for (auto &[funcName, _] : config["calls"].items()) {
         includedFunctions.insert(funcName);
     }
 
     findGlobalVariables(module);
+    findStructDeclarations(module);  // 新增结构体声明查找
 
     for(Module::iterator f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();

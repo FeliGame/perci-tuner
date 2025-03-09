@@ -47,7 +47,7 @@ def extract_array_size(type_str):
     return None
 
 
-# fill search types for each variable
+# fill search types for each variable & struct member variable
 # and delete the variables that don't need to change precisions
 def set_var_search_types(change_set):
     for change_var in change_set:
@@ -72,94 +72,122 @@ def set_var_search_types(change_set):
 
 
 def parse_config(config):
-  change_set = []
-  # TODO: put global into change_set
-  for func, func_vars in config['local'].items():
-    if func_vars is None:
-      continue
-    for i in range(0, len(func_vars)):
-      # Skip pointer-type & non-floating-type (though they are shown in config.json)
-      type_str = func_vars[i]['type']
-      if (('struct' not in type_str and '*' in type_str) 
-          or not any(p in type_str for p in PRECISIONS)):
-         continue
-      change_entry = copy.deepcopy(func_vars[i])
-      change_entry['fvar_index'] = i
-      change_entry['func'] = func
-      change_entry['search_types'] = []
-      change_set.append(change_entry)
-  change_set = set_var_search_types(change_set)
+    change_set = []
+    # TODO: put global into change_set
+    local_vars = config.get('local')
+    if local_vars is not None:
+        for func, func_vars in config['local'].items():
+            if func_vars is None:
+                continue
+            for i in range(0, len(func_vars)):
+                # Skip pointer-type & non-floating-type (though they are shown in config.json)
+                type_str = func_vars[i]['type']
+                if (('*' in type_str) or not any(p in type_str for p in PRECISIONS)):
+                    continue
+                change_entry = copy.deepcopy(func_vars[i])
+                change_entry['fvar_index'] = i
+                change_entry['func'] = func
+                change_entry['search_types'] = []
+                change_set.append(change_entry)
 
-  for caller, call_insts in config['calls'].items():
-      if call_insts is None:
-        continue
-      for i in range(0, len(call_insts)):
-        change_entry = copy.deepcopy(call_insts[i])
-        func_name = change_entry['type']
-        if func_name not in FUNCTION_PRECISIONS:
-            continue
+    structs = config.get('structs')
+    if structs is not None:
+        for struct, members in structs.items():
+            if members is None:
+                continue
+            for i in range(0, len(members)):
+                # Skip pointer-type & non-floating-type (though they are shown in config.json)
+                type_str = members[i]['type']
+                if (('*' in type_str) or not any(p in type_str for p in PRECISIONS)):
+                    continue
+                change_entry = copy.deepcopy(members[i])
+                change_entry['struct'] = struct
+                change_entry['search_types'] = []
+                change_set.append(change_entry)
+    change_set = set_var_search_types(change_set)
 
-        precision_suffix = None 
-        # Handle funcs end with f, l
-        if func_name.startswith('ceil'):
-            base_name = 'ceil'
-            precision_suffix = func_name[4:]
-        elif func_name.startswith('erf'):
-            base_name = 'erf'
-            precision_suffix = func_name[3:]
-        else:  # Handle others
-          if func_name.endswith('f'):
-              precision_suffix = 'f'
-          elif func_name.endswith('l'):
-              precision_suffix = 'l' 
-        # set max_level by precision_suffix        
-        if precision_suffix == 'f':
-            max_level = 0  # float
-        elif precision_suffix == 'l':
-            max_level = 2  # long double
-        else:
-            max_level = 1  # double
-        # set base_name by precision_suffix
-        base_name = func_name[:-1] if precision_suffix else func_name
+    calls = config.get('calls')
+    if calls is not None:
+        for caller, call_insts in config['calls'].items():
+            if call_insts is None:
+                continue
+            for i in range(0, len(call_insts)):
+                change_entry = copy.deepcopy(call_insts[i])
+                func_name = change_entry['type']
+                if func_name not in FUNCTION_PRECISIONS:
+                    continue
+        
+                precision_suffix = None 
+                # Handle funcs end with f, l
+                if func_name.startswith('ceil'):
+                    base_name = 'ceil'
+                    precision_suffix = func_name[4:]
+                elif func_name.startswith('erf'):
+                    base_name = 'erf'
+                    precision_suffix = func_name[3:]
+                else:  # Handle others
+                    if func_name.endswith('f'):
+                        precision_suffix = 'f'
+                    elif func_name.endswith('l'):
+                        precision_suffix = 'l' 
+                # set max_level by precision_suffix        
+                if precision_suffix == 'f':
+                    max_level = 0  # float
+                elif precision_suffix == 'l':
+                    max_level = 2  # long double
+                else:
+                    max_level = 1  # double
+                # set base_name by precision_suffix
+                base_name = func_name[:-1] if precision_suffix else func_name
+        
+                precision_versions = [
+                    base_name + 'f',
+                    base_name,
+                    base_name + 'l'
+                ][:max_level+1]  # Important slice!
+                change_entry['fcall_index'] = i
+                change_entry['caller'] = caller
+                change_entry['search_types'] = precision_versions
+                change_set.append(change_entry)
 
-        precision_versions = [
-            base_name + 'f',
-            base_name,
-            base_name + 'l'
-        ][:max_level+1]  # Important slice!
-        change_entry['fcall_index'] = i
-        change_entry['caller'] = caller
-        change_entry['search_types'] = precision_versions
-        change_set.append(change_entry)
-
-  return change_set
+    return change_set
 
 
 # rebuild config from change set
 def rebuild(change_set, config):
-  new_config = copy.deepcopy(config)
-  for item in change_set:
-    if 'func' in item:
-        func = item['func']
-        local_vars = new_config['local'].get(func)  # 添加临时变量
-        if local_vars is not None:
-            fvar_index = item['fvar_index']
-            if fvar_index < len(local_vars):
-                var_info = local_vars[fvar_index]  # 使用临时变量
-                if var_info['type'] != item['type']:
-                    var_info['type'] = item['type']
-                    
-    if 'caller' in item:
-        caller = item['caller']
-        call_entries = new_config['calls'].get(caller)  # 添加临时变量
-        if call_entries is not None:
-            fcall_index = item['fcall_index']
-            if fcall_index < len(call_entries):
-                callee_info = call_entries[fcall_index]  # 使用临时变量
-                if callee_info['type'] != item['type']:
-                    callee_info['type'] = item['type']
+    new_config = copy.deepcopy(config)
+    for item in change_set:
+        if 'func' in item:
+            func = item['func']
+            local_vars = new_config['local'].get(func)
+            if local_vars is not None:
+                member_index = item['fvar_index']
+                if member_index < len(local_vars):
+                    member_info = local_vars[member_index]
+                    if member_info['type'] != item['type']:
+                        member_info['type'] = item['type']
+                        
+        elif 'caller' in item:
+            caller = item['caller']
+            call_entries = new_config['calls'].get(caller)
+            if call_entries is not None:
+                fcall_index = item['fcall_index']
+                if fcall_index < len(call_entries):
+                    callee_info = call_entries[fcall_index]
+                    if callee_info['type'] != item['type']:
+                        callee_info['type'] = item['type']
+        
+        elif 'struct' in item:
+            struct = item['struct']
+            struct_members = new_config['structs'].get(struct)
+            if struct_members is not None:
+                member_index = item['member_index']
+                if member_index < len(struct_members):
+                    member_info = struct_members[member_index]
+                    if member_info['type'] != item['type']:
+                        member_info['type'] = item['type']
        
-  return new_config
+    return new_config
 
 
 # print config to file

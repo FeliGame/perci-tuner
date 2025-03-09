@@ -82,32 +82,15 @@ bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
 
                 load->replaceAllUsesWith(newLoad);
                 instToErase.insert(load);    // erase later to avoid broken iterator
-
-                errs() << "repair users of new load: " << *newLoad << "\n";
-                for (auto *loadUser : newLoad->users()) {
-                    if (auto ret = dyn_cast<ReturnInst>(loadUser))
-                    {
-                        // 获取函数的返回类型
-                        auto *funcReturnType = ret->getFunction()->getReturnType();
-
-                        // 如果返回值类型与函数返回类型不一致，插入类型转换
-                        if (newType != funcReturnType) {
-                            if (auto *castValue = insertCast(newLoad, funcReturnType, ret)) {
-                                ret->setOperand(0, castValue);  // 设置转换后的值为返回值
-                            }
-                        }
-                    }
-                    else repairUserType(loadUser);
-                }
+                repairLoadUsers(newLoad, newType);
             }
             else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
-                // convert indices into ArrayRef<Value*>
                 SmallVector<Value*, 4> indices;
                 for (auto &index : gep->indices()) {
                     indices.push_back(index.get());
                 }
 
-                auto* newGEP = GetElementPtrInst::Create(
+                auto *newGEP = GetElementPtrInst::Create(
                     newType,
                     gep->getPointerOperand(),
                     indices,
@@ -471,16 +454,16 @@ bool ChangeVariableDecl::repairUserType(User *user) {
 
         if (changed) {
             // 创建新的 PHINode，类型为 highestType
-            auto* newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi);
+            auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi);
             for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
-                auto* oldVal = phi->getIncomingValue(i);
-                auto* newVal = oldVal;
+                auto *oldVal = phi->getIncomingValue(i);
+                auto *newVal = oldVal;
                 // pay attention: insertCast shouldn't at 'phi', will cause 'Instruction does not dominate all uses!'
                 if (oldVal->getType() != highestType) {
                     errs() << "RepairUser: PHI operand " << i << " of type " << *oldVal->getType()
                         << "!= target type " << *highestType << ", casting...\n";
-                    auto* incomingBlock = phi->getIncomingBlock(i);
-                    auto* insertBefore = incomingBlock->getTerminator();
+                    auto *incomingBlock = phi->getIncomingBlock(i);
+                    auto *insertBefore = incomingBlock->getTerminator();
                     newVal = insertCast(oldVal, highestType, insertBefore);
                 }
 
@@ -533,25 +516,39 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
     return modified;
 }
 
-// translate typename into llvm type
-Type* ChangeVariableDecl::translateTypeName(string typeName, LLVMContext& context)
+void ChangeVariableDecl::repairLoadUsers(LoadInst* newLoad, Type* newType) {
+    errs() << "Repair users of new load: " << *newLoad << "\n";
+    for (auto *loadUser : newLoad->users()) {
+        if (auto ret = dyn_cast<ReturnInst>(loadUser))
+        {
+            auto *funcReturnType = ret->getFunction()->getReturnType();
+            if (newType != funcReturnType) {
+                if (auto *castValue = insertCast(newLoad, funcReturnType, ret)) {
+                    ret->setOperand(0, castValue);  // 设置转换后的值为返回值
+                }
+            }
+        }
+        else repairUserType(loadUser);
+    }
+}
+
+// Translate Perci-Tuner supported typename into llvm type
+Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& context)
 {
     size_t constPos;
     while ((constPos = typeName.find("const")) != string::npos) {
         typeName.erase(constPos, 5);  // Remove 'const'
     }
-    // Remove spaces
-    typeName.erase(remove(typeName.begin(), typeName.end(), ' '), typeName.end());
 
     Type* targetType = nullptr;
-    if (typeName.find("float") == 0) {
+    if (typeName.find("float") != string::npos) {
         targetType = Type::getFloatTy(context);
-    } else if (typeName.find("double") == 0) {
-        targetType = Type::getDoubleTy(context);
-    } else if (typeName.find("long double") == 0) {
+    } else if (typeName.find("long double") != string::npos) {
         targetType = Type::getFP128Ty(context);
+    } else if (typeName.find("double") != string::npos) {
+        targetType = Type::getDoubleTy(context);
     } else {
-        errs() << "Unknown type: " << typeName << "\n";
+        errs() << "Unknown type: " << typeName << ", ignored.\n";
         return nullptr;
     }
     
@@ -587,7 +584,7 @@ bool ChangeVariableDecl::runOnFunction(Function &F) {
                             auto typeName = configEntry["type"].get<string>();
 
                             if (typeName == parseDITypeName(DV->getType())) continue;
-                            auto *targetType = translateTypeName(typeName, context);
+                            auto *targetType = translateValidTypeName(typeName, context);
                             if (targetType == nullptr) continue;
 
                             errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
@@ -604,9 +601,133 @@ bool ChangeVariableDecl::runOnFunction(Function &F) {
     return modified;
 }
 
+bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
+    if (!config.contains("structs")) return false;
+
+    bool modified = false;
+    nlohmann::json structInfos = config["structs"];
+    auto &context = module.getContext();
+    // Iterate all struct decls in the module
+    for (auto *sty : module.getIdentifiedStructTypes()) {
+        StringRef rawName = sty->getName();
+        StringRef structName = rawName.startswith("struct.") ? rawName.substr(7) : rawName;
+        // Match a struct decl with config
+        if (structInfos.contains(structName.str())) {
+            auto members = structInfos[structName.str()];
+            SmallVector<Type*, 4> newElements;
+            bool needsUpdate = false;
+
+            // Iterate original struct members
+            for (unsigned i = 0; i < sty->getNumElements(); ++i) {
+                auto *newType = sty->getElementType(i);  // now is old type
+            
+                string typeStr = members[i]["type"].get<string>();
+                auto *targetType = translateValidTypeName(typeStr, context);
+
+                if (targetType && targetType != newType) {
+                    errs() << "Change struct member type: " << *newType << " -> " << *targetType << "\n";
+                    newType = targetType;
+                    needsUpdate = true;
+                }
+            
+                newElements.push_back(newType);
+            }
+
+            if (needsUpdate) {
+                sty->setBody(newElements, sty->isPacked());
+                modified = true;
+                
+                // Replace global/static initializers
+                for (auto &global : module.globals()) {
+                    if (!global.hasInitializer()) continue;
+                    if (auto init = dyn_cast<ConstantStruct>(global.getInitializer())) {
+                        if (init->getType() == sty) {
+                            errs() << "Repair global/static struct initializers: " << *init << " -> " << *sty << "\n";
+                            SmallVector<Constant*, 4> newElements;
+                            for (unsigned i = 0; i < init->getNumOperands(); i++) {
+                                auto *targetType = sty->getElementType(i);
+                                auto *elem = init->getOperand(i);
+                                
+                                // Floating-type conversion
+                                if (auto *fp = dyn_cast<ConstantFP>(elem)) {
+                                    auto val = fp->getValueAPF();
+                                    bool losesInfo;
+                                    val.convert(sty->getElementType(i)->getFltSemantics(),
+                                               APFloat::rmNearestTiesToEven,
+                                               &losesInfo);  // Add lost info parameter
+                                    elem = ConstantFP::get(targetType, val);
+                                }
+                                newElements.push_back(elem);
+                            }
+                            global.setInitializer(ConstantStruct::get(sty, newElements));
+
+                            // Recalculate alignment
+                            const auto &DL = module.getDataLayout();
+                            unsigned align = DL.getABITypeAlign(sty).value();
+                            global.setAlignment(MaybeAlign(align));
+                        }
+                    }
+                }
+
+                // Repair GEP
+                for (auto &F : module) {
+                    for (auto &BB : F) {
+                        for (auto &I : BB) {
+                            if (auto *gep = dyn_cast<GetElementPtrInst>(&I)) {
+                                if (gep->getSourceElementType() == sty) {
+                                    IRBuilder<> builder(gep);
+                                    SmallVector<Value*, 4> indices;
+                                    for (auto &idx : gep->indices()) {
+                                        indices.push_back(idx.get());
+                                    }
+                                    auto *newGEP = builder.CreateInBoundsGEP(
+                                        sty,
+                                        gep->getPointerOperand(),
+                                        indices
+                                    );
+                                    gep->replaceAllUsesWith(newGEP);
+                                    instToErase.insert(gep);
+
+                                    for (auto *user : newGEP->users()) {
+                                        if (auto *load = dyn_cast<LoadInst>(user)) {
+                                            auto *lastIndex = gep->idx_end() - 1; // 获取最后一个索引
+                                            unsigned elementIndex = cast<ConstantInt>(lastIndex->get())->getZExtValue();
+                                            auto *elemType = sty->getElementType(elementIndex);
+                                            
+                                            auto *newLoad = new LoadInst(
+                                                elemType,
+                                                newGEP,
+                                                "",  // empty name
+                                                load->isVolatile(),
+                                                load
+                                            );
+                                            // Set align, copy metadata
+                                            const auto &DL = module.getDataLayout();
+                                            newLoad->setAlignment(Align(DL.getTypeAllocSize(elemType)));
+                                            if (MDNode *N = load->getMetadata("dbg")) {
+                                                newLoad->setMetadata("dbg", N);
+                                            }
+                                            
+                                            load->replaceAllUsesWith(newLoad);
+                                            instToErase.insert(load);
+                                            repairLoadUsers(newLoad, elemType);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return modified;
+}
+
 bool ChangeVariableDecl::runOnModule(Module &module) {
     parseConfig();
     bool modified = false;
+    modified |= changeStructDeclarations(module);
     for(auto f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();
         if(!f->isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
@@ -614,11 +735,11 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         }
     }
 
-    for (auto* inst : instToErase) {
+    for (auto *inst : instToErase) {
         inst->eraseFromParent();
     }
 
-    // module.print(errs(), nullptr);
+    // module.print(outs(), nullptr);
     if (verifyModule(module, &errs()))
     {
         errs() << "Module verify failed!\n";

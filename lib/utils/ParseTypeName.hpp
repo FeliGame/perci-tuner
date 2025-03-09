@@ -20,36 +20,37 @@ using namespace std;
 
 inline string parseTypeName(Type* type) {
     string result;
-    llvm::raw_string_ostream stream(result);
-    // stream << *type;  // simply output complete type info
     
     // class also count as StructType
     if (auto *ST = llvm::dyn_cast<llvm::StructType>(type)) {
         if (!ST->isLiteral()) {
-            stream << ST->getStructName().str();
+            result += ST->getStructName().str();
         }
-        stream << "{";
+        result += "{";
         bool isFirst = true;
         for (llvm::Type *ElemTy : ST->elements()) {
             if (!isFirst) {
-                stream << ",";
+                result += ",";
             }
-            std::string elemTypeName = parseTypeName(ElemTy);
-            stream << elemTypeName;
+            result += parseTypeName(ElemTy);
             isFirst = false;
         }
-        stream << "}";
+        result += "}";
     } else if (auto *AT = llvm::dyn_cast<llvm::ArrayType>(type)) {
-        std::string elemTypeName = parseTypeName(AT->getElementType());
-        stream << elemTypeName << "[" << AT->getNumElements() << "]";
+        result = parseTypeName(AT->getElementType()) + 
+               "[" + std::to_string(AT->getNumElements()) + "]";
     } else if (llvm::dyn_cast<llvm::PointerType>(type)) {
-        // All pointers are opaque
-        stream << "*";
+        // TODO: can't parse pointer type
+        result = "*";
+    } else if (type->getTypeID() == Type::FP128TyID) {
+        result = "long double";
     } else {
+        // Other basic types
+        llvm::raw_string_ostream stream(result);
         stream << *type;
+        stream.flush();
     }
 
-    stream.flush();
     return result;
 }
 

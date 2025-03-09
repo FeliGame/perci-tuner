@@ -35,6 +35,8 @@ private:
 
     void findGlobalVariables(Module &M);
 
+    void findStructDeclarations(Module &M);
+
     set<string> includedFunctions; 
     
     set<string> globalVariables;

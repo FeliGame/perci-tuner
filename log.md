@@ -192,3 +192,14 @@
 * ChangeFunctionCall: Support 2-arg math function calls.
 * ChangeVariableDecl: Use FPCast to change precisions rather than FPExt/FPtrunc.
 * Rename passes.
+* SearchVariableDecl: Search struct members' decl.
+
+# 8
+
+* ChangeVariableDecl: Repair crash when convert to 'long double'. Support change struct members' decl (in changeStructDeclarations(Module& module)).
+
+# 9
+
+* ChangeVariableDecl: Support static/global struct initializers.
+* transform.py: Ignore run-time failed IR. This cause gsl/diff.c can be searched over.
+* All python scripts are 4-space indented.

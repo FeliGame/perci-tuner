@@ -42,7 +42,7 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
                 auto loc = call->getDebugLoc();
                 if (!loc) continue;
 
-                for (auto& entry : funcInfo) {
+                for (auto &entry : funcInfo) {
                     if (entry["file"] == loc->getFilename().str() &&
                         entry["line"] == loc.getLine() &&
                         entry["column"] == loc.getCol()) {
@@ -91,7 +91,7 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
                         IRBuilder<> Builder(call);
                         SmallVector<Value*, 2> castedArgs;
                         
-                        for (auto& arg : call->args()) {
+                        for (auto &arg : call->args()) {
                             castedArgs.push_back(
                                 Builder.CreateFPCast(arg, paramType, "arg_cast")
                             );

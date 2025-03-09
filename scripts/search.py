@@ -114,19 +114,20 @@ def run_config(bitcode, current_config, change_set):
 
     result = transform.transform(bitcode, current_config, diff)
     if result == -1:
-      print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
-      sys.exit(1)
+        print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
+        sys.exit(1)
     elif result == -2:
-      print(">>> Perci-Tuner(Py) Error: running modified bitcode failed!")
-      sys.exit(1)
+        print(">>> Perci-Tuner(Py) Warning: running IR failed, ignored...")
+        # sys.exit(1)
+        return False
     elif result == -3:
-      print(">>> Perci-Tuner(Py) Error: the running time is not found!")
-      sys.exit(1)
+        print(">>> Perci-Tuner(Py) Error: the running time is not found!")
+        sys.exit(1)
     elif result == -4:
-      print(">>> Perci-Tuner(Py) Error: the running result is not found!")
-      sys.exit(1)
+        print(">>> Perci-Tuner(Py) Error: the running result is not found!")
+        sys.exit(1)
 
-    return result
+    return True
 
 
 # update the best ir code file
@@ -276,9 +277,9 @@ def main():
     new_conf = search_conf(bitcode, change_set, original_result)
     config_utils.print_config(new_conf, OPT_PREFIX + bitcode_name + ".json")
     
-    print(">>> Perci-Tuner(Py): Running delta-debugging algorithm finished! Run times:", run_times, "Change set len:", changes_set_len)
+    print(">>> Perci-Tuner(Py): Running delta-debugging algorithm finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
     print(">>> Perci-Tuner(Py): Config: " + OPT_PREFIX + bitcode_name + ".json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time)
 
 
 if __name__ == "__main__":
-  main()
+    main()

@@ -17,6 +17,7 @@ TEMP_BC_PATH = "temp_output.bc"
 TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "ir_timing.txt"
 RUNNING_TIMES = 1
+RUNNING_FAIL_TIMES = 0
 
 # time & result in current run
 current_run_time = float("inf")
@@ -49,7 +50,7 @@ def read_result(text):
 
 # run the current variable config and get the result
 def transform(bitcode_file, var_config, diff):
-    global current_run_time, current_run_result
+    global current_run_time, current_run_result, RUNNING_FAIL_TIMES
     # write the config to the temp file 
     config_utils.print_config(var_config, TEMP_CONFIG_FILE)
 
@@ -68,6 +69,9 @@ def transform(bitcode_file, var_config, diff):
         try:
             output = subprocess.check_output(command, stderr=None)
         except subprocess.CalledProcessError as e:
+            print(e.output.decode())
+            print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")
+            RUNNING_FAIL_TIMES += 1
             # return -2 if crashed when run modified bitcode
             return -2
         current_time = read_main_running_time()
@@ -76,6 +80,7 @@ def transform(bitcode_file, var_config, diff):
             return -3
         time += current_time
         if i == RUNNING_TIMES - 1:
+            # read output result from last time run's command line
             output_text = output.decode()
             print(output_text)
             current_run_result = read_result(output_text)
