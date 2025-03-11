@@ -34,6 +34,12 @@ add_llvm_pass_plugin(MyPass
 )
 ```
 
+## How to extend search precision range?
+
+* Register new precision type into config_utils.py -> PRECISIONS, they should be sorted from low to high precision.
+* Add conditional branch to ChangeVariableDecl.cpp -> translateValidTypeName.
+* Run build.sh to rebuild the tool.
+
 ## Best Practice
 
 * `module.print(errs(), nullptr)` prints changed IR before LLVM verifier, which is helpful while LLVM crashes.

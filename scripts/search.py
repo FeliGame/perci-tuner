@@ -278,7 +278,7 @@ def main():
     config_utils.print_config(new_conf, OPT_PREFIX + bitcode_name + ".json")
     
     print(">>> Perci-Tuner(Py): Running delta-debugging algorithm finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
-    print(">>> Perci-Tuner(Py): Config: " + OPT_PREFIX + bitcode_name + ".json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time)
+    print(">>> Perci-Tuner(Py): Config: " + OPT_PREFIX + bitcode_name + ".json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time, "Acc rate:", 100.0 * (original_time - min_time) / original_time, "%")
 
 
 if __name__ == "__main__":

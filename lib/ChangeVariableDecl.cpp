@@ -541,6 +541,14 @@ Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& c
     }
 
     Type* targetType = nullptr;
+    // if (typeName.find("__bf16") != string::npos) {
+    //     targetType = Type::getBFloatTy(context);
+    // }
+    // else 
+    if (typeName.find("__fp16") != string::npos) {
+        targetType = Type::getHalfTy(context);
+    }
+    else 
     if (typeName.find("float") != string::npos) {
         targetType = Type::getFloatTy(context);
     } else if (typeName.find("long double") != string::npos) {

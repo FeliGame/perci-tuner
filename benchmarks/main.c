@@ -18,6 +18,8 @@ int comp_test(int a, int b)
     struct MY_STRUCT local_struct;
     struct MY_STRUCT* p = &local_struct;
     struct MY_STRUCT** pp = &p;
+    __fp16 fp16 = 1.0f;
+    fp16 = 1;
     return a - b + global_struct.s2[0] - p->s1;
 }
 
@@ -47,8 +49,6 @@ double fun()
 int main()
 {
     const float m = 32.0;
-    const char* str = "main.c output:";
-    // printf("%s\n", str);
     printf("%lf\n", fun());
     // return 0;
 }

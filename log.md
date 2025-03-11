@@ -203,3 +203,8 @@
 * ChangeVariableDecl: Support static/global struct initializers.
 * transform.py: Ignore run-time failed IR. This cause gsl/diff.c can be searched over.
 * All python scripts are 4-space indented.
+
+# 11
+
+* Support search __fp16.
+* search.py show accelerate rate before & after search.
