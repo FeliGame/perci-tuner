@@ -516,6 +516,21 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
     return modified;
 }
 
+// find the original AllocaInst of given inst
+AllocaInst* ChangeVariableDecl::findOriginalAlloca(Value* value) {
+    while (true) {
+        if (auto *alloca = dyn_cast<AllocaInst>(value)) {
+            return alloca;
+        }
+        if (auto *gep = dyn_cast<GetElementPtrInst>(value)) {
+            value = gep->getPointerOperand();
+        } else {
+            break;
+        }
+    }
+    return nullptr;
+}
+
 void ChangeVariableDecl::repairLoadUsers(LoadInst* newLoad, Type* newType) {
     errs() << "Repair users of new load: " << *newLoad << "\n";
     for (auto *loadUser : newLoad->users()) {
@@ -525,6 +540,19 @@ void ChangeVariableDecl::repairLoadUsers(LoadInst* newLoad, Type* newType) {
             if (newType != funcReturnType) {
                 if (auto *castValue = insertCast(newLoad, funcReturnType, ret)) {
                     ret->setOperand(0, castValue);  // 设置转换后的值为返回值
+                }
+            }
+        }
+        else if (auto store = dyn_cast<StoreInst>(loadUser)) {
+            // If is storeInst, we need to convert newLoad to the type of the store destination.
+            auto *ptrOperand = store->getPointerOperand();
+            if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
+                auto *storeType = allocaInst->getAllocatedType();
+                errs() << "New store type: " << *storeType << "\n";
+                if (newLoad->getType() != storeType) {
+                    if (auto *castValue = insertCast(newLoad, storeType, store)) {
+                        store->setOperand(0, castValue);
+                    }
                 }
             }
         }
@@ -545,10 +573,10 @@ Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& c
     //     targetType = Type::getBFloatTy(context);
     // }
     // else 
-    if (typeName.find("__fp16") != string::npos) {
-        targetType = Type::getHalfTy(context);
-    }
-    else 
+    // if (typeName.find("__fp16") != string::npos) {
+    //     targetType = Type::getHalfTy(context);
+    // }
+    // else 
     if (typeName.find("float") != string::npos) {
         targetType = Type::getFloatTy(context);
     } else if (typeName.find("long double") != string::npos) {
@@ -677,6 +705,17 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
                     }
                 }
 
+                // Get max align
+                unsigned maxAlign = 0;
+                const auto &DL = module.getDataLayout();
+                for (unsigned i = 0; i < sty->getNumElements(); ++i) {
+                    auto *elemType = sty->getElementType(i);
+                    unsigned align = DL.getABITypeAlign(elemType).value();
+                    if (align > maxAlign) {
+                        maxAlign = align;
+                    }
+                }
+
                 // Repair GEP
                 for (auto &F : module) {
                     for (auto &BB : F) {
@@ -710,8 +749,7 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
                                                 load
                                             );
                                             // Set align, copy metadata
-                                            const auto &DL = module.getDataLayout();
-                                            newLoad->setAlignment(Align(DL.getTypeAllocSize(elemType)));
+                                            newLoad->setAlignment(Align(maxAlign));
                                             if (MDNode *N = load->getMetadata("dbg")) {
                                                 newLoad->setMetadata("dbg", N);
                                             }

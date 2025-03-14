@@ -46,6 +46,8 @@ private:
 
     bool repairCasts(Function &F);
 
+    AllocaInst* findOriginalAlloca(Value* value);
+
     void repairLoadUsers(LoadInst* newLoad, Type* newType);
 
     Type* translateValidTypeName(std::string typeName, LLVMContext& context);

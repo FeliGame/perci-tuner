@@ -208,3 +208,9 @@
 
 * Support search __fp16.
 * search.py show accelerate rate before & after search.
+
+# 14
+
+* __fp16's arithmetic inst is casted, so cancel such support.
+* ChangeVariableDecl: Solve incorrect store inst & struct alignment while change struct member's precision, no more fail in gsl/roots.c.
+* transform.py: Record fail config into run_history.csv.

@@ -18,8 +18,20 @@ int comp_test(int a, int b)
     struct MY_STRUCT local_struct;
     struct MY_STRUCT* p = &local_struct;
     struct MY_STRUCT** pp = &p;
-    __fp16 fp16 = 1.0f;
-    fp16 = 1;
+
+    __fp16 fp1 = (__fp16)1.0f, fp2 = (__fp16)2.0f;
+    // 直接使用汇编指令避免发生类型转换
+    fp1 = fp1 + fp2;
+    // asm volatile("fadd %h0, %h1, %h2"
+    //             : "=w"(fp1)
+    //             : "w"(fp1), "w"(fp2));
+    // Apple M1 不支持bf16
+    //     __bf16 bf1 = (__bf16)1.0f, bf2 = (__bf16)2.0f;
+    // bf1 = bf1 + bf2;
+    // asm volatile("fadd %h0, %h1, %h2"
+    //             : "=w"(bf1)
+    //             : "w"(bf1), "w"(bf2));
+
     return a - b + global_struct.s2[0] - p->s1;
 }
 

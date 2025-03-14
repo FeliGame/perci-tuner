@@ -72,6 +72,9 @@ def transform(bitcode_file, var_config, diff):
             print(e.output.decode())
             print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")
             RUNNING_FAIL_TIMES += 1
+            if show_history:
+                data_utils.store_data(float("inf"), "RUNTIME-ERROR", diff)
+            # exit(1)
             # return -2 if crashed when run modified bitcode
             return -2
         current_time = read_main_running_time()
