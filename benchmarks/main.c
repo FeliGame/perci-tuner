@@ -34,7 +34,7 @@ int comp_test(int a, int b)
     //             : "=w"(bf1)
     //             : "w"(bf1), "w"(bf2));
 
-    return a - b + global_struct.s2[0] - p->s1;
+    return a - b + global_struct.s2[0] * (long double)p->s1;
 }
 
 static double fp_test()

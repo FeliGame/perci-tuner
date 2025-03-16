@@ -218,3 +218,4 @@
 # 16
 
 * Native __fp16 arithmetic inst support. Search is also available.
+* ChangeVariableDecl: Remove repairFMulAdd(), because LLVM handle it automatically.

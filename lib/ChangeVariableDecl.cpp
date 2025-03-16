@@ -1,7 +1,7 @@
 // @Author: Guocheng & Guosiyuan NUDT
 // Usage: Change variables' precision according to json.
 // Input: Variable's type config
-// Output: Precision-Changed IR
+// Output: Precision-Changed IR (unrunnable because of incorrect casts)
 
 #include "ChangeVariableDecl.h"
 #include "utils/ParseTypeName.hpp"
@@ -136,46 +136,6 @@ bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
         return true;
     }
     return false;
-}
-
-bool ChangeVariableDecl::repairFMulAdd(CallInst *call, Type* argType) {
-    SmallVector<Value*, 3> args;
-    string newCallName;
-    if(argType == Type::getFloatTy(call->getContext())) {
-        newCallName = "llvm.fmuladd.f32";
-    } else if (argType == Type::getDoubleTy(call->getContext())) {
-        newCallName = "llvm.fmuladd.f64";
-    } else if (argType == Type::getFP128Ty(call->getContext())) {
-        newCallName = "llvm.fmuladd.f128";
-    } else {
-        errs() << "RepairFMulAdd(): Unsupported arg type: " << *argType << "\n";
-        return false;
-    }
-
-    // Insert cast for args
-    for (auto i = 0; i < 3; ++i) {
-        auto *arg = call->getOperand(i);
-        // 统一使用insertCast处理类型转换
-        if (auto *castedArg = insertCast(arg, argType, call)) {
-            args.push_back(castedArg);
-        } else {
-            args.push_back(arg); // 转换失败时保持原参数
-            errs() << "Failed to cast argument " << i << " for fmuladd\n";
-        }
-    }
-
-    auto newCallee = call->getCalledFunction()->getParent()->getOrInsertFunction(newCallName,
-        FunctionType::get(argType, {argType, argType, argType}, false));
-
-    auto *newCall = CallInst::Create(newCallee, args, "", call);
-    newCall->takeName(call);
-    newCall->setDebugLoc(call->getDebugLoc());
-
-    errs() << "RepairFMulAdd(): replace " << *call << " with " << *newCall << "\n";
-    call->replaceAllUsesWith(newCall);
-    instToErase.insert(call);    // erase later to avoid broken iterator
-
-    return true;
 }
 
 // Insert fpext/fptrunc cast if needed
@@ -372,69 +332,41 @@ bool ChangeVariableDecl::repairUserType(User *user) {
     else if (auto *call = dyn_cast<CallInst>(inst)) {
         auto *callee = call->getCalledFunction();
         auto *highestType = findHighestPrecisionType(call);
-        if (callee) {
-            if (callee->getName().startswith("llvm.fmuladd")) {
-                modified |= repairFMulAdd(call, highestType);        
-                if (modified) {
-                    for (auto *callUser : call->users()) {
-                        if (callUser->getType()!= highestType) {
-                            errs() << "repair fmuladd(): incorrect user detected.\n";
-                            repairUserType(callUser);
-                        }
-                    }
-                }
-            } else {
-                bool needRepair = false;
-                SmallVector<Type *, 4> newParamTypes;
-                SmallVector<Value *, 4> newArgs;
+        if (callee && !callee->isVarArg()) {  // Ignore variadic args' call 
+            SmallVector<Type *, 4> newParamTypes;
+            SmallVector<Value *, 4> newArgs;
 
-                unsigned numArgs = call->getNumOperands() - 1; // Subtract 1 for the function itself
+            unsigned numArgs = callee->getFunctionType()->getNumParams(); // Subtract 1 for the function itself
 
-                // Check if the function is variadic（such as declare i32 @printf(ptr noundef, ...) ）
-                bool isVarArg = callee->isVarArg();
+            // Check if any argument type mismatch with the function parameter type
+            for (unsigned i = 0; i < numArgs; ++i) {
+                Value *arg = call->getArgOperand(i);
+                Type *paramType = callee->getFunctionType()->getParamType(i);
 
-                // Check if any argument type mismatch with the function parameter type
-                for (unsigned i = 0; i < numArgs; ++i) {
-                    Value *arg = call->getArgOperand(i);
-                    Type *paramType = nullptr;
-
-                    // For non-variadic functions, get the parameter type from the function signature
-                    if (!isVarArg && i < callee->getFunctionType()->getNumParams()) {
-                        paramType = callee->getFunctionType()->getParamType(i);
-                    } else {
-                        // For variadic functions, use the original argument type
-                        paramType = arg->getType();
-                    }
-
-                    if (arg->getType() != paramType) {
-                        needRepair = true;
-                        // Insert a cast to convert the argument to the expected type
-                        if (auto *castValue = insertCast(arg, paramType, call)) {
-                            newArgs.push_back(castValue); // Use the casted value
-                        } else {
-                            newArgs.push_back(arg); // Use the original argument if cast fails
-                        }
-                    } else {
-                        newArgs.push_back(arg); // Use the original argument
-                    }
-                }
-
-                if (needRepair) {
+                if (arg->getType() != paramType) {
                     modified = true;
-                    CallInst *newCall = CallInst::Create(callee, newArgs, "", call);
-                    newCall->setCallingConv(call->getCallingConv());
-                    newCall->setAttributes(call->getAttributes());
-    
-                    // Copy debug information
-                    if (MDNode *debugLoc = call->getDebugLoc().getAsMDNode()) {
-                        newCall->setDebugLoc(DebugLoc(debugLoc));
+                    // Insert a cast to convert the argument to the expected type
+                    if (auto *castValue = insertCast(arg, paramType, call)) {
+                        newArgs.push_back(castValue); // Use the casted value
+                    } else {
+                        newArgs.push_back(arg); // Use the original argument if cast fails
+                        errs() << "Failed to cast argument " << i;
                     }
-                    call->replaceAllUsesWith(newCall);
-                    instToErase.insert(call);
-    
-                    modified = true;
-                    errs() << "Repaired call instruction with cast: " << *newCall << "\n";
+                } else {
+                    newArgs.push_back(arg); // Use the original argument
                 }
+            }
+
+            if (modified) {
+                CallInst *newCall = CallInst::Create(callee, newArgs, "", call);
+                newCall->takeName(call);
+                newCall->setCallingConv(call->getCallingConv());
+                newCall->setAttributes(call->getAttributes());
+                newCall->setDebugLoc(call->getDebugLoc());
+
+                call->replaceAllUsesWith(newCall);
+                instToErase.insert(call);
+                errs() << "Repaired call instruction with cast: " << *newCall << "\n";
             }
         }
     }

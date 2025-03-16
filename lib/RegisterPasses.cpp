@@ -14,6 +14,7 @@
 #include "SearchVariableDecl.h"
 #include "ChangeVariableDecl.h"
 #include "ChangeFunctionCall.h"
+#include "RepairCast.h"
 #include "IRTiming.h"
 #include "MergeMultiVersion.h"
 
@@ -59,6 +60,10 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 						{
 							PM.addPass(ChangeFunctionCall());
 							return true;
+						}
+						if (Name == "repair_cast")
+						{
+							PM.addPass(RepairCast());
 						}
 						if (Name == "ir_timing")
 						{

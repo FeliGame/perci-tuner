@@ -30,8 +30,6 @@ private:
 
     bool changeAllocaInst(DbgDeclareInst *DDI, Type *newType);
 
-    bool repairFMulAdd(CallInst *call, Type* argType);
-
     Value *insertCast(Value *val, Type *targetType, Instruction *insertBefore);
 
     Type* findHighestPrecisionType(BinaryOperator*);
