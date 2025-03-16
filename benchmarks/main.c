@@ -21,7 +21,9 @@ int comp_test(int a, int b)
 
     __fp16 fp1 = (__fp16)1.0f, fp2 = (__fp16)2.0f;
     // 直接使用汇编指令避免发生类型转换
-    fp1 = fp1 + fp2;
+    fp1 += (fp2 * fp1 + fp2);
+    float f1 = 1.0f, f2 = 2.0f;
+    f1 += (f2 * f1 + f2);
     // asm volatile("fadd %h0, %h1, %h2"
     //             : "=w"(fp1)
     //             : "w"(fp1), "w"(fp2));

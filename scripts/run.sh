@@ -11,6 +11,7 @@
 
 FLAGS=""
 BCS=""
+HALF_PRECISION_SUPPORT="-Xclang -fnative-half-type"
 for arg in "$@"
 do
     if echo "$arg" | grep -q "^--"; then
@@ -27,7 +28,7 @@ do
         echo "SRC_NAME: $SRC_NAME"
         echo "SRC_NO_SUFFIX: $SRC_NO_SUFFIX"
 
-        clang -g -emit-llvm -c $arg -o $SRC_NO_SUFFIX.bc
+        clang -g -emit-llvm -c $arg $HALF_PRECISION_SUPPORT -o $SRC_NO_SUFFIX.bc
         BCS="$BCS $SRC_NO_SUFFIX.bc"  # append bc name to BCS
 
     fi
