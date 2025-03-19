@@ -36,8 +36,6 @@ private:
     
     Type* findHighestPrecisionType(FCmpInst*);
 
-    Type* findHighestPrecisionType(CallInst*);
-
     Type* findHighestPrecisionType(PHINode*);
 
     bool repairUserType(User *user);

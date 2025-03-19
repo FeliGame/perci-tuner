@@ -26,7 +26,6 @@ add_llvm_pass_plugin(PerciTuner
     lib/SearchVariableDecl.cpp
     lib/ChangeVariableDecl.cpp
     lib/ChangeFunctionCall.cpp
-    lib/RepairCast.cpp
     lib/IRTiming.cpp
     lib/MergeMultiVersion.cpp
 )

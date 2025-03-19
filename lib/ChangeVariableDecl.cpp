@@ -56,18 +56,18 @@ bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
     }
 
     if (auto alloca = dyn_cast<AllocaInst>(var)) {
-        alloca->setAllocatedType(newType);
-        alloca->setAlignment(align);
+        IRBuilder<> builder(alloca);
+        auto *newAlloca = builder.CreateAlloca(newType, nullptr, alloca->getName());
+        newAlloca->setAlignment(align);
+        instToErase.insert(alloca);
 
         for (auto *user : alloca->users()) {
             if (auto store = dyn_cast<StoreInst>(user)) {
+                // StoreInst has no users, replace its operand directly.
                 auto *oldValue = store->getOperand(0);
-                if (oldValue->getType() == newType) continue;
-                if (oldValue->getType()->isFloatingPointTy() && newType->isFloatingPointTy()) {
-                    if (auto *newValue = insertCast(oldValue, newType, store)) {
-                        store->setOperand(0, newValue);
-                        store->setAlignment(align);
-                    }
+                if (auto *newValue = insertCast(oldValue, newType, store)) {
+                    store->setOperand(0, newValue);
+                    store->setAlignment(align);
                 }
             }
             else if (auto load = dyn_cast<LoadInst>(user)) {
@@ -100,6 +100,8 @@ bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
 
                 gep->replaceAllUsesWith(newGEP);
                 instToErase.insert(gep);
+                for (auto *user : newGEP->users())
+                    repairUserType(user);
             }
             else if (auto call = dyn_cast<CallInst>(user)) {
                 // Handle llvm.memcpy calls(it generated while alloc array size)
@@ -127,12 +129,17 @@ bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
                         // Replace the old call with the new one
                         call->replaceAllUsesWith(newCall);
                         instToErase.insert(call);    // erase later to avoid broken iterator
+                        for (auto *user : newCall->users())
+                            repairUserType(user);
 
                         errs() << "New llvm.memcpy call: " << *newCall << "\n";
                     }
                 }
             }
         }
+        
+        newAlloca->takeName(alloca);
+        alloca->replaceAllUsesWith(newAlloca);
         return true;
     }
     return false;
@@ -184,20 +191,6 @@ Type* ChangeVariableDecl::findHighestPrecisionType(FCmpInst *fcmp) {
         auto *operand = fcmp->getOperand(i);
         if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
             highestType = operand->getType();
-        }
-    }
-    return highestType;
-}
-
-Type* ChangeVariableDecl::findHighestPrecisionType(CallInst *call) {
-    Type *highestType = nullptr;
-    auto *callee = call->getCalledFunction();
-    if (callee && callee->getName().startswith("llvm.fmuladd")) {
-        for (unsigned i = 0; i < 3; ++i) {  // 有4个操作数，但第四个固定为ptr，使用最高精度
-            auto *operand = call->getOperand(i);
-            if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
-                highestType = operand->getType();
-            }
         }
     }
     return highestType;
@@ -331,7 +324,6 @@ bool ChangeVariableDecl::repairUserType(User *user) {
 
     else if (auto *call = dyn_cast<CallInst>(inst)) {
         auto *callee = call->getCalledFunction();
-        auto *highestType = findHighestPrecisionType(call);
         if (callee && !callee->isVarArg()) {  // Ignore variadic args' call 
             SmallVector<Type *, 4> newParamTypes;
             SmallVector<Value *, 4> newArgs;
@@ -366,6 +358,9 @@ bool ChangeVariableDecl::repairUserType(User *user) {
 
                 call->replaceAllUsesWith(newCall);
                 instToErase.insert(call);
+                for (auto *user : newCall->users()) {
+                    repairUserType(user);
+                }
                 errs() << "Repaired call instruction with cast: " << *newCall << "\n";
             }
         }
@@ -373,18 +368,16 @@ bool ChangeVariableDecl::repairUserType(User *user) {
     else if (auto phi = dyn_cast<PHINode>(inst)) {
         auto *highestType = findHighestPrecisionType(phi);
 
-        bool changed = false;
-
         // 检查是否需要创建新的 PHINode
         for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
             Value* oldVal = phi->getIncomingValue(i);
             if (oldVal->getType() != highestType) {
-                changed = true;
+                modified = true;
                 break;
             }
         }
 
-        if (changed) {
+        if (modified) {
             // 创建新的 PHINode，类型为 highestType
             auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi);
             for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
@@ -403,6 +396,9 @@ bool ChangeVariableDecl::repairUserType(User *user) {
             }
             phi->replaceAllUsesWith(newPhi);
             instToErase.insert(phi);
+            for (auto *user : newPhi->users()) {
+                repairUserType(user);
+            }
         }
     }
 

@@ -219,3 +219,7 @@
 
 * Native __fp16 arithmetic inst support. Search is also available.
 * ChangeVariableDecl: Remove repairFMulAdd(), because LLVM handle it automatically.
+
+# 17
+
+* ChangeVariableDecl: Use new AllocaInst to change type, rather than use the old one, add repairUserType() to GEP, CallInst, PHINode (Maybe LLVM handle them automatically, I don't know).
