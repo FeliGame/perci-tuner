@@ -82,7 +82,8 @@ bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
 
                 load->replaceAllUsesWith(newLoad);
                 instToErase.insert(load);    // erase later to avoid broken iterator
-                repairLoadUsers(newLoad, newType);
+                for (auto *user : newLoad->users())
+                    repairUserType(user);
             }
             else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
                 SmallVector<Value*, 4> indices;
@@ -223,7 +224,33 @@ bool ChangeVariableDecl::repairUserType(User *user) {
     errs() << "RepairUser: " << *inst << "\n";
     bool modified = false;
 
-    if (auto *unaOp = dyn_cast<UnaryOperator>(inst)) {
+    if (auto ret = dyn_cast<ReturnInst>(inst)) {
+        Value *retVal = ret->getReturnValue();
+        if (!retVal) return false;  // void return
+        
+        Type *funcReturnType = ret->getFunction()->getReturnType();
+        if (retVal->getType() != funcReturnType) {
+            if (auto *castValue = insertCast(retVal, funcReturnType, ret)) {
+                ret->setOperand(0, castValue);
+                modified = true;
+            }
+        }
+    }
+    else if (auto store = dyn_cast<StoreInst>(inst)) {
+        Value *load = store->getOperand(0);
+        auto *ptrOperand = store->getPointerOperand();
+        if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
+            auto *storeType = allocaInst->getAllocatedType();
+            errs() << "New store type: " << *storeType << "\n";
+            if (load->getType() != storeType) {
+                if (auto *castValue = insertCast(load, storeType, store)) {
+                    store->setOperand(0, castValue);
+                    modified = true;
+                }
+            }
+        }
+    }
+    else if (auto *unaOp = dyn_cast<UnaryOperator>(inst)) {
         auto *operand = unaOp->getOperand(0);
         if (operand->getType() != unaOp->getType()) {
             errs() << "RepairUser: Unary operand type mismatch\n";
@@ -269,12 +296,6 @@ bool ChangeVariableDecl::repairUserType(User *user) {
             binOp->replaceAllUsesWith(newBinOp);
             instToErase.insert(binOp);
             modified = true;
-
-            for (auto *binOpUser : newBinOp->users()) {
-                if (binOpUser->getType() != highestType) {
-                    repairUserType(binOpUser);
-                }
-            }
         }
     }
     // Same as BinOp
@@ -313,12 +334,6 @@ bool ChangeVariableDecl::repairUserType(User *user) {
             fcmp->replaceAllUsesWith(newFcmp);
             instToErase.insert(fcmp);
             modified = true;
-
-            for (auto *fcmpUser : newFcmp->users()) {
-                if (fcmpUser->getType() != Type::getInt1Ty(fcmpUser->getContext())) {
-                    repairUserType(fcmpUser);
-                }
-            }
         }
     }
 
@@ -358,9 +373,6 @@ bool ChangeVariableDecl::repairUserType(User *user) {
 
                 call->replaceAllUsesWith(newCall);
                 instToErase.insert(call);
-                for (auto *user : newCall->users()) {
-                    repairUserType(user);
-                }
                 errs() << "Repaired call instruction with cast: " << *newCall << "\n";
             }
         }
@@ -396,9 +408,12 @@ bool ChangeVariableDecl::repairUserType(User *user) {
             }
             phi->replaceAllUsesWith(newPhi);
             instToErase.insert(phi);
-            for (auto *user : newPhi->users()) {
-                repairUserType(user);
-            }
+        }
+    }
+
+    if (modified) {
+        for (auto *user : inst->users()) {
+            repairUserType(user);
         }
     }
 
@@ -457,35 +472,6 @@ AllocaInst* ChangeVariableDecl::findOriginalAlloca(Value* value) {
         }
     }
     return nullptr;
-}
-
-void ChangeVariableDecl::repairLoadUsers(LoadInst* newLoad, Type* newType) {
-    errs() << "Repair users of new load: " << *newLoad << "\n";
-    for (auto *loadUser : newLoad->users()) {
-        if (auto ret = dyn_cast<ReturnInst>(loadUser))
-        {
-            auto *funcReturnType = ret->getFunction()->getReturnType();
-            if (newType != funcReturnType) {
-                if (auto *castValue = insertCast(newLoad, funcReturnType, ret)) {
-                    ret->setOperand(0, castValue);  // 设置转换后的值为返回值
-                }
-            }
-        }
-        else if (auto store = dyn_cast<StoreInst>(loadUser)) {
-            // If is storeInst, we need to convert newLoad to the type of the store destination.
-            auto *ptrOperand = store->getPointerOperand();
-            if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
-                auto *storeType = allocaInst->getAllocatedType();
-                errs() << "New store type: " << *storeType << "\n";
-                if (newLoad->getType() != storeType) {
-                    if (auto *castValue = insertCast(newLoad, storeType, store)) {
-                        store->setOperand(0, castValue);
-                    }
-                }
-            }
-        }
-        else repairUserType(loadUser);
-    }
 }
 
 // Translate Perci-Tuner supported typename into llvm type
@@ -684,7 +670,8 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
                                             
                                             load->replaceAllUsesWith(newLoad);
                                             instToErase.insert(load);
-                                            repairLoadUsers(newLoad, elemType);
+                                            for (auto *loadUser : newLoad->users())
+                                                repairUserType(loadUser);
                                         }
                                     }
                                 }

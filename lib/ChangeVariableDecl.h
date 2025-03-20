@@ -44,8 +44,6 @@ private:
 
     AllocaInst* findOriginalAlloca(Value* value);
 
-    void repairLoadUsers(LoadInst* newLoad, Type* newType);
-
     Type* translateValidTypeName(std::string typeName, LLVMContext& context);
 
     bool changeStructDeclarations(Module &module);
