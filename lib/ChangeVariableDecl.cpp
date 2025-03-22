@@ -216,6 +216,7 @@ bool ChangeVariableDecl::repairUserType(User *user) {
     }
 
     auto *inst = cast<Instruction>(user);
+    auto *newInst = inst;
     if (isa<FPExtInst>(inst) || isa<FPTruncInst>(inst)) {
         errs() << "RepairUser: skip cast inst: " << *inst << "\n";
         return false;
@@ -237,13 +238,13 @@ bool ChangeVariableDecl::repairUserType(User *user) {
         }
     }
     else if (auto store = dyn_cast<StoreInst>(inst)) {
-        Value *load = store->getOperand(0);
+        Value *oldValue = store->getOperand(0);
         auto *ptrOperand = store->getPointerOperand();
         if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
             auto *storeType = allocaInst->getAllocatedType();
             errs() << "New store type: " << *storeType << "\n";
-            if (load->getType() != storeType) {
-                if (auto *castValue = insertCast(load, storeType, store)) {
+            if (oldValue->getType() != storeType) {
+                if (auto *castValue = insertCast(oldValue, storeType, store)) {
                     store->setOperand(0, castValue);
                     modified = true;
                 }
@@ -283,7 +284,7 @@ bool ChangeVariableDecl::repairUserType(User *user) {
         }
 
         if (operandsModified || binOp->getType() != highestType) {
-            errs() << "RepairUser: binOp type mismatch\n";
+            errs() << "RepairUser: binOp type mismatch\n";            
             IRBuilder<> builder(binOp);
             auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
                                                  newOperands[0], 
@@ -295,6 +296,7 @@ bool ChangeVariableDecl::repairUserType(User *user) {
 
             binOp->replaceAllUsesWith(newBinOp);
             instToErase.insert(binOp);
+            newInst = dyn_cast<Instruction>(newBinOp);
             modified = true;
         }
     }
@@ -333,6 +335,7 @@ bool ChangeVariableDecl::repairUserType(User *user) {
 
             fcmp->replaceAllUsesWith(newFcmp);
             instToErase.insert(fcmp);
+            newInst = dyn_cast<Instruction>(newFcmp);
             modified = true;
         }
     }
@@ -373,6 +376,7 @@ bool ChangeVariableDecl::repairUserType(User *user) {
 
                 call->replaceAllUsesWith(newCall);
                 instToErase.insert(call);
+                newInst = dyn_cast<Instruction>(newCall);
                 errs() << "Repaired call instruction with cast: " << *newCall << "\n";
             }
         }
@@ -408,11 +412,12 @@ bool ChangeVariableDecl::repairUserType(User *user) {
             }
             phi->replaceAllUsesWith(newPhi);
             instToErase.insert(phi);
+            newInst = dyn_cast<Instruction>(newPhi);
         }
     }
 
     if (modified) {
-        for (auto *user : inst->users()) {
+        for (auto *user : newInst->users()) {
             repairUserType(user);
         }
     }

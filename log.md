@@ -227,3 +227,7 @@
 # 20
 
 * ChangeVariableDecl: Merge repairLoadUsers() into repairUserType().
+
+# 21
+
+* Call repairUserType() unified recursively.
