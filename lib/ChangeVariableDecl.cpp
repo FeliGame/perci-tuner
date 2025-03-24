@@ -208,6 +208,210 @@ Type* ChangeVariableDecl::findHighestPrecisionType(PHINode* phi) {
     return highestType;
 }
 
+Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
+    Value *retVal = ret->getReturnValue();
+    if (!retVal) return nullptr;  // void return
+    
+    Type *funcReturnType = ret->getFunction()->getReturnType();
+    if (retVal->getType() != funcReturnType) {
+        if (auto *castValue = insertCast(retVal, funcReturnType, ret)) {
+            ret->setOperand(0, castValue);
+            return dyn_cast<Instruction>(ret);
+        }
+    }
+    return nullptr;  // nothing changed
+}
+
+Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store) {
+    Value *oldValue = store->getOperand(0);
+    auto *ptrOperand = store->getPointerOperand();
+    if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
+        auto *storeType = allocaInst->getAllocatedType();
+        errs() << "New store type: " << *storeType << "\n";
+        if (oldValue->getType() != storeType) {
+            if (auto *castValue = insertCast(oldValue, storeType, store)) {
+                store->setOperand(0, castValue);
+                return dyn_cast<Instruction>(store);
+            }
+        }
+    }
+    return nullptr;
+}
+
+Instruction* ChangeVariableDecl::repairUnaryOp(UnaryOperator* unaOp) {
+    auto *operand = unaOp->getOperand(0);
+    if (operand->getType() != unaOp->getType()) {
+        errs() << "RepairUser: Unary operand type mismatch\n";
+        if (auto *newOperand = insertCast(operand, unaOp->getType(), unaOp)) {
+            unaOp->setOperand(0, newOperand);
+            return dyn_cast<Instruction>(unaOp);
+        }
+    }
+    return nullptr;
+}
+
+Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
+    bool operandsModified = false;
+    SmallVector<Value*, 2> newOperands;
+    auto *highestType = findHighestPrecisionType(binOp);
+    
+    for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
+        auto *operand = binOp->getOperand(i);
+        // type of src operands not match
+        if (operand->getType() != highestType) {
+            errs() << "RepairUser: Binary operand " << i << " of type " << *operand->getType() 
+                   << " != target type " << *highestType<< ", casting...\n";
+            if (auto *newOperand = insertCast(operand, highestType, binOp)) {
+                newOperands.push_back(newOperand);
+                operandsModified = true;
+            }
+        } else {
+            newOperands.push_back(operand);  // keep original operands
+        }
+    }
+
+    if (operandsModified || binOp->getType() != highestType) {
+        errs() << "RepairUser: binOp type mismatch\n";            
+        IRBuilder<> builder(binOp);
+        auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
+                                             newOperands[0], 
+                                             newOperands[1]);
+        newBinOp->takeName(binOp);
+        if (auto *newBinOpInst = dyn_cast<Instruction>(newBinOp)) {
+            newBinOpInst->setDebugLoc(binOp->getDebugLoc());
+        }
+
+        binOp->replaceAllUsesWith(newBinOp);
+        instToErase.insert(binOp);
+        return dyn_cast<Instruction>(newBinOp);
+    }
+
+    return nullptr;
+}
+
+Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
+    bool operandsModified = false;
+    SmallVector<Value*, 2> newOperands;
+    auto *highestType = findHighestPrecisionType(fcmp);
+    
+    for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
+        auto *operand = fcmp->getOperand(i);
+        if (operand->getType() != highestType) {
+            errs() << "RepairUser: FCmp operand " << i << " of type " << *operand->getType() 
+                << " != target type " << *highestType << ", casting...\n";
+            if (auto *newOperand = insertCast(operand, highestType, fcmp)) {
+                newOperands.push_back(newOperand);
+                operandsModified = true;
+            } else {
+                newOperands.push_back(operand);
+            }
+        } else {
+            newOperands.push_back(operand);
+        }
+    }
+
+    if (operandsModified || fcmp->getType() != Type::getInt1Ty(fcmp->getContext())) {
+        errs() << "RepairUser: FCmp type mismatch\n";
+        IRBuilder<> builder(fcmp);
+        auto *newFcmp = builder.CreateFCmp(fcmp->getPredicate(), 
+                                            newOperands[0], 
+                                            newOperands[1]);
+        newFcmp->takeName(fcmp);
+        if (auto *newFcmpInst = dyn_cast<Instruction>(newFcmp)) {
+            newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
+        }
+
+        fcmp->replaceAllUsesWith(newFcmp);
+        instToErase.insert(fcmp);
+        return dyn_cast<Instruction>(newFcmp);
+    }
+
+    return nullptr;
+}
+
+Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
+    auto *callee = call->getCalledFunction();
+    if (callee && !callee->isVarArg()) {  // Ignore variadic args' call 
+        bool modified = false;
+        SmallVector<Type *, 4> newParamTypes;
+        SmallVector<Value *, 4> newArgs;
+
+        unsigned numArgs = callee->getFunctionType()->getNumParams(); // Subtract 1 for the function itself
+
+        // Check if any argument type mismatch with the function parameter type
+        for (unsigned i = 0; i < numArgs; ++i) {
+            Value *arg = call->getArgOperand(i);
+            Type *paramType = callee->getFunctionType()->getParamType(i);
+
+            if (arg->getType() != paramType) {
+                modified = true;
+                // Insert a cast to convert the argument to the expected type
+                if (auto *castValue = insertCast(arg, paramType, call)) {
+                    newArgs.push_back(castValue); // Use the casted value
+                } else {
+                    newArgs.push_back(arg); // Use the original argument if cast fails
+                    errs() << "Failed to cast argument " << i;
+                }
+            } else {
+                newArgs.push_back(arg); // Use the original argument
+            }
+        }
+
+        if (modified) {
+            CallInst *newCall = CallInst::Create(callee, newArgs, "", call);
+            newCall->takeName(call);
+            newCall->setCallingConv(call->getCallingConv());
+            newCall->setAttributes(call->getAttributes());
+            newCall->setDebugLoc(call->getDebugLoc());
+
+            call->replaceAllUsesWith(newCall);
+            instToErase.insert(call);
+            errs() << "Repaired call instruction with cast: " << *newCall << "\n";
+            return dyn_cast<Instruction>(newCall);
+        }
+    }
+
+    return nullptr;
+}
+
+Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
+    auto *highestType = findHighestPrecisionType(phi);
+    bool modified = false;
+
+    // 检查是否需要创建新的 PHINode
+    for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
+        Value* oldVal = phi->getIncomingValue(i);
+        if (oldVal->getType() != highestType) {
+            modified = true;
+            break;
+        }
+    }
+
+    if (modified) {
+        // 创建新的 PHINode，类型为 highestType
+        auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi);
+        for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
+            auto *oldVal = phi->getIncomingValue(i);
+            auto *newVal = oldVal;
+            // pay attention: insertCast shouldn't at 'phi', will cause 'Instruction does not dominate all uses!'
+            if (oldVal->getType() != highestType) {
+                errs() << "RepairUser: PHI operand " << i << " of type " << *oldVal->getType()
+                    << "!= target type " << *highestType << ", casting...\n";
+                auto *incomingBlock = phi->getIncomingBlock(i);
+                auto *insertBefore = incomingBlock->getTerminator();
+                newVal = insertCast(oldVal, highestType, insertBefore);
+            }
+
+            newPhi->addIncoming(newVal, phi->getIncomingBlock(i));
+        }
+        phi->replaceAllUsesWith(newPhi);
+        instToErase.insert(phi);
+        return dyn_cast<Instruction>(newPhi);
+    }
+
+    return nullptr;
+}
+
 // Make inst operands type consistent
 bool ChangeVariableDecl::repairUserType(User *user) {
     if (!isa<Instruction>(user)) {
@@ -216,213 +420,37 @@ bool ChangeVariableDecl::repairUserType(User *user) {
     }
 
     auto *inst = cast<Instruction>(user);
-    auto *newInst = inst;
+    Instruction *newInst = nullptr;
     if (isa<FPExtInst>(inst) || isa<FPTruncInst>(inst)) {
         errs() << "RepairUser: skip cast inst: " << *inst << "\n";
         return false;
     }
 
     errs() << "RepairUser: " << *inst << "\n";
-    bool modified = false;
 
-    if (auto ret = dyn_cast<ReturnInst>(inst)) {
-        Value *retVal = ret->getReturnValue();
-        if (!retVal) return false;  // void return
-        
-        Type *funcReturnType = ret->getFunction()->getReturnType();
-        if (retVal->getType() != funcReturnType) {
-            if (auto *castValue = insertCast(retVal, funcReturnType, ret)) {
-                ret->setOperand(0, castValue);
-                modified = true;
-            }
-        }
-    }
-    else if (auto store = dyn_cast<StoreInst>(inst)) {
-        Value *oldValue = store->getOperand(0);
-        auto *ptrOperand = store->getPointerOperand();
-        if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
-            auto *storeType = allocaInst->getAllocatedType();
-            errs() << "New store type: " << *storeType << "\n";
-            if (oldValue->getType() != storeType) {
-                if (auto *castValue = insertCast(oldValue, storeType, store)) {
-                    store->setOperand(0, castValue);
-                    modified = true;
-                }
-            }
-        }
-    }
-    else if (auto *unaOp = dyn_cast<UnaryOperator>(inst)) {
-        auto *operand = unaOp->getOperand(0);
-        if (operand->getType() != unaOp->getType()) {
-            errs() << "RepairUser: Unary operand type mismatch\n";
-            IRBuilder<> builder(unaOp);
-            auto *newOperand = insertCast(operand, unaOp->getType(), unaOp);
-            if (newOperand) {
-                unaOp->setOperand(0, newOperand);
-                modified = true;
-            }
-        }
-    }
-    else if (auto *binOp = dyn_cast<BinaryOperator>(inst)) {
-        bool operandsModified = false;
-        SmallVector<Value*, 2> newOperands;
-        auto *highestType = findHighestPrecisionType(binOp);
-        
-        for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
-            auto *operand = binOp->getOperand(i);
-            // type of src operands not match
-            if (operand->getType() != highestType) {
-                errs() << "RepairUser: Binary operand " << i << " of type " << *operand->getType() 
-                       << " != target type " << *highestType<< ", casting...\n";
-                if (auto *newOperand = insertCast(operand, highestType, binOp)) {
-                    newOperands.push_back(newOperand);
-                    operandsModified = true;
-                }
-            } else {
-                newOperands.push_back(operand);  // keep original operands
-            }
-        }
+    if (auto ret = dyn_cast<ReturnInst>(inst))
+        newInst = repairReturnInst(ret);
+    else if (auto store = dyn_cast<StoreInst>(inst))
+        newInst = repairStoreInst(store);
+    else if (auto *unaOp = dyn_cast<UnaryOperator>(inst))
+        newInst = repairUnaryOp(unaOp);
+    else if (auto *binOp = dyn_cast<BinaryOperator>(inst))
+        newInst = repairBinaryOp(binOp);
+    else if (auto *fcmp = dyn_cast<FCmpInst>(inst))
+        newInst = repairFCmpInst(fcmp);
+    else if (auto *call = dyn_cast<CallInst>(inst))
+        newInst = repairCallInst(call);
+    else if (auto *phi = dyn_cast<PHINode>(inst))
+        newInst = repairPHINode(phi);
 
-        if (operandsModified || binOp->getType() != highestType) {
-            errs() << "RepairUser: binOp type mismatch\n";            
-            IRBuilder<> builder(binOp);
-            auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
-                                                 newOperands[0], 
-                                                 newOperands[1]);
-            newBinOp->takeName(binOp);
-            if (auto *newBinOpInst = dyn_cast<Instruction>(newBinOp)) {
-                newBinOpInst->setDebugLoc(binOp->getDebugLoc());
-            }
-
-            binOp->replaceAllUsesWith(newBinOp);
-            instToErase.insert(binOp);
-            newInst = dyn_cast<Instruction>(newBinOp);
-            modified = true;
-        }
-    }
-    // Same as BinOp
-    else if (auto *fcmp = dyn_cast<FCmpInst>(inst)) {
-        bool operandsModified = false;
-        SmallVector<Value*, 2> newOperands;
-        auto *highestType = findHighestPrecisionType(fcmp);
-        
-        for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
-            auto *operand = fcmp->getOperand(i);
-            if (operand->getType() != highestType) {
-                errs() << "RepairUser: FCmp operand " << i << " of type " << *operand->getType() 
-                    << " != target type " << *highestType << ", casting...\n";
-                if (auto *newOperand = insertCast(operand, highestType, fcmp)) {
-                    newOperands.push_back(newOperand);
-                    operandsModified = true;
-                } else {
-                    newOperands.push_back(operand);
-                }
-            } else {
-                newOperands.push_back(operand);
-            }
-        }
-
-        if (operandsModified || fcmp->getType() != Type::getInt1Ty(fcmp->getContext())) {
-            errs() << "RepairUser: FCmp type mismatch\n";
-            IRBuilder<> builder(fcmp);
-            auto *newFcmp = builder.CreateFCmp(fcmp->getPredicate(), 
-                                                newOperands[0], 
-                                                newOperands[1]);
-            newFcmp->takeName(fcmp);
-            if (auto *newFcmpInst = dyn_cast<Instruction>(newFcmp)) {
-                newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
-            }
-
-            fcmp->replaceAllUsesWith(newFcmp);
-            instToErase.insert(fcmp);
-            newInst = dyn_cast<Instruction>(newFcmp);
-            modified = true;
-        }
-    }
-
-    else if (auto *call = dyn_cast<CallInst>(inst)) {
-        auto *callee = call->getCalledFunction();
-        if (callee && !callee->isVarArg()) {  // Ignore variadic args' call 
-            SmallVector<Type *, 4> newParamTypes;
-            SmallVector<Value *, 4> newArgs;
-
-            unsigned numArgs = callee->getFunctionType()->getNumParams(); // Subtract 1 for the function itself
-
-            // Check if any argument type mismatch with the function parameter type
-            for (unsigned i = 0; i < numArgs; ++i) {
-                Value *arg = call->getArgOperand(i);
-                Type *paramType = callee->getFunctionType()->getParamType(i);
-
-                if (arg->getType() != paramType) {
-                    modified = true;
-                    // Insert a cast to convert the argument to the expected type
-                    if (auto *castValue = insertCast(arg, paramType, call)) {
-                        newArgs.push_back(castValue); // Use the casted value
-                    } else {
-                        newArgs.push_back(arg); // Use the original argument if cast fails
-                        errs() << "Failed to cast argument " << i;
-                    }
-                } else {
-                    newArgs.push_back(arg); // Use the original argument
-                }
-            }
-
-            if (modified) {
-                CallInst *newCall = CallInst::Create(callee, newArgs, "", call);
-                newCall->takeName(call);
-                newCall->setCallingConv(call->getCallingConv());
-                newCall->setAttributes(call->getAttributes());
-                newCall->setDebugLoc(call->getDebugLoc());
-
-                call->replaceAllUsesWith(newCall);
-                instToErase.insert(call);
-                newInst = dyn_cast<Instruction>(newCall);
-                errs() << "Repaired call instruction with cast: " << *newCall << "\n";
-            }
-        }
-    }
-    else if (auto phi = dyn_cast<PHINode>(inst)) {
-        auto *highestType = findHighestPrecisionType(phi);
-
-        // 检查是否需要创建新的 PHINode
-        for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
-            Value* oldVal = phi->getIncomingValue(i);
-            if (oldVal->getType() != highestType) {
-                modified = true;
-                break;
-            }
-        }
-
-        if (modified) {
-            // 创建新的 PHINode，类型为 highestType
-            auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi);
-            for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
-                auto *oldVal = phi->getIncomingValue(i);
-                auto *newVal = oldVal;
-                // pay attention: insertCast shouldn't at 'phi', will cause 'Instruction does not dominate all uses!'
-                if (oldVal->getType() != highestType) {
-                    errs() << "RepairUser: PHI operand " << i << " of type " << *oldVal->getType()
-                        << "!= target type " << *highestType << ", casting...\n";
-                    auto *incomingBlock = phi->getIncomingBlock(i);
-                    auto *insertBefore = incomingBlock->getTerminator();
-                    newVal = insertCast(oldVal, highestType, insertBefore);
-                }
-
-                newPhi->addIncoming(newVal, phi->getIncomingBlock(i));
-            }
-            phi->replaceAllUsesWith(newPhi);
-            instToErase.insert(phi);
-            newInst = dyn_cast<Instruction>(newPhi);
-        }
-    }
-
-    if (modified) {
+    if (newInst) {
         for (auto *user : newInst->users()) {
             repairUserType(user);
         }
+        return true;
     }
 
-    return modified;
+    return false;
 }
 
 // Remove redundant & Replace wrong fpext/fptrunc insts

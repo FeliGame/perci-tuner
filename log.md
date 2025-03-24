@@ -231,3 +231,7 @@
 # 21
 
 * Call repairUserType() unified recursively.
+
+# 24
+
+* ChangeVariableDecl: Decouple repairUserType().

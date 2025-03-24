@@ -38,6 +38,20 @@ private:
 
     Type* findHighestPrecisionType(PHINode*);
 
+    Instruction* repairReturnInst(ReturnInst *ret);
+
+    Instruction* repairStoreInst(StoreInst *store);
+
+    Instruction* repairUnaryOp(UnaryOperator *unaOp);
+
+    Instruction* repairBinaryOp(BinaryOperator *binOp);
+
+    Instruction* repairFCmpInst(FCmpInst *fcmp);
+
+    Instruction* repairCallInst(CallInst *call);
+
+    Instruction* repairPHINode(PHINode *phi);
+
     bool repairUserType(User *user);
 
     bool repairCasts(Function &F);
