@@ -682,8 +682,31 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
                                     gep->replaceAllUsesWith(newGEP);
                                     instToErase.insert(gep);
 
+                                    if (auto *alloca = dyn_cast<AllocaInst>(gep->getPointerOperand())) {
+                                        alloca->setAlignment(Align(maxAlign));
+                                    }
+
                                     for (auto *user : newGEP->users()) {
-                                        if (auto *load = dyn_cast<LoadInst>(user)) {
+                                        if (auto *store = dyn_cast<StoreInst>(user)) {
+                                            auto *value = store->getValueOperand();
+                                            auto *ptr = store->getPointerOperand();
+                                            if (ptr == newGEP) {
+                                                auto *structType = cast<StructType>(gep->getSourceElementType());
+                                                auto *lastIndex = gep->idx_end() - 1; // 获取最后一个索引
+                                                unsigned elementIndex = cast<ConstantInt>(lastIndex->get())->getZExtValue();
+                                                auto *elementType = structType->getElementType(elementIndex);
+
+                                                if (value->getType() != elementType) {
+                                                    IRBuilder<> builder(store);
+                                                    auto *newValue = builder.CreateFPCast(value, elementType);
+                                                    store->setOperand(0, newValue);
+                                                    store->setAlignment(Align(maxAlign));
+                                                    for (auto *user : store->users())
+                                                        repairUserType(user);
+                                                }
+                                            }
+                                        }
+                                        else if (auto *load = dyn_cast<LoadInst>(user)) {
                                             auto *lastIndex = gep->idx_end() - 1; // 获取最后一个索引
                                             unsigned elementIndex = cast<ConstantInt>(lastIndex->get())->getZExtValue();
                                             auto *elemType = sty->getElementType(elementIndex);

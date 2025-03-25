@@ -235,3 +235,7 @@
 # 24
 
 * ChangeVariableDecl: Decouple repairUserType().
+
+# 24
+
+* ChangeVariableDecl: repair Alloca & StoreInst in changeStructDeclarations().
