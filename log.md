@@ -239,3 +239,7 @@
 # 24
 
 * ChangeVariableDecl: repair Alloca & StoreInst in changeStructDeclarations().
+
+# 30
+
+* ChangeVariableDecl: Repair Alloca's users after all allocas changed.

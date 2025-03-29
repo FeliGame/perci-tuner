@@ -59,91 +59,103 @@ bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
         IRBuilder<> builder(alloca);
         auto *newAlloca = builder.CreateAlloca(newType, nullptr, alloca->getName());
         newAlloca->setAlignment(align);
-        instToErase.insert(alloca);
-
-        for (auto *user : alloca->users()) {
-            if (auto store = dyn_cast<StoreInst>(user)) {
-                // StoreInst has no users, replace its operand directly.
-                auto *oldValue = store->getOperand(0);
-                if (auto *newValue = insertCast(oldValue, newType, store)) {
-                    store->setOperand(0, newValue);
-                    store->setAlignment(align);
-                }
-            }
-            else if (auto load = dyn_cast<LoadInst>(user)) {
-                auto *oldType = load->getType();
-                if (oldType == newType) continue;
-
-                auto *newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
-                newLoad->setAlignment(align);
-                if (MDNode *N = load->getMetadata("dbg")) {
-                    newLoad->setMetadata("dbg", N);
-                }
-
-                load->replaceAllUsesWith(newLoad);
-                instToErase.insert(load);    // erase later to avoid broken iterator
-                for (auto *user : newLoad->users())
-                    repairUserType(user);
-            }
-            else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
-                SmallVector<Value*, 4> indices;
-                for (auto &index : gep->indices()) {
-                    indices.push_back(index.get());
-                }
-
-                auto *newGEP = GetElementPtrInst::Create(
-                    newType,
-                    gep->getPointerOperand(),
-                    indices,
-                    gep->getName(),         // inst name
-                    gep                     // inst loc
-                );
-
-                gep->replaceAllUsesWith(newGEP);
-                instToErase.insert(gep);
-                for (auto *user : newGEP->users())
-                    repairUserType(user);
-            }
-            else if (auto call = dyn_cast<CallInst>(user)) {
-                // Handle llvm.memcpy calls(it generated while alloc array size)
-                if (auto *callee = call->getCalledFunction()) {
-                    if (callee->getName() == "llvm.memcpy.p0.p0.i64") {
-                        errs() << "Changing llvm.memcpy call: " << *call << "\n";
-
-                        auto *dest = call->getArgOperand(0);
-                        auto *src = call->getArgOperand(1);
-                        auto *size = call->getArgOperand(2);
-
-                        uint64_t newSize = 0;
-                        if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
-                            newSize = arrayType->getNumElements() * arrayType->getElementType()->getPrimitiveSizeInBits() / 8;
-                        } else {
-                            newSize = newType->getPrimitiveSizeInBits() / 8;
-                        }
-
-                        // Create a new constant for the new size
-                        auto *newSizeConstant = ConstantInt::get(size->getType(), newSize);
-
-                        // Create a new llvm.memcpy call with the updated parameters
-                        auto *newCall = CallInst::Create(callee, {dest, src, newSizeConstant, call->getArgOperand(3)}, "", call);
-
-                        // Replace the old call with the new one
-                        call->replaceAllUsesWith(newCall);
-                        instToErase.insert(call);    // erase later to avoid broken iterator
-                        for (auto *user : newCall->users())
-                            repairUserType(user);
-
-                        errs() << "New llvm.memcpy call: " << *newCall << "\n";
-                    }
-                }
-            }
-        }
-        
         newAlloca->takeName(alloca);
+        newAllocas.insert(newAlloca);
+        instToErase.insert(alloca);
         alloca->replaceAllUsesWith(newAlloca);
         return true;
     }
     return false;
+}
+
+void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
+    auto newType = alloca->getAllocatedType();
+    Align align;
+
+    if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
+        auto *elementType = arrayType->getElementType();
+        align = Align(elementType->getPrimitiveSizeInBits() / 8);
+    } else {
+        align = Align(newType->getPrimitiveSizeInBits() / 8);
+    }
+
+    for (auto *user : alloca->users()) {
+        if (auto store = dyn_cast<StoreInst>(user)) {
+            // StoreInst has no users, replace its operand directly.
+            auto *oldValue = store->getOperand(0);
+            if (auto *newValue = insertCast(oldValue, newType, store)) {
+                store->setOperand(0, newValue);
+                store->setAlignment(align);
+            }
+        }
+        else if (auto load = dyn_cast<LoadInst>(user)) {
+            auto *oldType = load->getType();
+            if (oldType == newType) continue;
+
+            auto *newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
+            newLoad->setAlignment(align);
+            if (MDNode *N = load->getMetadata("dbg")) {
+                newLoad->setMetadata("dbg", N);
+            }
+
+            load->replaceAllUsesWith(newLoad);
+            instToErase.insert(load);    // erase later to avoid broken iterator
+            for (auto *user : newLoad->users())
+                repairUserType(user);
+        }
+        else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
+            SmallVector<Value*, 4> indices;
+            for (auto &index : gep->indices()) {
+                indices.push_back(index.get());
+            }
+
+            auto *newGEP = GetElementPtrInst::Create(
+                newType,
+                gep->getPointerOperand(),
+                indices,
+                gep->getName(),         // inst name
+                gep                     // inst loc
+            );
+
+            gep->replaceAllUsesWith(newGEP);
+            instToErase.insert(gep);
+            for (auto *user : newGEP->users())
+                repairUserType(user);
+        }
+        else if (auto call = dyn_cast<CallInst>(user)) {
+            // Handle llvm.memcpy calls(it generated while alloc array size)
+            if (auto *callee = call->getCalledFunction()) {
+                if (callee->getName() == "llvm.memcpy.p0.p0.i64") {
+                    errs() << "Changing llvm.memcpy call: " << *call << "\n";
+
+                    auto *dest = call->getArgOperand(0);
+                    auto *src = call->getArgOperand(1);
+                    auto *size = call->getArgOperand(2);
+
+                    uint64_t newSize = 0;
+                    if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
+                        newSize = arrayType->getNumElements() * arrayType->getElementType()->getPrimitiveSizeInBits() / 8;
+                    } else {
+                        newSize = newType->getPrimitiveSizeInBits() / 8;
+                    }
+
+                    // Create a new constant for the new size
+                    auto *newSizeConstant = ConstantInt::get(size->getType(), newSize);
+
+                    // Create a new llvm.memcpy call with the updated parameters
+                    auto *newCall = CallInst::Create(callee, {dest, src, newSizeConstant, call->getArgOperand(3)}, "", call);
+
+                    // Replace the old call with the new one
+                    call->replaceAllUsesWith(newCall);
+                    instToErase.insert(call);    // erase later to avoid broken iterator
+                    for (auto *user : newCall->users())
+                        repairUserType(user);
+
+                    errs() << "New llvm.memcpy call: " << *newCall << "\n";
+                }
+            }
+        }
+    }
 }
 
 // Insert fpext/fptrunc cast if needed
@@ -579,6 +591,10 @@ bool ChangeVariableDecl::runOnFunction(Function &F) {
             }
         }
     }
+
+    for (auto *newAlloca : newAllocas)
+        repairAllocaUsers(newAlloca);
+    newAllocas.clear();
 
     modified |= repairCasts(F);
     return modified;

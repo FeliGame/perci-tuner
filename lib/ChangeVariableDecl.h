@@ -52,6 +52,8 @@ private:
 
     Instruction* repairPHINode(PHINode *phi);
 
+    void repairAllocaUsers(AllocaInst* alloca);
+
     bool repairUserType(User *user);
 
     bool repairCasts(Function &F);
@@ -65,6 +67,8 @@ private:
     DenseSet<StringRef> includedFunctions;
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
+
+    DenseSet<AllocaInst*> newAllocas;
 
     nlohmann::json config;
 };
