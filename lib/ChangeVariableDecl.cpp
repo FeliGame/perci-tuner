@@ -291,10 +291,9 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
         newBinOp->takeName(binOp);
         if (auto *newBinOpInst = dyn_cast<Instruction>(newBinOp)) {
             newBinOpInst->setDebugLoc(binOp->getDebugLoc());
+            replaceMultiOperandInst(binOp, newBinOpInst);
         }
 
-        binOp->replaceAllUsesWith(newBinOp);
-        instToErase.insert(binOp);
         return dyn_cast<Instruction>(newBinOp);
     }
 
@@ -331,10 +330,9 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
         newFcmp->takeName(fcmp);
         if (auto *newFcmpInst = dyn_cast<Instruction>(newFcmp)) {
             newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
+            replaceMultiOperandInst(fcmp, newFcmpInst);
         }
 
-        fcmp->replaceAllUsesWith(newFcmp);
-        instToErase.insert(fcmp);
         return dyn_cast<Instruction>(newFcmp);
     }
 
@@ -484,6 +482,32 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
                     instToErase.insert(castInst);
                     modified = true;
                 }
+
+                if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
+                    auto *srcType = castInst->getSrcTy();
+                    auto *destType = castInst->getDestTy();
+                    
+                    // 如果目标类型精度低于源类型，且当前是FPExt，则改为FPTrunc
+                    if (destType->getPrimitiveSizeInBits() < srcType->getPrimitiveSizeInBits() && 
+                        isa<FPExtInst>(castInst)) {
+                        builder.SetInsertPoint(castInst);
+                        auto *newCast = builder.CreateFPTrunc(castInst->getOperand(0), destType);
+                        castInst->replaceAllUsesWith(newCast);
+                        instToErase.insert(castInst);
+                        modified = true;
+                        continue;
+                    }
+                    // 如果目标类型精度高于源类型，且当前是FPTrunc，则改为FPExt
+                    else if (destType->getPrimitiveSizeInBits() > srcType->getPrimitiveSizeInBits() && 
+                             isa<FPTruncInst>(castInst)) {
+                        builder.SetInsertPoint(castInst);
+                        auto *newCast = builder.CreateFPExt(castInst->getOperand(0), destType);
+                        castInst->replaceAllUsesWith(newCast);
+                        instToErase.insert(castInst);
+                        modified = true;
+                        continue;
+                    }
+                }
             }
         }
     }
@@ -582,6 +606,8 @@ bool ChangeVariableDecl::runOnFunction(Function &F) {
     for (auto *newAlloca : newAllocas)
         repairAllocaUsers(newAlloca);
     newAllocas.clear();
+
+    removeRedundantInsts();
 
     modified |= repairCasts(F);
     return modified;
@@ -744,6 +770,33 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
     return modified;
 }
 
+// Replace multi-operand Inst safely (such as BinOp, FCmpInst)
+void ChangeVariableDecl::replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst) {
+    if (instReplaceMap.count(oldInst))
+    {
+        auto *beforeInst = instReplaceMap[oldInst];
+        beforeInst->replaceAllUsesWith(newInst);
+        instToErase.insert(beforeInst);
+        instReplaceMap.erase(beforeInst);
+    } else {
+        oldInst->replaceAllUsesWith(newInst);
+        instReplaceMap[oldInst] = dyn_cast<Instruction>(newInst);
+        instToErase.insert(oldInst);
+    }
+}
+
+// Remove insts without users, they are from MultiOperandInsts (BinOp, FCmpInst)
+void ChangeVariableDecl::removeRedundantInsts() {
+    for (auto &pair : instReplaceMap) {
+        auto *candidate = pair.second;
+        if (candidate->users().empty()) {
+            errs() << "Remove redundant inst: " << *candidate << "\n";
+            instToErase.insert(candidate);
+        }
+    }
+    instReplaceMap.clear();
+}
+
 bool ChangeVariableDecl::runOnModule(Module &module) {
     parseConfig();
     bool modified = false;
@@ -759,10 +812,11 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         inst->eraseFromParent();
     }
 
-    // module.print(outs(), nullptr);
     if (verifyModule(module, &errs()))
     {
-        errs() << "Module verify failed!\n";
+        errs() << "Module verify failed, IR as below:\n";
+        module.print(errs(), nullptr);
+        errs() << "<<< IR OVER <<<\n";
         exit(1);
     } else {
         errs() << "Module verify success!\n";

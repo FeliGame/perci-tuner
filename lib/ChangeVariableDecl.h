@@ -64,13 +64,17 @@ private:
 
     bool changeStructDeclarations(Module &module);
 
+    void replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst);
+
+    void removeRedundantInsts();
+
     DenseSet<StringRef> includedFunctions;
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
 
     DenseSet<AllocaInst*> newAllocas;
 
-    DenseMap<Instruction*, SmallVector<int>> fixedTypeRecords;    // 对于含多元操作数的指令，每个操作数类型是否被指定
+    DenseMap<Instruction*, Instruction*> instReplaceMap;    // MultiOperandInst replacement
 
     nlohmann::json config;
 };
