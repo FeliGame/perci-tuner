@@ -70,6 +70,8 @@ private:
 
     DenseSet<AllocaInst*> newAllocas;
 
+    DenseMap<Instruction*, SmallVector<int>> fixedTypeRecords;    // 对于含多元操作数的指令，每个操作数类型是否被指定
+
     nlohmann::json config;
 };
 

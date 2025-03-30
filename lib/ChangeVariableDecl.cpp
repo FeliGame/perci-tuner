@@ -483,19 +483,6 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
                     castInst->replaceAllUsesWith(castInst->getOperand(0));
                     instToErase.insert(castInst);
                     modified = true;
-                } else {
-                    builder.SetInsertPoint(castInst);
-                    Value *newCast = builder.CreateFPCast(
-                        castInst->getOperand(0),
-                        castInst->getDestTy(),
-                        "repair_cast"
-                    );
-                    
-                    errs() << "Replace cast: " << *castInst 
-                           << " -> " << *newCast << "\n";
-                    castInst->replaceAllUsesWith(newCast);
-                    instToErase.insert(castInst);
-                    modified = true;
                 }
             }
         }

@@ -242,4 +242,4 @@
 
 # 30
 
-* ChangeVariableDecl: Repair Alloca's users after all allocas changed.
+* ChangeVariableDecl: Repair Alloca's users after all allocas changed. Remove redundant repairCasts() branch.
