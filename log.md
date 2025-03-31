@@ -244,3 +244,9 @@
 
 * ChangeVariableDecl: Repair Alloca's users after all allocas changed. Remove redundant repairCasts() branch.
 * ChangeVaraibleDecl: CRUCIAL!!! Remove redundant BinOp, FCmpInsts. I realize it by replacing inst like a chain, and delete insts without users after all allocas & their users changed.
+
+## Apr, 2025
+
+# 1
+
+* ChangeVaraibleDecl: CRUCIAL!!! Remove redundant CallInsts, I realize it by replacing CallInst params' type directly, rathen than (before) creating new CallInst.

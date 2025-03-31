@@ -343,41 +343,24 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
     auto *callee = call->getCalledFunction();
     if (callee && !callee->isVarArg()) {  // Ignore variadic args' call 
         bool modified = false;
-        SmallVector<Type *, 4> newParamTypes;
-        SmallVector<Value *, 4> newArgs;
-
-        unsigned numArgs = callee->getFunctionType()->getNumParams(); // Subtract 1 for the function itself
-
         // Check if any argument type mismatch with the function parameter type
-        for (unsigned i = 0; i < numArgs; ++i) {
+        for (unsigned i = 0; i < callee->getFunctionType()->getNumParams(); ++i) {
             Value *arg = call->getArgOperand(i);
             Type *paramType = callee->getFunctionType()->getParamType(i);
 
             if (arg->getType() != paramType) {
-                modified = true;
-                // Insert a cast to convert the argument to the expected type
                 if (auto *castValue = insertCast(arg, paramType, call)) {
-                    newArgs.push_back(castValue); // Use the casted value
+                    call->setArgOperand(i, castValue);
+                    modified = true;
                 } else {
-                    newArgs.push_back(arg); // Use the original argument if cast fails
                     errs() << "Failed to cast argument " << i;
                 }
-            } else {
-                newArgs.push_back(arg); // Use the original argument
             }
         }
 
         if (modified) {
-            CallInst *newCall = CallInst::Create(callee, newArgs, "", call);
-            newCall->takeName(call);
-            newCall->setCallingConv(call->getCallingConv());
-            newCall->setAttributes(call->getAttributes());
-            newCall->setDebugLoc(call->getDebugLoc());
-
-            call->replaceAllUsesWith(newCall);
-            instToErase.insert(call);
-            errs() << "Repaired call instruction with cast: " << *newCall << "\n";
-            return dyn_cast<Instruction>(newCall);
+            errs() << "Repaired call instruction with cast: " << *call << "\n";
+            return call;
         }
     }
 
@@ -607,7 +590,7 @@ bool ChangeVariableDecl::runOnFunction(Function &F) {
         repairAllocaUsers(newAlloca);
     newAllocas.clear();
 
-    removeRedundantInsts();
+    removeRedundantReplacements();
 
     modified |= repairCasts(F);
     return modified;
@@ -786,10 +769,10 @@ void ChangeVariableDecl::replaceMultiOperandInst(Instruction* oldInst, Instructi
 }
 
 // Remove insts without users, they are from MultiOperandInsts (BinOp, FCmpInst)
-void ChangeVariableDecl::removeRedundantInsts() {
+void ChangeVariableDecl::removeRedundantReplacements() {
     for (auto &pair : instReplaceMap) {
         auto *candidate = pair.second;
-        if (candidate->users().empty()) {
+        if (candidate->use_empty()) {
             errs() << "Remove redundant inst: " << *candidate << "\n";
             instToErase.insert(candidate);
         }

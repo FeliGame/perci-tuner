@@ -66,7 +66,7 @@ private:
 
     void replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst);
 
-    void removeRedundantInsts();
+    void removeRedundantReplacements();
 
     DenseSet<StringRef> includedFunctions;
 
