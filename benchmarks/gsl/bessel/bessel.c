@@ -174,7 +174,7 @@ int gsl_sf_bessel_cos_pi4_e(double y, double eps, gsl_sf_result *result)
 int main(void)
 {
   double x = 5.0;
-  int count = 10000;
+  int count = 1000000;
   double y = 0;
   while (count--)
   {

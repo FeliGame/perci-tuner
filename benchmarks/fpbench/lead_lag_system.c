@@ -54,7 +54,7 @@ int main() {
     double y = 50.0;   // 当前值
     double yd = 60.0;  // 目标值
 
-	int count = 1000;
+	int count = 1000000;
 	double result = 0;
 
 	while (count--)

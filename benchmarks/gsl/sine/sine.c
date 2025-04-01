@@ -208,7 +208,7 @@ int main()
   double x = 2*M_PI / 5;
 
   // 计算正弦值并输出
-  int count = 100000;
+  int count = 1000000;
   double result = 0;
   while (count--)
   {

@@ -33,7 +33,7 @@ int main()
     double lon2 = -118.2437 * M_PI / 180.0; // 例如洛杉矶的经度（单位：弧度）
 
     // 调用 ex0 函数，计算两点之间的角度
-    int count = 1000000;
+    int count = 5000000;
     double result = 0;
     while (count--)
     {

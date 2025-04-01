@@ -81,7 +81,7 @@ int main() {
 
     // 创建 gsl_sf_result 结构体，用于保存结果和误差
     gsl_sf_result result;
-    int count = 50000;
+    int count = 5000000;
     int status = 99;
 
     while (count--)

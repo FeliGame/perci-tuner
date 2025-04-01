@@ -44,7 +44,7 @@ int main() {
     double kd = 0.5; // 微分增益
     double c = 10.0; // 目标值（期望值）
 
-	int count = 10000;
+	int count = 500000;
 	double result = 0;
 
     // 调用 ex0 函数进行计算

@@ -280,7 +280,7 @@ int main()
 
   // 调用 gsl_sf_transport_2_e 函数
   int status = 99;
-  int count = 50000;
+  int count = 500000;
 
   while (count--)
   {

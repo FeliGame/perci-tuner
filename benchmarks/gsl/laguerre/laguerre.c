@@ -268,7 +268,7 @@ int main()
   gsl_sf_result result;
 
   int status = 99;
-  int count = 50000;
+  int count = 1000000;
 
   while (count--)
   {

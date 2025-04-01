@@ -64,7 +64,7 @@ int main()
     double vx0 = 0.0, vy0 = 1.0, vz0 = 0.0; // 初始速度 (0, 1, 0)
 
     // 调用 ex0 函数并输出结果
-    int count = 500000;
+    int count = 50000;
     double result = 0;
     while (count--)
     {

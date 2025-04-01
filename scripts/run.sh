@@ -44,7 +44,18 @@ if ! opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_f
     exit 1
 fi
 
-if ! lli -load /usr/local/lib/libgsl.so output.bc; then
-    echo "lli command failed. Exiting script."
+# Run in interpreter mode
+# if ! lli -load /usr/local/lib/libgsl.so output.bc; then
+#     echo "lli command failed. Exiting script."
+# fi
+
+# Generate & Run executable
+if ! clang -O2 -o output output.bc -lgsl -lblas -lm; then
+    echo "clang command failed. Exiting script."
+    exit 1
+fi
+
+if ! ./output; then
+    echo "Execution failed. Exiting script."
     exit 1
 fi

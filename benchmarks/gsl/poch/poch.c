@@ -438,7 +438,7 @@ int main()
   gsl_sf_result result;
 
   int status = 99;
-  int count = 50000;
+  int count = 500000;
 
   while (count--)
   {
@@ -450,7 +450,7 @@ int main()
   if (status == GSL_SUCCESS)
   {
     // 输出计算结果和误差
-    printf("%.13e", result.val);
+    printf("%.13e\n", result.val);
   }
   else
   {

@@ -31,7 +31,7 @@ int main()
     double maxVoltage = 220.0; // 最大电压 (单位伏特)
 
     // 调用 ex0 函数计算瞬时电流
-    int count = 10000000;
+    int count = 5000000;
     double current = 0;
     while (count--)
     {

@@ -44,7 +44,7 @@ int main() {
     double y_n_42_ = 1.3; // 初始值 y_n
     double c = 2.5; // 常数 c
 
-	int count = 1;
+	int count = 50000;
 	double result = 0;
 
 	while (count--)

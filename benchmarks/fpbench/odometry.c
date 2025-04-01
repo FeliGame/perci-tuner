@@ -69,7 +69,13 @@ int main() {
     double sl_42 = 0.8;  // 左侧速度
 
     // 调用 ex0 函数并获取结果
-    double result = ex0(sr_42, sl_42);
+	double result = 0;
+	int count = 10000;
+	while (count--)
+	{
+		/* code */
+		result = ex0(sr_42, sl_42);
+	}
 
     // 输出结果
     printf("%.13f", result);

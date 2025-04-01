@@ -40,7 +40,7 @@ int main() {
     double w0 = 1.0;  // 初始角速度
     double N = 1000;  // 积分步数
 
-	int count = 20000;
+	int count = 10000;
 	double result = 0;
 	while (count--)
 	{

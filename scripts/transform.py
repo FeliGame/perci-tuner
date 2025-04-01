@@ -60,12 +60,19 @@ def transform(bitcode_file, var_config, diff):
     # return -1 if running LLVM passes fails
     if retval != 0:
         return -1
+    
+    # generate executable
+    command = ['clang', '-O2', '-o', 'temp_output', 'temp_output.bc', '-lgsl', '-lblas', '-lm']
+    retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
+    if retval != 0:
+        return -1
 
     time = 0
 
     # run modified bitcode
     for i in range(RUNNING_TIMES):
-        command = ['lli', '-load', '/usr/local/lib/libgsl.so', TEMP_BC_PATH]
+        # command = ['lli', '-load', '/usr/local/lib/libgsl.so', TEMP_BC_PATH]
+        command = ['./temp_output']
         try:
             output = subprocess.check_output(command, stderr=None)
         except subprocess.CalledProcessError as e:

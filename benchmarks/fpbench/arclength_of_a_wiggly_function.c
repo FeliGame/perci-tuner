@@ -69,11 +69,15 @@ double ex0(double n)
 
 int main()
 {
-	double n = 3000000.0; // 迭代次数 n
+	double n = 30000.0; // 迭代次数 n
 
 	// 调用 ex0 函数
-	int count = 1;
-	double result = ex0(n);
+	double result = 0;
+	int count = 50;
+	while (count--)
+	{
+		result = ex0(n);
+	}
 
 	// 输出结果
 	printf("%.13f", result);

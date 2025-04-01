@@ -39,7 +39,7 @@ double ex0(double u) {
 int main() {
 
     double u = 1.0; // 设置输入参数 u
-	int count = 100000;
+	int count = 1000000;
 	double result = 0;
 	while (count--)
 	{
@@ -48,7 +48,7 @@ int main() {
 	}
 
     // 输出结果
-    printf("%.13f", result);
+    printf("%.13e", result);
 
     return 0;
 }

@@ -29,7 +29,7 @@ int main()
     // 调用 ex0 函数
     double result = 0;
 
-    int count = 20000000;
+    int count = 10000000;
 
     while (count--)
     {

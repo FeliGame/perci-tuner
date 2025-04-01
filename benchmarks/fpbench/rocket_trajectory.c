@@ -105,7 +105,7 @@ int main()
 	double Mf = 5000; // 初始质量 (单位千克)
 	double A = 10;		// 每单位时间的质量损失（单位千克/秒）
 
-	int count = 1;
+	int count = 2;
 	double result = 0;
 	while (count--)
 	{

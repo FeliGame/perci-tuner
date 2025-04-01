@@ -730,7 +730,7 @@ int main() {
   gsl_sf_result result;  // 用于存储结果的结构体
 
   int status = 99;
-  int count = 50000;
+  int count = 1000000;
     while (count--)
     {
       /* code */
@@ -739,7 +739,7 @@ int main() {
     // 检查状态并输出结果
     if (status == GSL_SUCCESS) {
         // printf("成功计算 Airy 缩放导数：\n");
-        printf("%.20E\n", result.val);
+        printf("%.13E\n", result.val);
         // fprintf(fprint, "%20.20E\n", result);
     } else {
         printf("计算失败，状态码：%d\n", status);

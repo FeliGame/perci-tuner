@@ -197,7 +197,7 @@ int main()
   // 创建 gsl_sf_result 结构体，用于存储计算结果和误差
   gsl_sf_result result;
   int status = 99;
-  int count = 10000;
+  int count = 1000000;
 
   while (count--)
   {
@@ -209,7 +209,7 @@ int main()
   if (status == GSL_SUCCESS)
   {
     // 输出计算结果和误差
-    printf("%.13e", result.val);
+    printf("%.13e\n", result.val);
   }
   else
   {
