@@ -5,3 +5,6 @@ scripts/__pycache__/
 *.bc
 *.json
 benchmarks/*.bc
+error
+output
+temp_output

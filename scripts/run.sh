@@ -39,7 +39,9 @@ if ! llvm-link $BCS -o output.bc; then
     exit 1
 fi
 
+# search_by_pragma = search_function_call + search_variable_decl
 if ! opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_function_call,search_variable_decl' $FLAGS output.bc -o output.bc; then
+# if ! opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_by_pragma' $FLAGS output.bc -o output.bc; then
     echo "opt command failed. Exiting script."
     exit 1
 fi

@@ -16,6 +16,7 @@
 #include "ChangeFunctionCall.h"
 #include "IRTiming.h"
 #include "MergeMultiVersion.h"
+#include "SearchByPragma.h"
 
 using namespace llvm;
 
@@ -68,6 +69,11 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 						if (Name == "merge_multi")
 						{
 							PM.addPass(MergeMultiVersion());
+							return true;
+						}
+						if (Name == "search_by_pragma")
+						{
+							PM.addPass(SearchByPragma());
 							return true;
 						}
 						return false;

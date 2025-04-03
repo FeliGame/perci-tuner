@@ -51,6 +51,11 @@ def extract_array_size(type_str):
 # and delete the variables that don't need to change precisions
 def set_var_search_types(change_set):
     for change_var in change_set:
+        # 有range字段用range字段，否则用PRECISIONS指定的范围
+        if 'range' in change_var and change_var['range']:
+            change_var['search_types'] = change_var['range']
+            continue
+        
         type_str = change_var['type']
         size = extract_array_size(type_str)  # Extract the array size
 

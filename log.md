@@ -253,3 +253,8 @@
 
 * CRUCIAL: Run executable rather than lli, use clang -O2 option.
 * Update benchmarks.
+
+# 3
+
+* add: SearchByPragma Pass (need specified clang&LLVM version).
+* update: correct acc rate & INITIAL_DIV_NUM (2 -> 1), generate valid config during search.
