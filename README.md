@@ -41,9 +41,8 @@ Run this will generate optimized precision config file & runnable .bc file & run
 
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
-### --excluded-functions=excluded_functions.txt
-
-Customize excluded functions for searching, from Pass:search_function_call, implemented in SearchFunctions.
+### --search-all-vars(bool)
+Search all floating-point vars in IR if set to true, or search only __autofp vars or vars in #pragma region. From Pass:search_variable_decl, implemented in SearchVariableDecl.
 
 ### --variable-config
 

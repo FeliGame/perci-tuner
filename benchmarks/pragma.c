@@ -10,12 +10,12 @@ int foo(double a, double b)
 int test(int n)
 {
 	double x = 0, y = 0, z = 0;
-// #pragma precision region
+#pragma precision region
 	{
-// #pragma precision range(double, __fp16), x(float, __fp16), y(double, float)
+#pragma precision range(double, __fp16), x(float, __fp16), y(double, float)
 		for (int i = 0; i < n; ++i)
 		{
-// #pragma precision abserror x(2e-6)
+#pragma precision abserror x(2e-6)
 			y -= 1;
 			z = foo(2 , 1);
 		}

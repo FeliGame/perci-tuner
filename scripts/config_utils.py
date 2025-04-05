@@ -51,13 +51,26 @@ def extract_array_size(type_str):
 # and delete the variables that don't need to change precisions
 def set_var_search_types(change_set):
     for change_var in change_set:
-        # 有range字段用range字段，否则用PRECISIONS指定的范围
-        if 'range' in change_var and change_var['range']:
-            change_var['search_types'] = change_var['range']
-            continue
-        
         type_str = change_var['type']
         size = extract_array_size(type_str)  # Extract the array size
+
+        # 有range字段用range字段，但要确保顺序符合PRECISIONS
+        if 'range' in change_var and change_var['range']:
+            # 按PRECISIONS顺序过滤和排序range中的类型
+            valid_range = []
+            for p in PRECISIONS:
+                for r in change_var['range']:
+                    base_r = r.split('[')[0] if '[' in r else r
+                    if base_r == p:
+                        valid_range.append(r)
+                        break
+            
+            if size:  # 处理数组类型
+                base_range = [p.split('[')[0] if '[' in p else p for p in valid_range]
+                change_var['search_types'] = [f"{p}[{size}]" for p in base_range]
+            else:
+                change_var['search_types'] = valid_range
+            continue
 
         if size:  # Handle array types
             base_type = type_str.split('[')[0]

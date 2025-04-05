@@ -94,9 +94,6 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
 
             auto *newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
             newLoad->setAlignment(align);
-            if (MDNode *N = load->getMetadata("dbg")) {
-                newLoad->setMetadata("dbg", N);
-            }
 
             load->replaceAllUsesWith(newLoad);
             instToErase.insert(load);    // erase later to avoid broken iterator
@@ -606,7 +603,6 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
     for (auto *sty : module.getIdentifiedStructTypes()) {
         StringRef rawName = sty->getName();
         StringRef structName = rawName.startswith("struct.") ? rawName.substr(7) : rawName;
-        // Match a struct decl with config
         if (structInfos.contains(structName.str())) {
             auto members = structInfos[structName.str()];
             SmallVector<Type*, 4> newElements;
@@ -730,11 +726,7 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
                                                 load->isVolatile(),
                                                 load
                                             );
-                                            // Set align, copy metadata
                                             newLoad->setAlignment(Align(maxAlign));
-                                            if (MDNode *N = load->getMetadata("dbg")) {
-                                                newLoad->setMetadata("dbg", N);
-                                            }
                                             
                                             load->replaceAllUsesWith(newLoad);
                                             instToErase.insert(load);

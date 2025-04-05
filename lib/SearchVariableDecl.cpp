@@ -1,10 +1,13 @@
 // @Author: Guocheng - NUDT
 // Usage: Search declared variables' type.
-// Input: config.json (calls)
-// Output: config.json (vars)
+// Input: 
+// config.json (calls)
+// --search-all: if false, only search __autofp vars or vars in #pragma region.
+// Output: config.json (calls + vars)
 
 #include "SearchVariableDecl.h"
 #include "utils/ParseTypeName.hpp"
+#include "utils/ParseMetaDataNode.hpp"
 
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
@@ -21,10 +24,17 @@ using namespace std;
 using namespace llvm;
 
 
+cl::opt<bool> SearchAll("search-all-vars", cl::value_desc("search all variable"), cl::desc("true or flase"), cl::init(true));
+
+
 // Find Local vars and local static vars
 void SearchVariableDecl::findLocalVariables(Function &F) {
     nlohmann::json function;
     auto funcName = demangle(F.getName());
+
+    bool inRegion = false;
+    SmallVector<StringRef> defaultPrecisionRange;
+    std::set<std::string> searchableVars; // SearchAll=false, only __autofp vars & vars in pragma region searchable
 
     for (auto &BB : F) {
         for (auto &I : BB) {
@@ -51,17 +61,87 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
                     }
                 }
             }
-            else if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
-                if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
-                    varName = DV->getName();
-                    typeName = parseDITypeName(DV->getType());
-                    
-                    if (varName == "this") continue;
-                    DL = DDI->getDebugLoc();
-                    isStatic = false;
-                    isParam = DV->isParameter();
+            else if (auto *CI = dyn_cast<CallInst>(&I)) {
+                if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
+                    if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
+                        varName = DV->getName();
+                        typeName = parseDITypeName(DV->getType());
+                        
+                        if (varName == "this") continue;
+                        DL = DDI->getDebugLoc();
+                        isStatic = false;
+                        isParam = DV->isParameter();
+                    }
+                }
+                // Handle __autofp intrinsic
+                else if (Function *Callee = CI->getCalledFunction()) {
+                    auto name = Callee->getName();
+                    if (name == "llvm.precision.region.start") {
+                        inRegion = true;
+                        errs() << "Found region: " << F.getName() << "\n";
+                    } else if (name == "llvm.precision.region.end") {
+                        inRegion = false;
+                        errs() << "End region: " << F.getName() << "\n";
+                    } else if (name == "llvm.precision.range") {
+                        if (auto *MD = getMetadataNode(CI, 0)) {
+                            auto precisionRange = extractStringsFromMD(MD);
+                            // 如果是(float, double)形式，则一定是在region内声明的通用搜索范围
+                            if (inRegion && (std::find(validSearchRange.begin(), validSearchRange.end(), precisionRange[0]) != validSearchRange.end())) {
+                                defaultPrecisionRange = precisionRange;
+                            } 
+                            else if (precisionRange.size() > 1) {
+                                if (inRegion) {
+                                    for (auto &localVar : function) {
+                                        // 找到varName对应的config项
+                                        if (localVar["name"] == precisionRange[0].str()) {
+                                            for (size_t i = 1; i < precisionRange.size(); ++i) {
+                                                localVar["range"].push_back(precisionRange[i].str());
+                                            }
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    // 保存精度范围到临时map中
+                                    autoFPRange[precisionRange[0].str()] = 
+                                        SmallVector<std::string>(precisionRange.begin()+1, precisionRange.end());
+                                }
+                            }
+                        }
+                    } else if (name == "llvm.precision.error") {
+                        auto *errorMD = getMetadataNode(CI, 0);
+                        auto errors = extractStringsFromMD(errorMD);
+                        config["result_error"] = errors[0];
+                    }
                 }
             }
+
+            // Collect referenced vars from IR insts
+            if (inRegion) {
+                std::function<void(Value*)> collectValues = [&](Value *V) {
+                    if (auto *LI = dyn_cast<LoadInst>(V)) {
+                        errs() << "Found var from LoadInst: " << LI->getPointerOperand()->getName() << "\n";
+                        searchableVars.insert(LI->getPointerOperand()->getName().str());
+                    }
+                    else if (auto *SI = dyn_cast<StoreInst>(V)) {
+                        errs() << "Found var from StoreInst: " << SI->getPointerOperand()->getName() << "\n";
+                        searchableVars.insert(SI->getPointerOperand()->getName().str());
+                    }
+                    // 涵盖了BinOp、UnaOp、FCmp、CallInst等所有其他指令返回结果情形
+                    else if (auto *I = dyn_cast<Instruction>(V)) {
+                        for (auto *User : I->users()) {
+                            collectValues(User);
+                        }
+                    }
+                };
+
+                // 处理指令的操作数
+                for (auto &Op : I.operands()) {
+                    collectValues(Op);
+                }
+                // 处理指令的返回值本身
+                collectValues(&I);
+            }
+
             // Skip integer type
             if (typeName.find("short") != std::string::npos) continue;
             if (typeName.find("int") != std::string::npos) continue;
@@ -83,13 +163,32 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
                 localVar["file"] = file->getFilename().str();
                 localVar["isStatic"] = isStatic;
                 localVar["isParam"] = isParam;
+                // Handle __autofp
+                if (autoFPRange.count(varName)) {
+                    localVar["range"] = autoFPRange[varName];
+                    searchableVars.insert(varName);
+                }
             
                 function.emplace_back(localVar); 
             }
         }
     }
 
-    config["local"][funcName] = function;
+    nlohmann::json newFunction;
+    for (auto &localVar : function) {
+        auto varName = localVar["name"].get<string>();
+        // If search range not specified, use default range
+        if (localVar["range"].empty()) {
+            localVar["range"] = defaultPrecisionRange;
+        }
+        // Only save referenced vars into config
+        if (searchableVars.count(varName) > 0) {
+            newFunction.push_back(localVar);
+        }
+    }
+
+    config["local"][funcName] = (SearchAll ? function : newFunction);
+    autoFPRange.clear();
 }
 
 void SearchVariableDecl::findGlobalVariables(Module &M) { 
@@ -122,7 +221,20 @@ void SearchVariableDecl::findGlobalVariables(Module &M) {
             }
         }
 
-        globalVars.emplace_back(globalVar);
+        // handle __autofp
+        if (MDNode *MD = GV.getMetadata("precision_range")) {
+            SmallVector<string> precisionRange;
+            for (const MDOperand &MDOp : drop_begin(MD->operands(), 1)) {
+                if (auto *MDStr = dyn_cast<MDString>(MDOp.get())) {
+                    precisionRange.push_back(MDStr->getString().str());
+                }
+            }
+            globalVar["range"] = precisionRange;
+            if (!SearchAll)
+                globalVars.emplace_back(globalVar);  // only __autofp globalVar available
+        }
+        if (SearchAll)
+            globalVars.emplace_back(globalVar);
     }
     config["global"] = globalVars;
 }
@@ -162,17 +274,13 @@ bool SearchVariableDecl::runOnModule(Module &module) {
     }
 
     inFile >> config;
-    
-    for (auto &[funcName, _] : config["calls"].items()) {
-        includedFunctions.insert(funcName);
-    }
 
     findGlobalVariables(module);
-    findStructDeclarations(module);  // 新增结构体声明查找
+    findStructDeclarations(module);
 
     for(Module::iterator f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();
-        if(!f->isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
+        if(!f->isDeclaration()) {
             runOnFunction(*f);
         }
     }
@@ -181,7 +289,39 @@ bool SearchVariableDecl::runOnModule(Module &module) {
     raw_fd_ostream outfile("config.json", errorInfo);
     outfile << config.dump(4);  // 4 space = 1 indent
 
-    return false;  // hasn't changed IR
+    // Remove all llvm.precision.* functions to avoid backend crash
+    std::vector<CallInst*> instToErase;
+    for (auto &F : module) {
+        for (auto &BB : F) {
+            for (auto &I : BB) {
+                if (auto *CI = dyn_cast<CallInst>(&I)) {
+                    if (Function *Callee = CI->getCalledFunction()) {
+                        if (Callee->getName().startswith("llvm.precision")) {
+                            instToErase.push_back(CI);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (auto *CI : instToErase) {
+        CI->eraseFromParent();
+    }
+
+    // Remove all llvm.precision.* decl
+    bool removedDecl = false;
+    auto &funcList = module.getFunctionList();
+    auto it = funcList.begin();
+    while (it != funcList.end()) {
+        if (it->getName().startswith("llvm.precision")) {
+            it = funcList.erase(it);
+            removedDecl = true;
+        } else {
+            ++it;
+        }
+    }
+
+    return removedDecl;  // hasn't changed IR
 }  
 
 void SearchVariableDecl::getAnalysisUsage(AnalysisUsage &AU) const {

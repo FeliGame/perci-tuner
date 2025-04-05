@@ -26,12 +26,6 @@ public:
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
 private:
-    void parseExcludedFunctions();
-
-    void writeToFile();
-
-    std::set<std::string> excludedFunctions;
-
     nlohmann::json config;
 };
 

@@ -36,10 +36,14 @@ private:
     void findGlobalVariables(Module &M);
 
     void findStructDeclarations(Module &M);
-
-    set<string> includedFunctions; 
     
     set<string> globalVariables;
+
+    DenseSet<Instruction*> instToErase;
+
+    std::map<std::string, SmallVector<std::string>> autoFPRange;  // __autofp localVars' search range
+
+    const SmallVector<StringRef> validSearchRange = {"float", "double", "long double", "__fp16"};  // for __autofp & pragma
     
     nlohmann::json config;
 };

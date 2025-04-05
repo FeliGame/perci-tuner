@@ -1,6 +1,5 @@
 // @Author: Guocheng - NUDT
 // Usage: Tell the function CallInst & their location.
-// Input(Optional): "--exclude-functions=excluded_functions.txt"
 // Output: config.json (calls)
 
 #include "SearchFunctionCall.h"
@@ -18,31 +17,6 @@
 using namespace std;
 using namespace llvm;
 
-
-cl::opt<string> ExcludeFunctionsName("exclude-functions", cl::value_desc("name"), cl::desc("Name of functions to be excluded"), cl::init("excluded_functions.txt"));
-
-void SearchFunctionCall::parseExcludedFunctions() {
-    if (!ExcludeFunctionsName.empty()) {
-        ifstream excludedFunctionsFile(ExcludeFunctionsName);
-        if (excludedFunctionsFile.is_open()) {
-            string functionName;
-            while (getline(excludedFunctionsFile, functionName)) {
-                excludedFunctions.insert(functionName);
-            }
-            excludedFunctionsFile.close();
-        } else {
-            errs() << "Warning: Unable to open excluded functions file: " << ExcludeFunctionsName << ", ignored\n";
-        }
-    }
-}
-
-void SearchFunctionCall::writeToFile() {
-    ofstream jsonFile("config.json");
-    if (jsonFile.is_open()) {
-        jsonFile << config.dump(4);
-        jsonFile.close();
-    }
-}
 
 bool SearchFunctionCall::runOnFunction(Function &F) {
     nlohmann::json funcInfo;
@@ -73,18 +47,17 @@ bool SearchFunctionCall::runOnFunction(Function &F) {
 }
 
 bool SearchFunctionCall::runOnModule(Module &module) {    
-    parseExcludedFunctions();
-    for (auto item : excludedFunctions)
-    {
-        errs() << "Excluded function: " << item << "\n";
-    }
-
     for(Module::iterator f = module.begin(), fe = module.end(); f != fe; f++) {
-        if(!f->isDeclaration() && excludedFunctions.find(f->getName().str()) == excludedFunctions.end())
+        if(!f->isDeclaration())
             runOnFunction(*f);
     }
 
-    writeToFile();
+    ofstream jsonFile("config.json");
+    if (jsonFile.is_open()) {
+        jsonFile << config.dump(4);
+        jsonFile.close();
+    }
+
     return false;  // hasn't changed IR
 }  
 

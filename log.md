@@ -244,7 +244,6 @@
 
 * ChangeVariableDecl: Repair Alloca's users after all allocas changed. Remove redundant repairCasts() branch.
 * ChangeVaraibleDecl: CRUCIAL!!! Remove redundant BinOp, FCmpInsts. I realize it by replacing inst like a chain, and delete insts without users after all allocas & their users changed.
-
 * ChangeVaraibleDecl: CRUCIAL!!! Remove redundant CallInsts, I realize it by replacing CallInst params' type directly, rathen than (before) creating new CallInst.
 
 ## Apr, 2025
@@ -258,3 +257,8 @@
 
 * add: SearchByPragma Pass (need specified clang&LLVM version).
 * update: correct acc rate & INITIAL_DIV_NUM (2 -> 1), generate valid config during search.
+
+# 4
+
+* add: Support __autofp, search-all-vars option in SearchVariableDecl.
+* remove: SearchByPragma (merged into SearchVariableDecl), excluded_functions in SearchFunctionCall.

@@ -51,6 +51,10 @@ inline string parseTypeName(Type* type) {
         stream.flush();
     }
 
+    if (result == "__autofp") {
+        result = "long double";  // default
+    }
+
     return result;
 }
 
@@ -86,6 +90,10 @@ inline string parseDITypeName(DIType* type) {
                 return parseDITypeName(baseType) + "["+ std::to_string(arraySize) + "]";
             }
         }
+    }
+
+    if (type->getName().str() == "__autofp") {
+        return "long double";  // default
     }
 
     return type->getName().empty() ? "" : type->getName().str();
