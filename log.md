@@ -262,3 +262,8 @@
 
 * add: Support __autofp, search-all-vars option in SearchVariableDecl.
 * remove: SearchByPragma (merged into SearchVariableDecl), excluded_functions in SearchFunctionCall.
+
+# 5
+
+* add: exhaustive search algorithm.
+* update: cmd arg naming style of search.py.

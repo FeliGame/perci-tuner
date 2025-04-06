@@ -103,7 +103,9 @@ def run_config(bitcode, current_config, change_set):
     
     # check if the config has been runned
     key = json.dumps(change_set, sort_keys=False)
-    if key in runned_change_set: return
+    if key in runned_change_set: 
+        print('>>> Perci-Tuner(Py): The config has been runned, skipped...')
+        return
     runned_change_set.add(key)
 
     run_times += 1
@@ -233,7 +235,7 @@ def is_type_empty(change_set):
     return True
 
 # search the new config
-def search_conf(bitcode, change_set):
+def search_conf_delta(bitcode, change_set):
     global original_conf
     new_conf= original_conf
     # searching until every search types is empty
@@ -250,35 +252,95 @@ def search_conf(bitcode, change_set):
         # time = transform.current_run_time
     return new_conf
 
+def exhaustive_search(bitcode, change_set, current_config):
+    global min_time, thres
+    candidates = []
+    
+    # generate all combinations
+    type_combinations = [[]]
+    for change in change_set:
+        if not change["search_types"]:
+            continue
+        new_combinations = []
+        for t in type_combinations:
+            for st in change["search_types"]:
+                new_comb = t.copy()
+                new_comb.append(st)
+                new_combinations.append(new_comb)
+        type_combinations = new_combinations
+    
+    for combination in type_combinations:
+        # apply combination
+        temp_change_set = []
+        for i, change in enumerate(change_set):
+            if not change["search_types"]:
+                temp_change_set.append(change)
+                continue
+            new_change = change.copy()
+            new_change["type"] = combination[i]
+            temp_change_set.append(new_change)
+        
+        new_config = config_utils.rebuild(temp_change_set, current_config)
+        
+        if run_config(bitcode, new_config, temp_change_set):
+            if (data_utils.is_nearly_equal(transform.current_run_result, original_result, thres) and 
+                transform.current_run_time < min_time):
+                min_time = transform.current_run_time
+                update_opt_bc()
+                # save ir
+                global bitcode_name
+                config_utils.print_config(new_config, f"BEST_{bitcode_name}.json")
+                candidates.append((new_config, min_time))
+
+    return candidates
+
+def search_conf_exhaustive(bitcode, change_set):
+    candidates = exhaustive_search(bitcode, change_set, original_conf)
+    return candidates[0][0] if candidates else original_conf
+
+def parse_arguments():
+    params = {
+        '-ir': 'output.bc',
+        '-config': 'config.json',
+        '-thres': 1e-6,
+        '-repeat': 1,
+        '-history': True,
+        '-algorithm': 'dd'
+    }
+    
+    for arg in sys.argv[1:]:
+        if '=' in arg:
+            key, value = arg.split('=', 1)
+            if key in params:
+                # type cast
+                if key == '-thres':
+                    params[key] = float(value)
+                elif key == '-repeat':
+                    params[key] = int(value)
+                elif key == '-history':
+                    params[key] = value.lower() in ('true', '1', 'yes')
+                else:
+                    params[key] = value
+        
+    return params
 
 def main():
     global run_times, min_time, thres, original_conf, original_result, bitcode_name
     
-    if len(sys.argv) not in [5, 6]:
-        print("Usage: python search.py <bitcode> <conf_file> [relative_threshold, e.g. 1e-6] <run times per iteration><show history>")
-        sys.exit(1)
+    print("Usage & default args: python search.py -ir=output.bc -config=config.json "
+              "-thres=1e-6 -repeat=5 -history=true -algorithm=dd|exhaust")
+    args = parse_arguments()
+    bitcode = args['-ir']
+    original_conf_file = args['-config']
+    thres = args['-thres']
+    transform.RUNNING_TIMES = args['-repeat']
+    transform.show_history = args['-history']
+    algorithm = args['-algorithm']
 
-    bitcode = sys.argv[1]
-    original_conf_file = sys.argv[2]
-    transform.RUNNING_TIMES = int(sys.argv[-2])
-    transform.show_history = sys.argv[-1].lower() in ('True', 'true', '1', 'yes')
     data_utils.delete_data()
 
     # load the original config from file
     original_conf = json.loads(open(original_conf_file, 'r').read())
-
-     # cmd thres is superior to config["result_error"]
-    if len(sys.argv) == 6:
-        thres = sys.argv[3]
-    elif len(sys.argv) == 5:
-        if 'result_error' in original_conf:
-            thres = original_conf['result_error']
-        else:
-            print("Error: result_error field not found in config file!")
-            sys.exit(1)
-    else:
-        print("Error: Invalid number of arguments!")
-        sys.exit(1)
 
     # change_set keep those need to change precision and available precisions
     change_set = config_utils.parse_config(original_conf)
@@ -292,15 +354,20 @@ def main():
     print("original time:", original_time, "original result:", original_result)
     
     # start searching
-    print(">>> Perci-Tuner(Py): Running delta-debugging algorithm searching for valid configuration ...")
 
     # searching until all search types is empty
     min_time = original_time
     bitcode_name = os.path.basename(bitcode)
-    new_conf = search_conf(bitcode, change_set)
+    if algorithm.lower() == 'dd':
+        new_conf = search_conf_delta(bitcode, change_set)
+    elif algorithm.lower() == 'exhaust':
+        new_conf = search_conf_exhaustive(bitcode, change_set)
+    else:
+        print("Error: Invalid algorithm!")
+        sys.exit(1)
     config_utils.print_config(new_conf, OPT_PREFIX + bitcode_name + ".json")
     
-    print(">>> Perci-Tuner(Py): Running delta-debugging algorithm finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
+    print(">>> Perci-Tuner(Py): Search finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
     print(">>> Perci-Tuner(Py): Config: " + OPT_PREFIX + bitcode_name + ".json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time, "Acc rate:", 100.0 * (original_time - min_time) / min_time, "%")
 
 
