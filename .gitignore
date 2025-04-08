@@ -5,5 +5,3 @@ scripts/__pycache__/
 *.bc
 *.json
 benchmarks/*.bc
-# 忽略所有无后缀文件
-*[!.]*
