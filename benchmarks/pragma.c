@@ -15,7 +15,7 @@ int test(int n)
 #pragma precision range(double, __fp16), x(float, __fp16), y(double, float)
 		for (int i = 0; i < n; ++i)
 		{
-#pragma precision abserror x(2e-6)
+#pragma precision error x(2.1e-8)
 			y -= 1;
 			z = foo(2 , 1);
 		}

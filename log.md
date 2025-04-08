@@ -267,3 +267,10 @@
 
 * add: exhaustive search algorithm.
 * update: cmd arg naming style of search.py.
+
+# 7
+
+* update: Throw error if no output while search. Repair bugs of #pragma & __autofp.
+* CRUCIAL update transform.py: Repair ChangeFunctionCall not enabled during search.
+* CRUCIAL update SearchVariableDecl: Function Parameters are no more searched, which might cause inconsistent alignment during assignment.
+* add: mxpcc.sh, the driver of entire toolchain.

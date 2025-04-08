@@ -24,7 +24,7 @@ using namespace std;
 using namespace llvm;
 
 
-cl::opt<bool> SearchAll("search-all-vars", cl::value_desc("search all variable"), cl::desc("true or flase"), cl::init(true));
+cl::opt<bool> EnableMXP("mxp", cl::value_desc("enable pragma & autofp"), cl::desc("true or false"), cl::init(false));
 
 
 // Find Local vars and local static vars
@@ -34,7 +34,7 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
 
     bool inRegion = false;
     SmallVector<StringRef> defaultPrecisionRange;
-    std::set<std::string> searchableVars; // SearchAll=false, only __autofp vars & vars in pragma region searchable
+    std::set<std::string> searchableVars; // if EnableMXP=true, only __autofp vars & vars in pragma region searchable
 
     for (auto &BB : F) {
         for (auto &I : BB) {
@@ -66,7 +66,7 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
                     if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
                         varName = DV->getName();
                         typeName = parseDITypeName(DV->getType());
-                        
+                        if (DV->isParameter()) continue;  // 函数参数不应该被调整，会有对齐等问题
                         if (varName == "this") continue;
                         DL = DDI->getDebugLoc();
                         isStatic = false;
@@ -78,10 +78,8 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
                     auto name = Callee->getName();
                     if (name == "llvm.precision.region.start") {
                         inRegion = true;
-                        errs() << "Found region: " << F.getName() << "\n";
                     } else if (name == "llvm.precision.region.end") {
                         inRegion = false;
-                        errs() << "End region: " << F.getName() << "\n";
                     } else if (name == "llvm.precision.range") {
                         if (auto *MD = getMetadataNode(CI, 0)) {
                             auto precisionRange = extractStringsFromMD(MD);
@@ -110,7 +108,7 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
                     } else if (name == "llvm.precision.error") {
                         auto *errorMD = getMetadataNode(CI, 0);
                         auto errors = extractStringsFromMD(errorMD);
-                        config["result_error"] = errors[0];
+                        config["result_error"] = errors[1];  // errors[0] is var_name
                     }
                 }
             }
@@ -119,11 +117,9 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
             if (inRegion) {
                 std::function<void(Value*)> collectValues = [&](Value *V) {
                     if (auto *LI = dyn_cast<LoadInst>(V)) {
-                        errs() << "Found var from LoadInst: " << LI->getPointerOperand()->getName() << "\n";
                         searchableVars.insert(LI->getPointerOperand()->getName().str());
                     }
                     else if (auto *SI = dyn_cast<StoreInst>(V)) {
-                        errs() << "Found var from StoreInst: " << SI->getPointerOperand()->getName() << "\n";
                         searchableVars.insert(SI->getPointerOperand()->getName().str());
                     }
                     // 涵盖了BinOp、UnaOp、FCmp、CallInst等所有其他指令返回结果情形
@@ -187,7 +183,7 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
         }
     }
 
-    config["local"][funcName] = (SearchAll ? function : newFunction);
+    config["local"][funcName] = (EnableMXP ? newFunction : function);
     autoFPRange.clear();
 }
 
@@ -230,10 +226,10 @@ void SearchVariableDecl::findGlobalVariables(Module &M) {
                 }
             }
             globalVar["range"] = precisionRange;
-            if (!SearchAll)
+            if (EnableMXP)
                 globalVars.emplace_back(globalVar);  // only __autofp globalVar available
         }
-        if (SearchAll)
+        if (!EnableMXP)
             globalVars.emplace_back(globalVar);
     }
     config["global"] = globalVars;

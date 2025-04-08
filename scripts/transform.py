@@ -55,7 +55,7 @@ def transform(bitcode_file, var_config, diff):
     config_utils.print_config(var_config, TEMP_CONFIG_FILE)
 
     # run LLVM passes
-    command = ['opt', '-load-pass-plugin', PERCI_TUNER_PATH, "-S", "-passes=" + PASSES, "--variable-config=" + TEMP_CONFIG_FILE , "--function-config=" + TEMP_CONFIG_FILE, bitcode_file, "-o", TEMP_BC_PATH]
+    command = ['opt', '-load-pass-plugin', PERCI_TUNER_PATH, "-S", "-passes=" + PASSES, "--variable-config=" + TEMP_CONFIG_FILE , "--function-config=" + TEMP_CONFIG_FILE , "--function-config=" + TEMP_CONFIG_FILE, bitcode_file, "-o", TEMP_BC_PATH]
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     # return -1 if running LLVM passes fails
     if retval != 0:
@@ -75,6 +75,9 @@ def transform(bitcode_file, var_config, diff):
         command = ['./temp_output']
         try:
             output = subprocess.check_output(command, stderr=None)
+            if not output.strip():  # if blank output, throw error
+                print(">>> Perci-Tuner(Py) Error: Program has no output, search failed!")
+                sys.exit(1)
         except subprocess.CalledProcessError as e:
             print(e.output.decode())
             print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")

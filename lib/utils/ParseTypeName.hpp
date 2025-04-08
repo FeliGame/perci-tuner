@@ -52,7 +52,7 @@ inline string parseTypeName(Type* type) {
     }
 
     if (result == "__autofp") {
-        result = "long double";  // default
+        result = "double";  // default (specified by clang)
     }
 
     return result;
@@ -93,7 +93,7 @@ inline string parseDITypeName(DIType* type) {
     }
 
     if (type->getName().str() == "__autofp") {
-        return "long double";  // default
+        return "double";  // default (specified by clang)
     }
 
     return type->getName().empty() ? "" : type->getName().str();

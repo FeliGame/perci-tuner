@@ -19,7 +19,9 @@ inline SmallVector<StringRef> extractStringsFromMD(MDNode *MD) {
   SmallVector<StringRef> result;
   for (const MDOperand &MDOp : MD->operands()) {
     if (MDString *S = dyn_cast<MDString>(MDOp)) {
-      result.push_back(S->getString());
+      auto typeName = S->getString();
+      if (typeName == "__float128") typeName = "long double";
+      result.push_back(typeName);
     }
   }
   return result;

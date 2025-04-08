@@ -327,9 +327,14 @@ def parse_arguments():
 def main():
     global run_times, min_time, thres, original_conf, original_result, bitcode_name
     
-    print("Usage & default args: python search.py -ir=output.bc -config=config.json "
-              "-thres=1e-6 -repeat=5 -history=true -algorithm=dd|exhaust")
     args = parse_arguments()
+    print(f"  IR file: {args['-ir']}")
+    print(f"  Config file: {args['-config']}")
+    print(f"  Threshold: {args['-thres']}")
+    print(f"  Repeat times: {args['-repeat']}")
+    print(f"  Show history: {args['-history']}")
+    print(f"  Algorithm: {args['-algorithm']}")
+
     bitcode = args['-ir']
     original_conf_file = args['-config']
     thres = args['-thres']

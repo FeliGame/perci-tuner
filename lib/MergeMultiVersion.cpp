@@ -128,7 +128,8 @@ bool MergeMultiVersion::runOnModule(Module &module)
                 // CondBB->OrigCallBB/ClonedCallBB
                 IRBuilder<> CondBuilder(CondBB);
                 Value *Cond = CondBuilder.CreateCall(mvSelectFunction, {}, "mvselect");
-                Value *Cmp = CondBuilder.CreateICmpNE(Cond, ConstantInt::get(Cond->getType(), 0));
+                // If Cond == 0, go to OrigCallBB, otherwise go to ClonedCallBB
+                Value *Cmp = CondBuilder.CreateICmpEQ(Cond, ConstantInt::get(Cond->getType(), 0));
                 CondBuilder.CreateCondBr(Cmp, OrigCallBB, ClonedCallBB);
 
                 // OrigCallBB->PostBB

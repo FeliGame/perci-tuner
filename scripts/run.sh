@@ -28,7 +28,8 @@ do
         echo "SRC_NAME: $SRC_NAME"
         echo "SRC_NO_SUFFIX: $SRC_NO_SUFFIX"
 
-        clang -g -emit-llvm -c $arg $HALF_PRECISION_SUPPORT -o $SRC_NO_SUFFIX.bc
+        # -fno-discard-value-names is needed for [#pragma precision] support
+        clang -g -emit-llvm -c $arg $HALF_PRECISION_SUPPORT -fno-discard-value-names -o $SRC_NO_SUFFIX.bc
         BCS="$BCS $SRC_NO_SUFFIX.bc"  # append bc name to BCS
 
     fi

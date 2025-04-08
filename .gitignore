@@ -5,6 +5,5 @@ scripts/__pycache__/
 *.bc
 *.json
 benchmarks/*.bc
-error
-output
-temp_output
+# 忽略所有无后缀文件
+*[!.]*

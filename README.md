@@ -5,7 +5,22 @@ Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features 
 
 # User Manual
 
-First things first, install LLVM (recommended version: 17.0.6) with `-DCMAKE_BUILD_TYPE=Release` option, or Perci-Tuner might crash.
+First things first, install LLVM (recommended version: 17.0.6) build `-DCMAKE_BUILD_TYPE=Release` option, or Perci-Tuner might crash.
+
+If you want to use -mxp option, install mxp version of LLVM, then build LLVM with:
+``` sh
+cmake -G Ninja \
+  -S llvm -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLLVM_TARGETS_TO_BUILD="host;PowerPC" \
+  -DLLVM_ENABLE_PROJECTS="clang;mlir" \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DLLVM_BUILD_UTILS=ON \
+  -DLLVM_BUILD_TOOLS=ON \
+  -DLLVM_INSTALL_GTEST=ON \
+  -DBUILD_SHARED_LIBS=ON \
+  -DLLVM_ENABLE_ASSERTIONS=OFF
+```
 
 ## Add Environment Variable
 
@@ -23,26 +38,16 @@ This will generate a pass.so under build/ directory.
 
 ## Run Perci-Tuner
 
-`sh scripts/run.sh /path/to/src1.c /path/to/src2.c ... "Optional Flags"`
+`sh scripts/mxpcc.sh src_files... -mode=xxx [Optional Flags]`
 
-This will generate results (IR and related files) under the src folder.
+Check mxpcc.sh for more information.
 
-`python3 scripts/search.py`
-
-Run this will generate optimized precision config file & runnable IR, check search.py to know more about command arguments.
-
-`sh scripts/run_multi_version.sh output.bc optimized_output.bc function_name`
-
-(Optional) If you want to merge the orginal IR and the optimized IR into a merged IR, you can run this command. Set environment value to decide which IR to use(implemented in mvselect.c):
-
-`export PERCI_TUNER_SPEED_FIRST=TRUE`
-
-## Optional Flags
+## Pass Flags
 
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
-### --search-all-vars(bool)
-Search all floating-point vars in IR if set to true, or search only __autofp vars or vars in #pragma region. From Pass:search_variable_decl, implemented in SearchVariableDecl.
+### --mxp(bool)
+Search all floating-point vars in IR if set to false, or search only __autofp vars or vars in #pragma region. From Pass:search_variable_decl, implemented in SearchVariableDecl.
 
 ### --variable-config
 
