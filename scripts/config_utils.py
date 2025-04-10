@@ -5,6 +5,8 @@
 
 import copy, json, re
 
+global thres
+
 # valid precision types
 PRECISIONS = ["__fp16", "float", "double", "long double"]
 CONST_PRECISIONS = ["const " + p for p in PRECISIONS]
@@ -90,6 +92,9 @@ def set_var_search_types(change_set):
 
 
 def parse_config(config):
+    global thres
+    if 'result_error' in config and config['result_error'] is not None:
+        thres = float(config['result_error'])
     change_set = []
     # TODO: put global into change_set
     local_vars = config.get('local')

@@ -9,11 +9,11 @@
 # search mode: config mode + search for optimized config.json + IR + exec
 # change mode: config mode + change src_files precisions according to config.json input
 # multi-version mode: merge original and optimized executables
+# fp exception mode: 
 ################################################################################
 
-cd $PERCI_TUNER
-
 MODE_FLAG=""
+SOURCE_FILES=""
 
 # config-generation option
 MXP_FLAG=false  # check pragma precision & autofp vars if true, or search all vars
@@ -38,21 +38,8 @@ HALF_PRECISION_SUPPORT="-Xclang -fnative-half-type"
 for arg in "$@"
 do
     # 只处理.c/.cpp/.h/.hpp后缀的文件
-    if test -f "$arg" && (test "${arg##*.}" = "c" || test "${arg##*.}" = "cpp" || test "${arg##*.}" = "h" || test "${arg##*.}" = "hpp"); then
-        # Only keep path: path/to/a.cpp -> path/to/
-        SRC_PATH=$(echo "$arg" | sed 's|/[^/]*$||')"/"
-        # Trim prefix & suffix: path/to/a.cpp-> a
-        SRC_NAME=$(echo "$arg" | sed 's|.*/||' | sed 's|\.[^.]*$||')
-        # Trim suffix: path/to/a.cpp-> path/to/a
-        SRC_NO_SUFFIX=$SRC_PATH$SRC_NAME
-
-        echo "SRC_PATH: $SRC_PATH"
-        echo "SRC_NAME: $SRC_NAME"
-        echo "SRC_NO_SUFFIX: $SRC_NO_SUFFIX"
-
-        # -fno-discard-value-names is needed for [#pragma precision] support
-        clang -g -emit-llvm -c $arg $HALF_PRECISION_SUPPORT -fno-discard-value-names -o $SRC_NO_SUFFIX.bc
-        BCS="$BCS $SRC_NO_SUFFIX.bc"  # append bc name to BCS
+    if test -f "$arg" & (test "${arg##*.}" = "c" || test "${arg##*.}" = "cpp" || test "${arg##*.}" = "h" || test "${arg##*.}" = "hpp"); then
+        SOURCE_FILES="$SOURCE_FILES $arg"
     elif test "$arg" = "-mode=config"; then
         MODE_FLAG="config"
     elif test "$arg" = "-mode=search"; then
@@ -62,6 +49,8 @@ do
         MODE_FLAG="change"
     elif test "$arg" = "-mode=multi-version"; then
         MODE_FLAG="multi-version"
+    elif test "$arg" = "-mode=fpe"; then
+        MODE_FLAG="fpe"
     elif test "$arg" = "-exhaust"; then
         RUN_ALGORITHM=exhaust
     elif test "$arg" = "-history"; then
@@ -80,25 +69,50 @@ do
         THRESHOLD="${arg#-thres=}"
     elif test "${arg#-repeat=}" != "$arg"; then
         REPEAT_TIMES="${arg#-repeat=}"
-    else
-        echo "Error: -mode parameter is required"
+    elif test "$arg" = "-h" -o "$arg" = "--help"; then 
+        echo "Usage: mxpcc.sh [options] src_files"
+        echo "Perci-Tuner Options:"
         echo "  -mode=config        Generate config file (config.json) and executable"
         echo "  -mode=search        Search for optimized config (includes config mode)"
         echo "  -mode=change        Modify source code precision according to config"
         echo "  -mode=multi-version Generate multi-version executable (includes search mode)"
+        echo "  -mode=fpe           Ouput FPE exception after searching for optimized config"
         echo ""
         echo "Parameters for different mode:"
         echo "  -exhaust           (search | multi-version) Use exhaustive search algorithm"
         echo "  -thres=<1e-6>      (search | multi-version) Set error threshold (default 1e-6)"
         echo "  -repeat=<1>        (search | multi-version) Set repeat count (default 1)"
-        echo "  -history           (search | multi-version) Keep search history (default false)"
-        echo "  -mxp               (config | search | multi-version) Config only includes pragma precision and autofp variables"
+        echo "  -history           (search | multi-version | fpe) Keep search history (default false)"
+        echo "  -mxp               (all modes) Config only includes pragma precision and autofp variables"
         echo "  -original-version  (multi-version) Use original version in multi-version mode (default false)"
         echo "  -target            (change) Set target config file (default changed_config.json)"
         echo "  -multi-ir          (multi-version) Set another version IR"
         echo "  -multi-func        (multi-version) Set multi-version function name"
+        exit 0
+    fi
+done
+
+if test -z "$MODE_FLAG"; then
+    clang "$@"
+    exit $?
+fi
+
+# 统一处理源文件
+for src_file in $SOURCE_FILES; do
+    # 检查文件是否存在
+    if ! test -f "$src_file"; then
+        echo "Error: File not found: $src_file"
         exit 1
     fi
+    if test $MODE_FLAG = "fpe"; then
+        # FPE模式预处理
+        clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" -fno-discard-value-names -o "$src_file.bc"
+    else
+        # 其他模式正常处理
+        clang -g -emit-llvm -c "$src_file" $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
+    fi
+    
+    BCS="$BCS $src_file.bc"
 done
 
 llvm-link $BCS -o output.bc
@@ -115,11 +129,11 @@ if test $MODE_FLAG = "change"; then
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 fi
 
-if test $MODE_FLAG = "search"; then
+if test $MODE_FLAG = "search" -o $MODE_FLAG = "fpe"; then
     # 动态搜索降精配置
-    python3 scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -history=$HISTORY_FLAG
+    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -history=$HISTORY_FLAG
     clang -O2 -o optimized_output optimized_output.bc -lgsl -lblas -lm
-    echo "[Optimized] Config: optimized_output.bc.json, IR: optimized_output.bc, Executable: optimized_output"
+    echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 
 if test $MODE_FLAG = "multi-version"; then
@@ -133,9 +147,14 @@ if test $MODE_FLAG = "multi-version"; then
     fi
     # TODO, export is useless, should be run by user in shell.
     export PERCI_TUNER_ORIGINAL_VERSION=$ORIGINAL_VERSION_FLAG 
-    clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc lib/mvselect.c
+    clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC output+mvselect.bc -o merged.bc
     clang -O2 -o merged merged.bc -lgsl -lblas -lm
     echo "[Merged] IR: merged.bc, Executable: merged"
+fi
+
+if test $MODE_FLAG = "fpe"; then
+    # 处理fp异常（需要mxp版本LLVM）- 生成可执行文件
+    clang -O2 -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm
 fi

@@ -67,4 +67,5 @@ def is_nearly_equal_to(new_result, old_result, thres):
         return abs(new_result) <= threshold
     # if old_result is not 0, then use relative error to compare
     relative_error = abs((new_result - old_result) / old_result)
+    print (f"relative error: {relative_error}")
     return relative_error <= threshold

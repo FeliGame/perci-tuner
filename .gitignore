@@ -3,5 +3,10 @@ scripts/__pycache__/
 *.txt
 *.csv
 *.bc
+*.ll
 *.json
 benchmarks/*.bc
+output
+temp_output
+optimized_output
+merged

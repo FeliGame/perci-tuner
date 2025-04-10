@@ -14,14 +14,14 @@ int mvselect()
 
   if (mvval == NULL)
   {
-    printf("mvselect: no env! use precision_first(original_version)\n");
+    // printf("mvselect: no env! use precision_first(original_version)\n");
     return 0;
   }
   if (strcmp(mvval, original_version_flag) == 0)
   {
-    printf("mvselect: precision_first(original_version)\n");
+    // printf("mvselect: precision_first(original_version)\n");
     return 0;
   }
-  printf("mvselect: speed_first(another_version)\n");
+  // printf("mvselect: speed_first(another_version)\n");
   return 1;
 }

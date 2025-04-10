@@ -37,8 +37,9 @@ def read_main_running_time():
 
 # read runned program's output
 def read_result(text):
-    pattern = r"(-?[\d.]+)"
-    match = re.search(pattern, text)
+    # 只匹配字符串末尾的浮点数或科学计数法，并去掉空白字符
+    pattern = r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*$"
+    match = re.search(pattern, text.strip())
     if match:
         float_number = match.group(1)
         return float_number

@@ -14,7 +14,6 @@ global run_times
 run_times = 0
 global min_time
 min_time = float('inf')
-global thres
 
 global original_conf
 global original_result
@@ -134,7 +133,7 @@ def run_config(bitcode, current_config, change_set):
     # save config if satisfy error threshold
     global original_result
     if original_result == -1: return True
-    if data_utils.is_nearly_equal(transform.current_run_result, original_result, thres):
+    if data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres):
         time_str = "{:.2e}".format(transform.current_run_time).replace('.', '_')
         filename = f"VALID_{time_str}.json"
         shutil.copyfile("temp_config.json", filename)
@@ -152,7 +151,6 @@ def update_opt_bc():
 # using delta debugging algorithm to find the minimal change set
 def search_minimal_change_set(bitcode, change_set, current_config, div_num):
     global min_time
-    global thres
     delta_change_set = []
     complement_delta_change_set = []
     # calculate the size of each part
@@ -191,7 +189,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(delta_change)
         new_config = config_utils.rebuild(change_set, current_config)
-        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, original_result, thres) and transform.current_run_time < min_time:
+        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres) and transform.current_run_time < min_time:
             min_time = transform.current_run_time
             new_change_set = delta_change
             new_div_num = INITIAL_DIV_NUM
@@ -203,7 +201,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(complement_delta_change)
         new_config = config_utils.rebuild(change_set, current_config)
-        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, original_result, thres) and transform.current_run_time < min_time:
+        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres) and transform.current_run_time < min_time:
             min_time = transform.current_run_time
             new_change_set = complement_delta_change
             new_div_num = div_num - 1  # to optimize performance
@@ -253,7 +251,7 @@ def search_conf_delta(bitcode, change_set):
     return new_conf
 
 def exhaustive_search(bitcode, change_set, current_config):
-    global min_time, thres
+    global min_time
     candidates = []
     
     # generate all combinations
@@ -283,7 +281,7 @@ def exhaustive_search(bitcode, change_set, current_config):
         new_config = config_utils.rebuild(temp_change_set, current_config)
         
         if run_config(bitcode, new_config, temp_change_set):
-            if (data_utils.is_nearly_equal(transform.current_run_result, original_result, thres) and 
+            if (data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres) and 
                 transform.current_run_time < min_time):
                 min_time = transform.current_run_time
                 update_opt_bc()
@@ -325,19 +323,13 @@ def parse_arguments():
     return params
 
 def main():
-    global run_times, min_time, thres, original_conf, original_result, bitcode_name
+    global run_times, min_time, original_conf, original_result, bitcode_name
     
     args = parse_arguments()
-    print(f"  IR file: {args['-ir']}")
-    print(f"  Config file: {args['-config']}")
-    print(f"  Threshold: {args['-thres']}")
-    print(f"  Repeat times: {args['-repeat']}")
-    print(f"  Show history: {args['-history']}")
-    print(f"  Algorithm: {args['-algorithm']}")
 
     bitcode = args['-ir']
     original_conf_file = args['-config']
-    thres = args['-thres']
+    config_utils.thres = args['-thres']
     transform.RUNNING_TIMES = args['-repeat']
     transform.show_history = args['-history']
     algorithm = args['-algorithm']
@@ -350,6 +342,13 @@ def main():
     # change_set keep those need to change precision and available precisions
     change_set = config_utils.parse_config(original_conf)
     changes_set_len = len(change_set)
+
+    print(f"  IR file: {args['-ir']}")
+    print(f"  Config file: {args['-config']}")
+    print(f"  Threshold: {config_utils.thres}")
+    print(f"  Repeat times: {args['-repeat']}")
+    print(f"  Show history: {args['-history']}")
+    print(f"  Algorithm: {args['-algorithm']}")
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)
@@ -370,10 +369,10 @@ def main():
     else:
         print("Error: Invalid algorithm!")
         sys.exit(1)
-    config_utils.print_config(new_conf, OPT_PREFIX + bitcode_name + ".json")
+    config_utils.print_config(new_conf, "optimized_config.json")
     
     print(">>> Perci-Tuner(Py): Search finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
-    print(">>> Perci-Tuner(Py): Config: " + OPT_PREFIX + bitcode_name + ".json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time, "Acc rate:", 100.0 * (original_time - min_time) / min_time, "%")
+    print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time, "Acc rate:", 100.0 * (original_time - min_time) / min_time, "%")
 
 
 if __name__ == "__main__":

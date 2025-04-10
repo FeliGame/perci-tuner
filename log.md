@@ -274,3 +274,8 @@
 * CRUCIAL update transform.py: Repair ChangeFunctionCall not enabled during search.
 * CRUCIAL update SearchVariableDecl: Function Parameters are no more searched, which might cause inconsistent alignment during assignment.
 * add: mxpcc.sh, the driver of entire toolchain.
+
+# 10
+
+* add: More tests, -fpe mode.
+* update: mxpcc.sh run as clang without -mode option.
