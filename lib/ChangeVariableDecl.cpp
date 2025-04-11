@@ -177,6 +177,14 @@ Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction 
         errs() << "Insert FP cast: " << *val->getType() << "->" << *targetType << "\n";
         return builder.CreateFPCast(val, targetType, "fp_cast");
     }
+    if (val->getType()->isIntegerTy() && targetType->isFloatingPointTy()) {
+        errs() << "Insert IntToFP cast: " << *val->getType() << "->" << *targetType << "\n";
+        return builder.CreateSIToFP(val, targetType, "int_to_fp");
+    }
+    if (val->getType()->isFloatingPointTy() && targetType->isIntegerTy()) {
+        errs() << "Insert FPToInt cast: " << *val->getType() << "->" << *targetType << "\n";
+        return builder.CreateFPToSI(val, targetType, "fp_to_int");
+    }
     
     errs() << "InsertCast(): Unsupported non-floating point type cast: " 
            << *val->getType() << " -> " << *targetType << "\n";
@@ -187,8 +195,23 @@ Type* ChangeVariableDecl::findHighestPrecisionType(BinaryOperator *binOp) {
     Type *highestType = nullptr;
     for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
         auto *operand = binOp->getOperand(i);
-        if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
-            highestType = operand->getType();
+        auto *operandType = operand->getType();
+        // if op is CastInst, use SrcType
+        if (auto *castInst = dyn_cast<CastInst>(operand)) {
+            if (castInst->getSrcTy()->isFloatingPointTy()) {
+                operandType = castInst->getSrcTy();
+            } else if (castInst->getSrcTy()->isIntegerTy()) {
+                // integer -> floating
+                unsigned bits = castInst->getSrcTy()->getIntegerBitWidth();
+                if (bits <= 32) {
+                    operandType = Type::getFloatTy(binOp->getContext());
+                } else {
+                    operandType = Type::getDoubleTy(binOp->getContext());
+                }
+            }
+        }
+        if (!highestType || operandType->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+            highestType = operandType;
         }
     }
     return highestType;
@@ -199,8 +222,23 @@ Type* ChangeVariableDecl::findHighestPrecisionType(FCmpInst *fcmp) {
     Type *highestType = nullptr;
     for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
         auto *operand = fcmp->getOperand(i);
-        if (!highestType || operand->getType()->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
-            highestType = operand->getType();
+        auto *operandType = operand->getType();
+        // if op is CastInst, use SrcType
+        if (auto *castInst = dyn_cast<CastInst>(operand)) {
+            if (castInst->getSrcTy()->isFloatingPointTy()) {
+                operandType = castInst->getSrcTy();
+            } else if (castInst->getSrcTy()->isIntegerTy()) {
+                // integer -> floating
+                unsigned bits = castInst->getSrcTy()->getIntegerBitWidth();
+                if (bits <= 32) {
+                    operandType = Type::getFloatTy(fcmp->getContext());
+                } else {
+                    operandType = Type::getDoubleTy(fcmp->getContext());
+                }
+            }
+        }
+        if (!highestType || operandType->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+            highestType = operandType;
         }
     }
     return highestType;
@@ -266,6 +304,10 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
     
     for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
         auto *operand = binOp->getOperand(i);
+        // if typecast, use src value
+        if (auto *castInst = dyn_cast<CastInst>(operand)) {
+            operand = castInst->getOperand(0);
+        }
         // type of src operands not match
         if (operand->getType() != highestType) {
             errs() << "RepairUser: Binary operand " << i << " of type " << *operand->getType() 
@@ -304,6 +346,10 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
     
     for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
         auto *operand = fcmp->getOperand(i);
+        // if typecast, use src value
+        if (auto *castInst = dyn_cast<CastInst>(operand)) {
+            operand = castInst->getOperand(0);
+        }
         if (operand->getType() != highestType) {
             errs() << "RepairUser: FCmp operand " << i << " of type " << *operand->getType() 
                 << " != target type " << *highestType << ", casting...\n";
@@ -452,42 +498,46 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
     for (auto &BB : F) {
         for (auto &I : BB) {
             if (auto *castInst = dyn_cast<CastInst>(&I)) {
-                if (!castInst->getSrcTy()->isFloatingPointTy() || 
-                    !castInst->getDestTy()->isFloatingPointTy()) 
+                if (castInst->use_empty()) {
+                    errs() << "Remove unused cast: " << *castInst << "\n";
+                    instToErase.insert(castInst);
+                    modified = true;
                     continue;
+                }
 
                 if (castInst->getSrcTy() == castInst->getDestTy()) {
                     errs() << "Remove redundant cast: " << *castInst << "\n";
                     castInst->replaceAllUsesWith(castInst->getOperand(0));
                     instToErase.insert(castInst);
                     modified = true;
+                    continue;
                 }
 
-                if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
-                    auto *srcType = castInst->getSrcTy();
-                    auto *destType = castInst->getDestTy();
+                // if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
+                //     auto *srcType = castInst->getSrcTy();
+                //     auto *destType = castInst->getDestTy();
                     
-                    // 如果目标类型精度低于源类型，且当前是FPExt，则改为FPTrunc
-                    if (destType->getPrimitiveSizeInBits() < srcType->getPrimitiveSizeInBits() && 
-                        isa<FPExtInst>(castInst)) {
-                        builder.SetInsertPoint(castInst);
-                        auto *newCast = builder.CreateFPTrunc(castInst->getOperand(0), destType);
-                        castInst->replaceAllUsesWith(newCast);
-                        instToErase.insert(castInst);
-                        modified = true;
-                        continue;
-                    }
-                    // 如果目标类型精度高于源类型，且当前是FPTrunc，则改为FPExt
-                    else if (destType->getPrimitiveSizeInBits() > srcType->getPrimitiveSizeInBits() && 
-                             isa<FPTruncInst>(castInst)) {
-                        builder.SetInsertPoint(castInst);
-                        auto *newCast = builder.CreateFPExt(castInst->getOperand(0), destType);
-                        castInst->replaceAllUsesWith(newCast);
-                        instToErase.insert(castInst);
-                        modified = true;
-                        continue;
-                    }
-                }
+                //     // 如果目标类型精度低于源类型，且当前是FPExt，则改为FPTrunc
+                //     if (destType->getPrimitiveSizeInBits() < srcType->getPrimitiveSizeInBits() && 
+                //         isa<FPExtInst>(castInst)) {
+                //         builder.SetInsertPoint(castInst);
+                //         auto *newCast = builder.CreateFPTrunc(castInst->getOperand(0), destType);
+                //         castInst->replaceAllUsesWith(newCast);
+                //         instToErase.insert(castInst);
+                //         modified = true;
+                //         continue;
+                //     }
+                //     // 如果目标类型精度高于源类型，且当前是FPTrunc，则改为FPExt
+                //     else if (destType->getPrimitiveSizeInBits() > srcType->getPrimitiveSizeInBits() && 
+                //              isa<FPTruncInst>(castInst)) {
+                //         builder.SetInsertPoint(castInst);
+                //         auto *newCast = builder.CreateFPExt(castInst->getOperand(0), destType);
+                //         castInst->replaceAllUsesWith(newCast);
+                //         instToErase.insert(castInst);
+                //         modified = true;
+                //         continue;
+                //     }
+                // }
             }
         }
     }
@@ -589,7 +639,17 @@ bool ChangeVariableDecl::runOnFunction(Function &F) {
 
     removeRedundantReplacements();
 
+    for (auto *inst : instToErase) {
+        inst->eraseFromParent();
+    }
+    instToErase.clear();
+
     modified |= repairCasts(F);
+
+    for (auto *inst : instToErase) {
+        inst->eraseFromParent();
+    }
+    instToErase.clear();
     return modified;
 }
 
@@ -781,10 +841,6 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         if(!f->isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
             modified |= runOnFunction(*f);
         }
-    }
-
-    for (auto *inst : instToErase) {
-        inst->eraseFromParent();
     }
 
     if (verifyModule(module, &errs()))

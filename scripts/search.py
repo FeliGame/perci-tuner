@@ -142,10 +142,11 @@ def run_config(bitcode, current_config, change_set):
     return True
 
 
-# update the best ir code file
-def update_opt_bc():
+# update the best IR and config file
+def update_opt(opt_config):
     global OPT_PREFIX, bitcode_name
     shutil.copyfile(transform.TEMP_BC_PATH, OPT_PREFIX + bitcode_name)
+    config_utils.print_config(opt_config, OPT_PREFIX + "config.json")
 
 
 # using delta debugging algorithm to find the minimal change set
@@ -195,7 +196,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
             new_div_num = INITIAL_DIV_NUM
             have_better_set = True
             print('delta better')
-            update_opt_bc()
+            update_opt(new_config)
         
         # if len(complement_delta_change) > 0:
         change_to_2nd_highest_precision(change_set)
@@ -207,7 +208,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
             new_div_num = div_num - 1  # to optimize performance
             have_better_set = True
             print('comp_delta better')
-            update_opt_bc()
+            update_opt(new_config)
 
     if have_better_set:
         change_to_2nd_highest_precision(change_set)
@@ -284,10 +285,7 @@ def exhaustive_search(bitcode, change_set, current_config):
             if (data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres) and 
                 transform.current_run_time < min_time):
                 min_time = transform.current_run_time
-                update_opt_bc()
-                # save ir
-                global bitcode_name
-                config_utils.print_config(new_config, f"BEST_{bitcode_name}.json")
+                update_opt(new_config)
                 candidates.append((new_config, min_time))
 
     return candidates

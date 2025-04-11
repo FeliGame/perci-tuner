@@ -44,7 +44,6 @@ do
         MODE_FLAG="config"
     elif test "$arg" = "-mode=search"; then
         MODE_FLAG="search"
-        echo "search"
     elif test "$arg" = "-mode=change"; then
         MODE_FLAG="change"
     elif test "$arg" = "-mode=multi-version"; then

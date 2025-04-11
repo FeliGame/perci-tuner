@@ -271,7 +271,6 @@
 # 7
 
 * update: Throw error if no output while search. Repair bugs of #pragma & __autofp.
-* CRUCIAL update transform.py: Repair ChangeFunctionCall not enabled during search.
 * CRUCIAL update SearchVariableDecl: Function Parameters are no more searched, which might cause inconsistent alignment during assignment.
 * add: mxpcc.sh, the driver of entire toolchain.
 
@@ -279,3 +278,9 @@
 
 * add: More tests, -fpe mode.
 * update: mxpcc.sh run as clang without -mode option.
+
+# 12
+
+* update: Repair project1/cs-5.
+* CRUCIAL add: ChangeVariableDecl: Handle float-integer casts during BinOp & FCmp, which cause not consistent with changed precision in manual version.
+* CRUCIAL update: search.py: opt IR is consistent with opt config now.
