@@ -1,4 +1,4 @@
 [submodule "llvm-project"]
 	path = llvm-project
-	url = https://github.com/Rhein-E/llvm-project.git
-	branch = mixed-precision
+	url = https://github.com/pysuxing/llvm-project.git
+	branch = mxp
