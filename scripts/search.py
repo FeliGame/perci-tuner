@@ -2,7 +2,7 @@
 
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import sys, math, json, os, shutil
+import sys, math, json, os, shutil, time
 import config_utils, data_utils, transform
 
 # the initial divide number for delta debugging change set
@@ -332,6 +332,7 @@ def main():
     transform.show_history = args['-history']
     algorithm = args['-algorithm']
 
+    start_time = time.perf_counter()
     data_utils.delete_data()
 
     # load the original config from file
@@ -369,6 +370,8 @@ def main():
         sys.exit(1)
     config_utils.print_config(new_conf, "optimized_config.json")
     
+    end_time = time.perf_counter()
+    print(f">>> Perci-Tuner(Py): Search time: {(end_time - start_time):.2e} s")
     print(">>> Perci-Tuner(Py): Search finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
     print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time, "Acc rate:", 100.0 * (original_time - min_time) / min_time, "%")
 

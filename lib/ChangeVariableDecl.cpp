@@ -513,31 +513,31 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
                     continue;
                 }
 
-                // if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
-                //     auto *srcType = castInst->getSrcTy();
-                //     auto *destType = castInst->getDestTy();
+                if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
+                    auto *srcType = castInst->getSrcTy();
+                    auto *destType = castInst->getDestTy();
                     
-                //     // 如果目标类型精度低于源类型，且当前是FPExt，则改为FPTrunc
-                //     if (destType->getPrimitiveSizeInBits() < srcType->getPrimitiveSizeInBits() && 
-                //         isa<FPExtInst>(castInst)) {
-                //         builder.SetInsertPoint(castInst);
-                //         auto *newCast = builder.CreateFPTrunc(castInst->getOperand(0), destType);
-                //         castInst->replaceAllUsesWith(newCast);
-                //         instToErase.insert(castInst);
-                //         modified = true;
-                //         continue;
-                //     }
-                //     // 如果目标类型精度高于源类型，且当前是FPTrunc，则改为FPExt
-                //     else if (destType->getPrimitiveSizeInBits() > srcType->getPrimitiveSizeInBits() && 
-                //              isa<FPTruncInst>(castInst)) {
-                //         builder.SetInsertPoint(castInst);
-                //         auto *newCast = builder.CreateFPExt(castInst->getOperand(0), destType);
-                //         castInst->replaceAllUsesWith(newCast);
-                //         instToErase.insert(castInst);
-                //         modified = true;
-                //         continue;
-                //     }
-                // }
+                    // 如果目标类型精度低于源类型，且当前是FPExt，则改为FPTrunc
+                    if (destType->getPrimitiveSizeInBits() < srcType->getPrimitiveSizeInBits() && 
+                        isa<FPExtInst>(castInst)) {
+                        builder.SetInsertPoint(castInst);
+                        auto *newCast = builder.CreateFPTrunc(castInst->getOperand(0), destType);
+                        castInst->replaceAllUsesWith(newCast);
+                        instToErase.insert(castInst);
+                        modified = true;
+                        continue;
+                    }
+                    // 如果目标类型精度高于源类型，且当前是FPTrunc，则改为FPExt
+                    else if (destType->getPrimitiveSizeInBits() > srcType->getPrimitiveSizeInBits() && 
+                             isa<FPTruncInst>(castInst)) {
+                        builder.SetInsertPoint(castInst);
+                        auto *newCast = builder.CreateFPExt(castInst->getOperand(0), destType);
+                        castInst->replaceAllUsesWith(newCast);
+                        instToErase.insert(castInst);
+                        modified = true;
+                        continue;
+                    }
+                }
             }
         }
     }

@@ -284,3 +284,8 @@
 * update: Repair project1/cs-5.
 * CRUCIAL add: ChangeVariableDecl: Handle float-integer casts during BinOp & FCmp, which cause not consistent with changed precision in manual version.
 * CRUCIAL update: search.py: opt IR is consistent with opt config now.
+
+# 15
+
+* add: project2 cs-1 tests.
+* update: repair crush of repairCasts.
