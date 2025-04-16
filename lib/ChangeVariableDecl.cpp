@@ -307,6 +307,7 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
         // if typecast, use src value
         if (auto *castInst = dyn_cast<CastInst>(operand)) {
             operand = castInst->getOperand(0);
+            operandsModified = true;
         }
         // type of src operands not match
         if (operand->getType() != highestType) {
@@ -349,6 +350,7 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
         // if typecast, use src value
         if (auto *castInst = dyn_cast<CastInst>(operand)) {
             operand = castInst->getOperand(0);
+            operandsModified = true;
         }
         if (operand->getType() != highestType) {
             errs() << "RepairUser: FCmp operand " << i << " of type " << *operand->getType() 

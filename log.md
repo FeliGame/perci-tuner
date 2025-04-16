@@ -288,4 +288,4 @@
 # 15
 
 * add: project2 cs-1 tests.
-* update: repair crush of repairCasts.
+* update: repair crash in repairCasts, repairFCmp, repairBinOp.
