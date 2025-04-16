@@ -1,5 +1,5 @@
 # 1. search for optimized_config.json
-sh $PERCI_TUNER/scripts/mxpcc.sh -mode=search -mxp multiversion-test.c -history
+sh $PERCI_TUNER/scripts/mxpcc.sh -mode=search-by-config -mxp multiversion-test.c -history
 
 # 2. change src by optimized_config.json automatically & run
 sh $PERCI_TUNER/scripts/mxpcc.sh -mode=multi-version -multi-ir=optimized_output.bc -multi-func=fun

@@ -2,7 +2,7 @@
 
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import sys, math, json, os, shutil, time
+import sys, math, json, os, shutil, time, copy
 import config_utils, data_utils, transform
 
 # the initial divide number for delta debugging change set
@@ -97,12 +97,12 @@ def compare_json(original, current, diff, prefix=""):
 
 
 # run the current config and get the result
-def run_config(bitcode, current_config, change_set):
+def run_config(bitcode, current_config, change_set, skip_runned=True):
     global run_times, original_conf, runned_change_set
     
     # check if the config has been runned
     key = json.dumps(change_set, sort_keys=False)
-    if key in runned_change_set: 
+    if skip_runned and key in runned_change_set: 
         print('>>> Perci-Tuner(Py): The config has been runned, skipped...')
         return
     runned_change_set.add(key)
@@ -320,6 +320,50 @@ def parse_arguments():
         
     return params
 
+def baseline_test(bitcode, original_conf, original_time, original_result):
+    """运行三种精度的基准测试并输出配置文件"""
+    print("\n>>> Baseline Test Results:")
+    precision_types = [
+        ("long double", "long_double.json"),
+        ("double", "double.json"), 
+        ("float", "float.json"),
+        ("__fp16", "fp16.json")
+    ]
+    
+    for prec, filename in precision_types:
+        bench_conf = copy.deepcopy(original_conf)
+        
+        # 修改局部变量精度
+        
+        for func in bench_conf.get('local', {}):
+            if bench_conf['local'][func]:
+                for var in bench_conf['local'][func]:
+                    if any(p in var['type'] for p in config_utils.PRECISIONS):
+                        var['type'] = prec
+        
+        # # 修改结构体成员精度
+        if bench_conf['structs']:
+            for struct in bench_conf.get('structs', {}):
+                if bench_conf['structs'][struct]:
+                    for member in bench_conf['structs'][struct]:
+                        if any(p in member['type'] for p in config_utils.PRECISIONS):
+                            member['type'] = prec
+        
+        # 生成.json
+        config_utils.print_config(bench_conf, filename)
+        
+        # 运行测试配置
+        run_config(bitcode, bench_conf, [], skip_runned=False)
+        bench_time = transform.current_run_time
+        bench_result = transform.current_run_result
+        
+        # 计算结果指标
+        speedup = (original_time - bench_time) / bench_time * 100
+        error = abs((float(bench_result) - float(original_result)) / float(original_result))
+        print(f"{prec:11} | Time: {bench_time:.2e}cycles | "
+              f"Speedup: {speedup:6.2f}% | Relative Error: {error:.2e} | Config: {filename}")
+
+
 def main():
     global run_times, min_time, original_conf, original_result, bitcode_name
     
@@ -374,6 +418,8 @@ def main():
     print(f">>> Perci-Tuner(Py): Search time: {(end_time - start_time):.2e} s")
     print(">>> Perci-Tuner(Py): Search finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
     print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time, "Acc rate:", 100.0 * (original_time - min_time) / min_time, "%")
+
+    baseline_test(bitcode, original_conf, original_time, original_result)
 
 
 if __name__ == "__main__":

@@ -47,26 +47,26 @@ Check mxpcc.sh for more information.
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
 ### --mxp(bool)
-Search all floating-point vars in IR if set to false, or search only __autofp vars or vars in #pragma region. From Pass:search_variable_decl, implemented in SearchVariableDecl.
+Search all floating-point vars in IR if set to false, or search only __autofp vars or vars in #pragma region. From Pass:print_config.
 
 ### --variable-config
 
-Customize target precision input filename, from Pass:change_variable_decl, implemented in ChangeVariableDecl.
+Customize target precision input filename, from Pass:change_variable_decl.
 
 ### --function-config
 
-Customize target function calls input filename, from Pass:change_function_call, implemented in ChangeFunctionCall.
+Customize target function calls input filename, from Pass:change_function_call.
 
 ### --ir-timing-result
 
-Customize IR timing result's output filename, from Pass:ir_timing, implemented in IRTiming.
+Customize IR timing result's output filename, from Pass:ir_timing.
 
 ### --ir-multi
 
 Customize another version input IR filename, from
-Pass: merge_multi, implemented in MergeMultiVersion.
+Pass: merge_multi.
 
 ### --function-multi
 
 Decide which function should be merged from another version input IR, from
-Pass: merge_multi, implemented in MergeMultiVersion.
+Pass: merge_multi.

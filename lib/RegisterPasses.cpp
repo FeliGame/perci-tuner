@@ -10,8 +10,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "SearchFunctionCall.h"
-#include "SearchVariableDecl.h"
+#include "PrintConfig.h"
 #include "ChangeVariableDecl.h"
 #include "ChangeFunctionCall.h"
 #include "IRTiming.h"
@@ -40,14 +39,9 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 					[](StringRef Name, llvm::ModulePassManager &PM,
 					   ArrayRef<llvm::PassBuilder::PipelineElement>)
 					{
-						if (Name == "search_function_call")
+						if (Name == "print_config")
 						{
-							PM.addPass(SearchFunctionCall());
-							return true;
-						}
-						if (Name == "search_variable_decl")
-						{
-							PM.addPass(SearchVariableDecl());
+							PM.addPass(PrintConfig());
 							return true;
 						}
 						if (Name == "change_variable_decl")

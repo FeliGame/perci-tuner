@@ -1,8 +1,8 @@
 # 1. search for optimized_config.json
-sh $PERCI_TUNER/scripts/mxpcc.sh -mode=search -mxp -history config-test.c
+sh $PERCI_TUNER/scripts/mxpcc.sh -mode=search-optimize -mxp -history config-test.c
 
 # 2. change src by optimized_config.json automatically & run
-sh $PERCI_TUNER/scripts/mxpcc.sh -mode=change -target=optimized_config.json config-test.c
+sh $PERCI_TUNER/scripts/mxpcc.sh -mode=change-by-config -target=optimized_config.json config-test.c
 echo "Changed Program Output:"
 ./changed_output
 echo "Please modify src file manually, then run command 'clang -O2 -o manual manual.c -lm & ./manual'"

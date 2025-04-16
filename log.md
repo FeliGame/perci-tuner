@@ -289,3 +289,7 @@
 
 * add: project2 cs-1 tests.
 * update: repair crash in repairCasts, repairFCmp, repairBinOp.
+
+# 16
+* update: rename mxpcc.sh -mode, SearchFunctionCall + SearchVariableDecl -> PrintConfig.
+* add: baseline test with same var precisions (long double, double, float, __fp16).

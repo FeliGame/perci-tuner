@@ -1,11 +1,9 @@
 // @Author: Guocheng - NUDT
 // Usage: Search declared variables' type.
-// Input: 
-// config.json (calls)
-// --search-all: if false, only search __autofp vars or vars in #pragma region.
-// Output: config.json (calls + vars)
+// --mxp: if true, only search __autofp vars or vars in #pragma region.
+// Output: config.json
 
-#include "SearchVariableDecl.h"
+#include "PrintConfig.h"
 #include "utils/ParseTypeName.hpp"
 #include "utils/ParseMetaDataNode.hpp"
 
@@ -28,7 +26,7 @@ cl::opt<bool> EnableMXP("mxp", cl::value_desc("enable pragma & autofp"), cl::des
 
 
 // Find Local vars and local static vars
-void SearchVariableDecl::findLocalVariables(Function &F) {
+void PrintConfig::findLocalVariables(Function &F) {
     nlohmann::json function;
     auto funcName = demangle(F.getName());
 
@@ -187,7 +185,7 @@ void SearchVariableDecl::findLocalVariables(Function &F) {
     autoFPRange.clear();
 }
 
-void SearchVariableDecl::findGlobalVariables(Module &M) { 
+void PrintConfig::findGlobalVariables(Module &M) { 
     nlohmann::json globalVars;
 
     for (GlobalVariable &GV : M.globals()) {
@@ -235,7 +233,7 @@ void SearchVariableDecl::findGlobalVariables(Module &M) {
     config["global"] = globalVars;
 }
 
-void SearchVariableDecl::findStructDeclarations(Module &module) {
+void PrintConfig::findStructDeclarations(Module &module) {
     nlohmann::json structDecls;
 
     for (auto *sty : module.getIdentifiedStructTypes()) {
@@ -255,22 +253,52 @@ void SearchVariableDecl::findStructDeclarations(Module &module) {
     config["structs"] = structDecls;
 }
 
-bool SearchVariableDecl::runOnFunction(Function &F) {
+void PrintConfig::findFunctionCalls(Function &F) {
+    nlohmann::json funcInfo;
+    bool inRegion = false;
+    
+    for (auto &BB : F) {
+        for (auto &I : BB) {
+            if (auto *CI = dyn_cast<CallInst>(&I)) {
+                if (Function *Callee = CI->getCalledFunction()) {
+                    auto name = Callee->getName();
+                    if (name == "llvm.precision.region.start") {
+                        inRegion = true;
+                        continue;
+                    } 
+                    if (name == "llvm.precision.region.end") {
+                        inRegion = false;
+                        continue;
+                    }
+                }
+                
+                if (!EnableMXP || inRegion) {
+                    auto *callee = CI->getCalledFunction();
+                    if (callee && !callee->isIntrinsic()) {
+                        auto loc = CI->getDebugLoc();
+                        nlohmann::json callInfo;
+                        callInfo["type"] = callee->getName().str();
+                        if (loc) {
+                            callInfo["file"] = loc->getFilename().str();
+                            callInfo["line"] = loc.get()->getLine();
+                            callInfo["column"] = loc.getCol();
+                        }
+                        funcInfo.emplace_back(callInfo);
+                    }
+                }
+            }
+        }
+    }
+    config["calls"][demangle(F.getName())] = funcInfo;
+}
+
+bool PrintConfig::runOnFunction(Function &F) {
     findLocalVariables(F);
+    findFunctionCalls(F);
     return false;
 }
 
-bool SearchVariableDecl::runOnModule(Module &module) {
-    ifstream inFile("config.json");
-    string name;
-
-    if (!inFile) {
-        errs() << "Unable to open config.json\n";
-        exit(1);
-    }
-
-    inFile >> config;
-
+bool PrintConfig::runOnModule(Module &module) {
     findGlobalVariables(module);
     findStructDeclarations(module);
 
@@ -320,12 +348,12 @@ bool SearchVariableDecl::runOnModule(Module &module) {
     return removedDecl;  // hasn't changed IR
 }  
 
-void SearchVariableDecl::getAnalysisUsage(AnalysisUsage &AU) const {
+void PrintConfig::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();  // hasn't changed IR
 }
 
-PreservedAnalyses SearchVariableDecl::run(Module &M, ModuleAnalysisManager &) {
-    errs() << ">>> Perci-Tuner: Running SearchVariableDecl Pass...\n";
+PreservedAnalyses PrintConfig::run(Module &M, ModuleAnalysisManager &) {
+    errs() << ">>> Perci-Tuner: Running PrintConfig Pass...\n";
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();

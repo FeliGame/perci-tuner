@@ -1,7 +1,7 @@
 // @Author: Guocheng - NUDT
 
-#ifndef LLVM_SEARCH_VARIABLE_DECL_H
-#define LLVM_SEARCH_VARIABLE_DECL_H
+#ifndef LLVM_PRINT_CONFIG_H
+#define LLVM_PRINT_CONFIG_H
 
 #include "nlohmann/json.hpp"
 
@@ -20,7 +20,7 @@ using namespace std;
 namespace llvm {
 
 
-class SearchVariableDecl : public PassInfoMixin<SearchVariableDecl> {
+class PrintConfig : public PassInfoMixin<PrintConfig> {
 public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager
 
@@ -36,6 +36,8 @@ private:
     void findGlobalVariables(Module &M);
 
     void findStructDeclarations(Module &M);
+
+    void findFunctionCalls(Function &F);
     
     set<string> globalVariables;
 
@@ -50,4 +52,4 @@ private:
 
 } // namespace llvm
 
-#endif // LLVM_SEARCH_VARIABLE_DECL_H
+#endif // LLVM_PRINT_CONFIG_H

@@ -40,12 +40,12 @@ do
     # 只处理.c/.cpp/.h/.hpp后缀的文件
     if test -f "$arg" & (test "${arg##*.}" = "c" || test "${arg##*.}" = "cpp" || test "${arg##*.}" = "h" || test "${arg##*.}" = "hpp"); then
         SOURCE_FILES="$SOURCE_FILES $arg"
-    elif test "$arg" = "-mode=config"; then
-        MODE_FLAG="config"
-    elif test "$arg" = "-mode=search"; then
-        MODE_FLAG="search"
-    elif test "$arg" = "-mode=change"; then
-        MODE_FLAG="change"
+    elif test "$arg" = "-mode=generate-config"; then
+        MODE_FLAG="generate-config"
+    elif test "$arg" = "-mode=search-optimize"; then
+        MODE_FLAG="search-optimize"
+    elif test "$arg" = "-mode=change-by-config"; then
+        MODE_FLAG="change-by-config"
     elif test "$arg" = "-mode=multi-version"; then
         MODE_FLAG="multi-version"
     elif test "$arg" = "-mode=fpe"; then
@@ -71,22 +71,28 @@ do
     elif test "$arg" = "-h" -o "$arg" = "--help"; then 
         echo "Usage: mxpcc.sh [options] src_files"
         echo "Perci-Tuner Options:"
-        echo "  -mode=config        Generate config file (config.json) and executable"
-        echo "  -mode=search        Search for optimized config (includes config mode)"
-        echo "  -mode=change        Modify source code precision according to config"
-        echo "  -mode=multi-version Generate multi-version executable (includes search mode)"
-        echo "  -mode=fpe           Ouput FPE exception after searching for optimized config"
+        echo "  -mode=generate-config   Generate config file (config.json) and executable"
+        echo "  -mode=search-optimize   Search for optimized config (includes config mode)"
+        echo "  -mode=change-by-config  Modify source code precision according to config"
+        echo "  -mode=multi-version     Generate multi-version executable (includes search mode)"
+        echo "  -mode=fpe               Output Floating-Point Exception after searching for optimized config"
         echo ""
         echo "Parameters for different mode:"
-        echo "  -exhaust           (search | multi-version) Use exhaustive search algorithm"
-        echo "  -thres=<1e-6>      (search | multi-version) Set error threshold (default 1e-6)"
-        echo "  -repeat=<1>        (search | multi-version) Set repeat count (default 1)"
-        echo "  -history           (search | multi-version | fpe) Keep search history (default false)"
+        echo "  -exhaust           (search-optimize | multi-version) Use exhaustive search algorithm"
+        echo "  -thres=<1e-6>      (search-optimize | multi-version) Set error threshold (default 1e-6)"
+        echo "  -repeat=<1>        (search-optimize | multi-version) Set repeat count (default 1)"
+        echo "  -history           (search-optimize | multi-version | fpe) Keep search history (default false)"
         echo "  -mxp               (all modes) Config only includes pragma precision and autofp variables"
+        echo "  -target            (change-by-config) Set target config file (default changed_config.json)"
         echo "  -original-version  (multi-version) Use original version in multi-version mode (default false)"
-        echo "  -target            (change) Set target config file (default changed_config.json)"
         echo "  -multi-ir          (multi-version) Set another version IR"
         echo "  -multi-func        (multi-version) Set multi-version function name"
+        echo ""
+        echo "Examples:"
+        echo "  mxpcc.sh -mode=generate-config -mxp src.c"
+        echo "  mxpcc.sh -mode=search-optimize -mxp -exhaust -thres=1e-5 -repeat=10 src.c "
+        echo "  mxpcc.sh -mode=change-by-config -target=config.json src.c"
+        echo "  mxpcc.sh -mode=multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c"
         exit 0
     fi
 done
@@ -117,18 +123,18 @@ done
 llvm-link $BCS -o output.bc
 
 # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
-opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='search_function_call,search_variable_decl' --mxp=$MXP_FLAG output.bc -o output.bc
+opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config' --mxp=$MXP_FLAG output.bc -o output.bc
 clang -O2 -o output output.bc -lgsl -lblas -lm
 echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 
-if test $MODE_FLAG = "change"; then
+if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
     clang -O2 -o changed_output changed_output.bc -lgsl -lblas -lm
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 fi
 
-if test $MODE_FLAG = "search" -o $MODE_FLAG = "fpe"; then
+if test $MODE_FLAG = "search-optimize" -o $MODE_FLAG = "fpe"; then
     # 动态搜索降精配置
     python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -history=$HISTORY_FLAG
     clang -O2 -o optimized_output optimized_output.bc -lgsl -lblas -lm

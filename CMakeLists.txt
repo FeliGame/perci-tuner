@@ -22,8 +22,7 @@ set(CMAKE_CXX_FLAGS "-Wall -fno-rtti")
 # Register pass plugin
 add_llvm_pass_plugin(PerciTuner
     lib/RegisterPasses.cpp
-    lib/SearchFunctionCall.cpp
-    lib/SearchVariableDecl.cpp
+    lib/PrintConfig.cpp
     lib/ChangeVariableDecl.cpp
     lib/ChangeFunctionCall.cpp
     lib/IRTiming.cpp

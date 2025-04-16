@@ -76,7 +76,7 @@ int main()
     result += s1;
   }
 
-  printf("%.12Le", result);
+  printf("%.16Le", result);
 
   // print score (diff) to a file
   // FILE* file;
