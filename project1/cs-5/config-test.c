@@ -63,14 +63,9 @@ int main()
 
     for( i = 1; i <= n; i++ )
     {
-      #pragma precision error x(2.1e-7)
-      #pragma precision region
-      {
-        #pragma precision range(__float128, double, float, __fp16), h(double, float)
         t2 = fun (i * h);
         s1 = s1 + sqrt (h*h + (t2 - t1)*(t2 - t1));
         t1 = t2; 
-      }
     }
 
     result += s1;

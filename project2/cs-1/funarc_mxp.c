@@ -63,7 +63,7 @@ int main()
 
     for( i = 1; i <= n; i++ )
     {
-      #pragma precision error x(2.1e-7)
+      #pragma precision error result(2.1e-7)
       #pragma precision region
       {
         #pragma precision range(double, float)

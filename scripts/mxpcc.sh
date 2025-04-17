@@ -73,7 +73,7 @@ do
         echo "Perci-Tuner Options:"
         echo "  -mode=generate-config   Generate config file (config.json) and executable"
         echo "  -mode=search-optimize   Search for optimized config (includes config mode)"
-        echo "  -mode=change-by-config  Modify source code precision according to config"
+        echo "  -mode=change-by-config  Modify source code precision according to target config"
         echo "  -mode=multi-version     Generate multi-version executable (includes search mode)"
         echo "  -mode=fpe               Output Floating-Point Exception after searching for optimized config"
         echo ""
@@ -122,10 +122,12 @@ done
 
 llvm-link $BCS -o output.bc
 
-# 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
-opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config' --mxp=$MXP_FLAG output.bc -o output.bc
-clang -O2 -o output output.bc -lgsl -lblas -lm
-echo "[Original] Config: config.json, IR: output.bc, Executable: output"
+if test $MODE_FLAG != "change-by-config"; then
+    # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config' --mxp=$MXP_FLAG output.bc -o output.bc
+    clang -O2 -o output output.bc -lgsl -lblas -lm
+    echo "[Original] Config: config.json, IR: output.bc, Executable: output"
+fi
 
 if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序

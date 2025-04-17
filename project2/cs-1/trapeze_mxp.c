@@ -9,7 +9,7 @@ double ex0(double u)
     double h = (b - a) / n;
     double r = 0.0;
     double xa = 0.25;
-    #pragma precision error x(2.1e-7)
+    #pragma precision error result(2.1e-7)
     #pragma precision region
       #pragma precision range(double, float)
       {

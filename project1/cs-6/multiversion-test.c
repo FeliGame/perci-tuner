@@ -11,6 +11,10 @@ long double fun( long double x )
 
   int k, n = 5;
   long double t1, d1 = 1.0L;
+  #pragma precision error result(2.1e-6)
+  #pragma precision region
+  {
+    #pragma precision range(__float128, double, float, __fp16), h(double, float)
 
   t1 = x;
 
@@ -18,6 +22,7 @@ long double fun( long double x )
   {
     d1 = 2.0 * d1;
     t1 = t1 + sin (d1 * x) / d1;
+  }
   }
   return t1;
 }
@@ -63,14 +68,9 @@ int main()
 
     for( i = 1; i <= n; i++ )
     {
-      #pragma precision error x(2.1e-6)
-      #pragma precision region
-      {
-        #pragma precision range(__float128, double, float, __fp16), h(double, float)
         t2 = fun (i * h);
         s1 = s1 + sqrt (h*h + (t2 - t1)*(t2 - t1));
         t1 = t2; 
-      }
     }
 
     result += s1;

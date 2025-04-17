@@ -6,7 +6,7 @@ double ex0(double c)
     double b = 6.0;
     double discr = (b * b) - ((a * c) * 4.0);
     double tmp_1;
-    #pragma precision error x(2.1e-7)
+    #pragma precision error result(2.1e-7)
     #pragma precision region
       #pragma precision range(double, float)
       {

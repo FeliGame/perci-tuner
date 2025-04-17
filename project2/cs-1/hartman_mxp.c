@@ -13,7 +13,7 @@ double ex0(double x1, double x2, double x3)
     double exp4 = exp(-e4);
     
     double result;
-    #pragma precision error x(2.1e-7)
+    #pragma precision error result(2.1e-7)
       #pragma precision region
         #pragma precision range(double, float)
         {
