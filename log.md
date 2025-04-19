@@ -293,3 +293,6 @@
 # 16
 * update: rename mxpcc.sh -mode, SearchFunctionCall + SearchVariableDecl -> PrintConfig.
 * add: baseline test with same var precisions (long double, double, float, __fp16).
+
+# 18
+* update: PrintConfig: won't print size_t and __intptr_t.

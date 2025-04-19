@@ -137,12 +137,9 @@ void PrintConfig::findLocalVariables(Function &F) {
             }
 
             // Skip integer type
-            if (typeName.find("short") != std::string::npos) continue;
-            if (typeName.find("int") != std::string::npos) continue;
-            if (typeName.find("long") != std::string::npos && typeName.find("long double") == std::string::npos) continue;
-            if (typeName.find("long long") != std::string::npos) continue;
-            if (typeName.find("signed") != std::string::npos) continue;
-            if (typeName.find("unsigned") != std::string::npos) continue;
+            if (typeName.find("integer") != std::string::npos) continue;
+            if (typeName.find("size_t") != std::string::npos) continue;
+            if (typeName.find("__intptr_t") != std::string::npos) continue;
                     
             // Save to config
             if (varName != "" && typeName != "") {
@@ -242,8 +239,14 @@ void PrintConfig::findStructDeclarations(Module &module) {
         unsigned i = 0;
         for (auto member : sty->elements()) {
             nlohmann::json memberInfo;
+            auto typeName = parseTypeName(member);
             memberInfo["member_index"] = i++;
-            memberInfo["type"] = parseTypeName(member);
+            // Skip integer type
+            if (typeName.find("integer") != std::string::npos) continue;
+            if (typeName.find("size_t") != std::string::npos) continue;
+            if (typeName.find("__intptr_t") != std::string::npos) continue;
+            
+            memberInfo["type"] = typeName;
             structDecl.push_back(memberInfo);
         }
         // Remove 'struct.' prefix

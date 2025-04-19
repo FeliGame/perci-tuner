@@ -19,6 +19,10 @@ using namespace std;
 
 
 inline string parseTypeName(Type* type) {
+    if (type->isIntegerTy()) {
+        return "integer";
+    }
+
     string result;
     
     // class also count as StructType
@@ -60,6 +64,12 @@ inline string parseTypeName(Type* type) {
 
 inline string parseDITypeName(DIType* type) {
     if (!type) return "";
+    if (auto *BTy = dyn_cast<DIBasicType>(type)) {
+        if (BTy->getEncoding() == dwarf::DW_ATE_unsigned || 
+            BTy->getEncoding() == dwarf::DW_ATE_signed) {
+            return "integer";
+        }
+    }
 
     if (auto *derivedType = llvm::dyn_cast<llvm::DIDerivedType>(type)) {
         switch (derivedType->getTag()) {
