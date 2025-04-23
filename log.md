@@ -296,3 +296,6 @@
 
 # 18
 * update: PrintConfig: won't print size_t and __intptr_t.
+
+# 23
+* add: all config info will be saved into json & into run_history.csv.

@@ -14,10 +14,10 @@ global run_times
 run_times = 0
 global min_time
 min_time = float('inf')
+global algorithm
+algorithm = 'dd'
 
 global original_conf
-global original_result
-original_result = -1
 runned_change_set = set()
 
 global bitcode_name # the original bitcode's filename
@@ -107,15 +107,13 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
         return
     runned_change_set.add(key)
 
-    run_times += 1
-
     # Initialize diff as an empty dictionary
     diff = {}
 
     # Compare current_config with original_conf and store differences in diff
     compare_json(original_conf, current_config, diff)
 
-    result = transform.transform(bitcode, current_config, diff)
+    result = transform.transform(run_times, bitcode, current_config, diff)
     if result == -1:
         print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
         sys.exit(1)
@@ -130,14 +128,16 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
         print(">>> Perci-Tuner(Py) Error: the running result is not found!")
         sys.exit(1)
 
-    # save config if satisfy error threshold
-    global original_result
-    if original_result == -1: return True
-    if data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres):
-        time_str = "{:.2e}".format(transform.current_run_time).replace('.', '_')
-        filename = f"VALID_{time_str}.json"
-        shutil.copyfile("temp_config.json", filename)
-        print(f">>> Perci-Tuner(Py): Found runnable config, saved as {filename}")
+    # save all configs into json
+    filename = ""
+    if data_utils.ORIGINAL_RESULT == -1: return True
+    if data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres):
+        filename = f"{run_times}_{algorithm}_VALID.json"
+    else:
+        filename = f"{run_times}_{algorithm}_INVALID.json"
+    shutil.copyfile("temp_config.json", filename)
+    print(f">>> Perci-Tuner(Py): Current config saved as {filename}")
+    run_times += 1
 
     return True
 
@@ -190,7 +190,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(delta_change)
         new_config = config_utils.rebuild(change_set, current_config)
-        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres) and transform.current_run_time < min_time:
+        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and transform.current_run_time < min_time:
             min_time = transform.current_run_time
             new_change_set = delta_change
             new_div_num = INITIAL_DIV_NUM
@@ -202,7 +202,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(complement_delta_change)
         new_config = config_utils.rebuild(change_set, current_config)
-        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres) and transform.current_run_time < min_time:
+        if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and transform.current_run_time < min_time:
             min_time = transform.current_run_time
             new_change_set = complement_delta_change
             new_div_num = div_num - 1  # to optimize performance
@@ -282,7 +282,7 @@ def exhaustive_search(bitcode, change_set, current_config):
         new_config = config_utils.rebuild(temp_change_set, current_config)
         
         if run_config(bitcode, new_config, temp_change_set):
-            if (data_utils.is_nearly_equal(transform.current_run_result, original_result, config_utils.thres) and 
+            if (data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and 
                 transform.current_run_time < min_time):
                 min_time = transform.current_run_time
                 update_opt(new_config)
@@ -320,7 +320,7 @@ def parse_arguments():
         
     return params
 
-def baseline_test(bitcode, original_conf, original_time, original_result):
+def baseline_test(bitcode, original_conf):
     """运行三种精度的基准测试并输出配置文件"""
     print("\n>>> Baseline Test Results:")
     precision_types = [
@@ -358,14 +358,14 @@ def baseline_test(bitcode, original_conf, original_time, original_result):
         bench_result = transform.current_run_result
         
         # 计算结果指标
-        speedup = (original_time - bench_time) / bench_time * 100
-        error = abs((float(bench_result) - float(original_result)) / float(original_result))
+        speedup = (data_utils.ORIGINAL_TIME - bench_time) / bench_time * 100
+        error = data_utils.get_rel_err(bench_result, data_utils.ORIGINAL_RESULT)
         print(f"{prec:11} | Time: {bench_time:.2e}cycles | "
               f"Speedup: {speedup:6.2f}% | Relative Error: {error:.2e} | Config: {filename}")
 
 
 def main():
-    global run_times, min_time, original_conf, original_result, bitcode_name
+    global run_times, min_time, original_conf, bitcode_name, algorithm
     
     args = parse_arguments()
 
@@ -396,14 +396,14 @@ def main():
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)
     run_config(bitcode, original_conf, change_set)
-    original_time = transform.current_run_time
-    original_result = transform.current_run_result
-    print("original time:", original_time, "original result:", original_result)
+    data_utils.ORIGINAL_TIME = transform.current_run_time
+    data_utils.ORIGINAL_RESULT = transform.current_run_result
+    print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
     
     # start searching
 
     # searching until all search types is empty
-    min_time = original_time
+    min_time = data_utils.ORIGINAL_TIME
     bitcode_name = os.path.basename(bitcode)
     if algorithm.lower() == 'dd':
         new_conf = search_conf_delta(bitcode, change_set)
@@ -417,9 +417,9 @@ def main():
     end_time = time.perf_counter()
     print(f">>> Perci-Tuner(Py): Search time: {(end_time - start_time):.2e} s")
     print(">>> Perci-Tuner(Py): Search finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
-    print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", original_time, "Acc rate:", 100.0 * (original_time - min_time) / min_time, "%")
+    print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", data_utils.ORIGINAL_TIME, "Acc rate:", 100.0 * (data_utils.ORIGINAL_TIME - min_time) / min_time, "%")
 
-    baseline_test(bitcode, original_conf, original_time, original_result)
+    baseline_test(bitcode, original_conf)
 
 
 if __name__ == "__main__":

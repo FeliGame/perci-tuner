@@ -6,7 +6,8 @@
 import os, csv
 
 RUN_HISTORY = "run_history.csv"
-
+ORIGINAL_TIME = float('inf')  # running time of original program
+ORIGINAL_RESULT = -1.0        # running result of original program
 
 # delete run_history.csv
 def delete_data():
@@ -35,9 +36,12 @@ def create_new_data(new_line, path):
 
 
 # store the running time and result to run_history.csv
-def store_data(time, result, changes):
+def store_data(run_id, time, result, changes):
     new_line= {
+        "run_id": run_id,
+        "acc_rate": f"{((ORIGINAL_TIME - time) / ORIGINAL_TIME):.2%}",
         "cycles": f"{time:.2e}",
+        "rel_err": f"{get_rel_err(result, ORIGINAL_RESULT):e}",
         "result": result,
         "changes": changes
     }
@@ -55,16 +59,16 @@ def store_data(time, result, changes):
 
 # check the current result is nearly equal to old result
 def is_nearly_equal(new_result, old_result, thres):
-    return is_nearly_equal_to(float(new_result), float(old_result), thres)
+    return get_rel_err(new_result, old_result) <= float(thres)
 
 
-# check the new result is nearly equal to old result
 # use relative error to compare
-def is_nearly_equal_to(new_result, old_result, thres):
-    threshold = float(thres)
+def get_rel_err(new_result, old_result):    
+    n = float(new_result)
+    o = float(old_result)
     # if old_result is 0, then use absolute error to compare
-    if old_result == 0:
-        return abs(new_result) <= threshold
+    if o == 0:
+        return abs(n)
     # if old_result is not 0, then use relative error to compare
-    relative_error = abs((new_result - old_result) / old_result)
-    return relative_error <= threshold
+    relative_error = abs((n - o) / o)
+    return relative_error

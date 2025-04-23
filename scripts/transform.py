@@ -50,7 +50,7 @@ def read_result(text):
 
 
 # run the current variable config and get the result
-def transform(bitcode_file, var_config, diff):
+def transform(run_id, bitcode_file, var_config, diff):
     global current_run_time, current_run_result, RUNNING_FAIL_TIMES
     # write the config to the temp file 
     config_utils.print_config(var_config, TEMP_CONFIG_FILE)
@@ -84,7 +84,7 @@ def transform(bitcode_file, var_config, diff):
             print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")
             RUNNING_FAIL_TIMES += 1
             if show_history:
-                data_utils.store_data(float("inf"), "RUNTIME-ERROR", diff)
+                data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff)
             # exit(1)
             # return -2 if crashed when run modified bitcode
             return -2
@@ -104,6 +104,6 @@ def transform(bitcode_file, var_config, diff):
 
     current_run_time = time/RUNNING_TIMES
     if show_history:
-        data_utils.store_data(current_run_time, current_run_result, diff)
+        data_utils.store_data(run_id, current_run_time, current_run_result, diff)
 
     return 1
