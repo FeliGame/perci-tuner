@@ -72,7 +72,6 @@ def transform(run_id, bitcode_file, var_config, diff):
 
     # run modified bitcode
     for i in range(RUNNING_TIMES):
-        # command = ['lli', '-load', '/usr/local/lib/libgsl.so', TEMP_BC_PATH]
         command = ['./temp_output']
         try:
             output = subprocess.check_output(command, stderr=None)

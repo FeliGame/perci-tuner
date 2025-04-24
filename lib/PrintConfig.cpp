@@ -241,12 +241,7 @@ void PrintConfig::findStructDeclarations(Module &module) {
             nlohmann::json memberInfo;
             auto typeName = parseTypeName(member);
             memberInfo["member_index"] = i++;
-            // Skip integer type
-            if (typeName.find("integer") != std::string::npos) continue;
-            if (typeName.find("size_t") != std::string::npos) continue;
-            if (typeName.find("__intptr_t") != std::string::npos) continue;
-            
-            memberInfo["type"] = typeName;
+            memberInfo["type"] = typeName;  // We didn't need to skip integer here
             structDecl.push_back(memberInfo);
         }
         // Remove 'struct.' prefix

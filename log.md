@@ -299,3 +299,6 @@
 
 # 23
 * add: all config info will be saved into json & into run_history.csv.
+
+# 24
+* repair bug: inconsistent struct member type while changing.
