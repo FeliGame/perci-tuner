@@ -334,20 +334,36 @@ def baseline_test(bitcode, original_conf):
         bench_conf = copy.deepcopy(original_conf)
         
         # 修改局部变量精度
-        
         for func in bench_conf.get('local', {}):
             if bench_conf['local'][func]:
                 for var in bench_conf['local'][func]:
                     if any(p in var['type'] for p in config_utils.PRECISIONS):
                         var['type'] = prec
         
-        # # 修改结构体成员精度
+        # 修改结构体成员精度
         if bench_conf['structs']:
             for struct in bench_conf.get('structs', {}):
                 if bench_conf['structs'][struct]:
                     for member in bench_conf['structs'][struct]:
                         if any(p in member['type'] for p in config_utils.PRECISIONS):
                             member['type'] = prec
+        
+        # 修改函数调用精度
+        if bench_conf['calls']:
+            for caller in bench_conf.get('calls', {}):
+                if bench_conf['calls'][caller]:
+                    for call in bench_conf['calls'][caller]:
+                        func_name = call['type']
+                        if func_name in config_utils.FUNCTION_PRECISIONS:
+                            # 根据精度类型选择对应的函数后缀
+                            if prec == "long double":
+                                call['type'] = func_name[:-1] + 'l' if func_name[-1] in ('f', 'l') else func_name + 'l'
+                            elif prec == "double":
+                                call['type'] = func_name[:-1] if func_name[-1] in ('f', 'l') else func_name
+                            elif prec == "float":
+                                call['type'] = func_name[:-1] + 'f' if func_name[-1] in ('f', 'l') else func_name + 'f'
+                            elif prec == "__fp16":
+                                call['type'] = func_name[:-1] + 'f' if func_name[-1] in ('f', 'l') else func_name + 'f'
         
         # 生成.json
         config_utils.print_config(bench_conf, filename)

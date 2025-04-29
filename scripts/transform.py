@@ -68,14 +68,14 @@ def transform(run_id, bitcode_file, var_config, diff):
     if retval != 0:
         return -1
 
-    time = 0
+    time_list = []  # 改为存储所有运行时间的列表
 
     # run modified bitcode
     for i in range(RUNNING_TIMES):
         command = ['./temp_output']
         try:
             output = subprocess.check_output(command, stderr=None)
-            if not output.strip():  # if blank output, throw error
+            if not output.strip():
                 print(">>> Perci-Tuner(Py) Error: Program has no output, search failed!")
                 sys.exit(1)
         except subprocess.CalledProcessError as e:
@@ -84,24 +84,28 @@ def transform(run_id, bitcode_file, var_config, diff):
             RUNNING_FAIL_TIMES += 1
             if show_history:
                 data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff)
-            # exit(1)
-            # return -2 if crashed when run modified bitcode
             return -2
+        
         current_time = read_main_running_time()
-        # return -3 if the time is not found
         if current_time == None:
             return -3
-        time += current_time
+        
+        time_list.append(current_time)
+        
         if i == RUNNING_TIMES - 1:
-            # read output result from last time run's command line
             output_text = output.decode()
             print(output_text)
             current_run_result = read_result(output_text)
             if current_run_result is None:
-                # return -4 if the result is not found
                 return -4
 
-    current_run_time = time/RUNNING_TIMES
+    # 计算中位数
+    time_list.sort()
+    if RUNNING_TIMES % 2 == 1:
+        current_run_time = time_list[RUNNING_TIMES//2]
+    else:
+        current_run_time = (time_list[RUNNING_TIMES//2-1] + time_list[RUNNING_TIMES//2]) / 2
+
     if show_history:
         data_utils.store_data(run_id, current_run_time, current_run_result, diff)
 

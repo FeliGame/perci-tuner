@@ -8,7 +8,6 @@
 
 long double fun( long double x )
 {
-
   int k, n = 5;
   long double t1, d1 = 1.0L;
 
@@ -19,6 +18,7 @@ long double fun( long double x )
     d1 = 2.0 * d1;
     t1 = t1 + sin (d1 * x) / d1;
   }
+
   return t1;
 }
 
@@ -63,20 +63,21 @@ int main()
 
     for( i = 1; i <= n; i++ )
     {
-      #pragma precision error result(2.1e-7)
-      #pragma precision region
-      {
-        #pragma precision range(double, float)
-        t2 = fun (i * h);
-        s1 = s1 + sqrt (h*h + (t2 - t1)*(t2 - t1));
-        t1 = t2; 
-      }
+      t2 = fun (i * h);
+      s1 = s1 + sqrt (h*h + (t2 - t1)*(t2 - t1));
+      t1 = t2;
     }
 
     result += s1;
   }
 
-  printf("%.16Le", result);
+
+  if (sizeof(typeof(result)) == sizeof(long double))
+    printf("%Lf", result);
+  else if (sizeof(typeof(result)) == sizeof(double))
+    printf("%lf", result);
+  else if (sizeof(typeof(result)) == sizeof(float))
+    printf("%f", result);
 
   // print score (diff) to a file
   // FILE* file;
@@ -87,3 +88,5 @@ int main()
   return 0;
 
 }
+
+
