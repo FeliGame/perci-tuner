@@ -302,3 +302,7 @@
 
 # 24
 * repair bug: inconsistent struct member type while changing.
+
+# 29
+* repair bug: baseline_test don't cover funcs, use midval instead of mean run time.
+* add: run time timeout threshold (seconds).

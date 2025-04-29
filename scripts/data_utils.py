@@ -39,7 +39,7 @@ def create_new_data(new_line, path):
 def store_data(run_id, time, result, changes):
     new_line= {
         "run_id": run_id,
-        "acc_rate": f"{((ORIGINAL_TIME - time) / ORIGINAL_TIME):.2%}",
+        "acc_rate": f"{((ORIGINAL_TIME - time) / time):.6%}",
         "cycles": f"{time:.2e}",
         "rel_err": f"{get_rel_err(result, ORIGINAL_RESULT):e}",
         "result": result,

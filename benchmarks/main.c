@@ -20,19 +20,6 @@ int comp_test(int a, int b)
     struct MY_STRUCT** pp = &p;
 
     __fp16 fp1 = (__fp16)1.0f, fp2 = (__fp16)2.0f;
-    // 直接使用汇编指令避免发生类型转换
-    fp1 += (fp2 * fp1 + fp2);
-    float f1 = 1.0f, f2 = 2.0f;
-    f1 += (f2 * f1 + f2);
-    // asm volatile("fadd %h0, %h1, %h2"
-    //             : "=w"(fp1)
-    //             : "w"(fp1), "w"(fp2));
-    // Apple M1 不支持bf16
-    //     __bf16 bf1 = (__bf16)1.0f, bf2 = (__bf16)2.0f;
-    // bf1 = bf1 + bf2;
-    // asm volatile("fadd %h0, %h1, %h2"
-    //             : "=w"(bf1)
-    //             : "w"(bf1), "w"(bf2));
 
     return a - b + global_struct.s2[0] * (long double)p->s1;
 }
@@ -62,6 +49,8 @@ double fun()
 
 int main()
 {
+    long double l = 2.0+1e-20L;
+    while(l != 2.0+1e-20L);
     const float m = 32.0;
     printf("%lf\n", fun());
     // return 0;

@@ -18,6 +18,7 @@ TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "ir_timing.txt"
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
+TIMEOUT_THRESHOLD = 5.0  # 超时阈值（秒）
 
 # time & result in current run
 current_run_time = float("inf")
@@ -50,7 +51,7 @@ def read_result(text):
 
 
 # run the current variable config and get the result
-def transform(run_id, bitcode_file, var_config, diff):
+def transform(run_id, bitcode_file, var_config, diff, original_time):
     global current_run_time, current_run_result, RUNNING_FAIL_TIMES
     # write the config to the temp file 
     config_utils.print_config(var_config, TEMP_CONFIG_FILE)
@@ -74,10 +75,15 @@ def transform(run_id, bitcode_file, var_config, diff):
     for i in range(RUNNING_TIMES):
         command = ['./temp_output']
         try:
-            output = subprocess.check_output(command, stderr=None)
+            output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD)
             if not output.strip():
                 print(">>> Perci-Tuner(Py) Error: Program has no output, search failed!")
                 sys.exit(1)
+        except subprocess.TimeoutExpired:
+            print(f">>> Perci-Tuner(Py) Error: Timeout after {TIMEOUT_THRESHOLD} seconds.")
+            RUNNING_FAIL_TIMES += 1
+            if show_history:
+                data_utils.store_data(run_id, float("inf"), "TIMEOUT", diff)
         except subprocess.CalledProcessError as e:
             print(e.output.decode())
             print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")

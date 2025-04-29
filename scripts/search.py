@@ -113,7 +113,7 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     # Compare current_config with original_conf and store differences in diff
     compare_json(original_conf, current_config, diff)
 
-    result = transform.transform(run_times, bitcode, current_config, diff)
+    result = transform.transform(run_times, bitcode, current_config, diff, data_utils.ORIGINAL_TIME)
     if result == -1:
         print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
         sys.exit(1)
@@ -301,7 +301,8 @@ def parse_arguments():
         '-thres': 1e-6,
         '-repeat': 1,
         '-history': True,
-        '-algorithm': 'dd'
+        '-algorithm': 'dd',
+        '-timeout': 5.0,
     }
     
     for arg in sys.argv[1:]:
@@ -315,6 +316,8 @@ def parse_arguments():
                     params[key] = int(value)
                 elif key == '-history':
                     params[key] = value.lower() in ('true', '1', 'yes')
+                elif key == '-timeout':
+                    params[key] = float(value)
                 else:
                     params[key] = value
         
@@ -391,6 +394,7 @@ def main():
     transform.RUNNING_TIMES = args['-repeat']
     transform.show_history = args['-history']
     algorithm = args['-algorithm']
+    transform.TIMEOUT_THRESHOLD = args['-timeout']
 
     start_time = time.perf_counter()
     data_utils.delete_data()
@@ -408,6 +412,7 @@ def main():
     print(f"  Repeat times: {args['-repeat']}")
     print(f"  Show history: {args['-history']}")
     print(f"  Algorithm: {args['-algorithm']}")
+    print(f"  Timeout factor: {args['-timeout']}")
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)

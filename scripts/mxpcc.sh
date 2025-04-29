@@ -4,12 +4,6 @@
 
 ################################################################################
 # Run PerciTuner automatically
-# sh mxpcc.sh src_files -mode=config/search/change/multi-version
-# config mode: generate config.json + IR + exec for src_files
-# search mode: config mode + search for optimized config.json + IR + exec
-# change mode: config mode + change src_files precisions according to config.json input
-# multi-version mode: merge original and optimized executables
-# fp exception mode: 
 ################################################################################
 
 MODE_FLAG=""
@@ -22,6 +16,7 @@ MXP_FLAG=false  # check pragma precision & autofp vars if true, or search all va
 RUN_ALGORITHM=dd
 THRESHOLD=1e-6
 REPEAT_TIMES=1
+TIMEOUT=5.0
 HISTORY_FLAG=false
 
 # change mode option
@@ -68,6 +63,8 @@ do
         THRESHOLD="${arg#-thres=}"
     elif test "${arg#-repeat=}" != "$arg"; then
         REPEAT_TIMES="${arg#-repeat=}"
+    elif test "${arg#-timeout=}"!= "$arg"; then
+        TIMEOUT="${arg#-timeout=}"
     elif test "$arg" = "-h" -o "$arg" = "--help"; then 
         echo "Usage: mxpcc.sh [options] src_files"
         echo "Perci-Tuner Options:"
@@ -81,6 +78,7 @@ do
         echo "  -exhaust           (search-optimize | multi-version) Use exhaustive search algorithm"
         echo "  -thres=<1e-6>      (search-optimize | multi-version) Set error threshold (default 1e-6)"
         echo "  -repeat=<1>        (search-optimize | multi-version) Set repeat count (default 1)"
+        echo "  -timeout=<5.0>     (search-optimize | multi-version) Set run-time timeout seconds(default 5.0sec)"
         echo "  -history           (search-optimize | multi-version | fpe) Keep search history (default false)"
         echo "  -mxp               (all modes) Config only includes pragma precision and autofp variables"
         echo "  -target            (change-by-config) Set target config file (default changed_config.json)"
@@ -138,7 +136,7 @@ fi
 
 if test $MODE_FLAG = "search-optimize" -o $MODE_FLAG = "fpe"; then
     # 动态搜索降精配置
-    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -history=$HISTORY_FLAG
+    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG
     clang -O2 -o optimized_output optimized_output.bc -lgsl -lblas -lm
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
