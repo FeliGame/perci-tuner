@@ -3,7 +3,7 @@
 
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import copy, json, re
+import copy, json, re, random
 
 global thres
 
@@ -91,7 +91,7 @@ def set_var_search_types(change_set):
     return [change_var for change_var in change_set if len(change_var.get('search_types', [])) > 1]
 
 
-def parse_config(config):
+def parse_config(config, shuffled=False):
     global thres
     if 'result_error' in config and config['result_error'] is not None:
         thres = float(config['result_error'])
@@ -99,11 +99,18 @@ def parse_config(config):
     # TODO: put global into change_set
     local_vars = config.get('local')
     if local_vars is not None:
-        for func, func_vars in config['local'].items():
+        func_list = list(local_vars.items())
+        if shuffled:
+            random.shuffle(func_list)  # 随机排序函数顺序
+            
+        for func, func_vars in func_list:
             if func_vars is None:
                 continue
-            for i in range(0, len(func_vars)):
-                # Skip pointer-type & non-floating-type (though they are shown in config.json)
+            var_indices = list(range(len(func_vars)))
+            if shuffled:
+                random.shuffle(var_indices)  # 随机排序变量顺序
+                
+            for i in var_indices:
                 type_str = func_vars[i]['type']
                 if (('*' in type_str) or not any(p in type_str for p in PRECISIONS)):
                     continue
@@ -113,13 +120,21 @@ def parse_config(config):
                 change_entry['search_types'] = []
                 change_set.append(change_entry)
 
+    # 处理结构体成员 (保持原有结构)
     structs = config.get('structs')
     if structs is not None:
-        for struct, members in structs.items():
+        struct_list = list(structs.items())
+        if shuffled:
+            random.shuffle(struct_list)
+            
+        for struct, members in struct_list:
             if members is None:
                 continue
-            for i in range(0, len(members)):
-                # Skip pointer-type & non-floating-type (though they are shown in config.json)
+            member_indices = list(range(len(members)))
+            if shuffled:
+                random.shuffle(member_indices)
+                
+            for i in member_indices:
                 type_str = members[i]['type']
                 if (('*' in type_str) or not any(p in type_str for p in PRECISIONS)):
                     continue
@@ -127,14 +142,22 @@ def parse_config(config):
                 change_entry['struct'] = struct
                 change_entry['search_types'] = []
                 change_set.append(change_entry)
-    change_set = set_var_search_types(change_set)
 
+    # 处理函数调用 (保持原有结构)
     calls = config.get('calls')
     if calls is not None:
-        for caller, call_insts in config['calls'].items():
+        caller_list = list(calls.items())
+        if shuffled:
+            random.shuffle(caller_list)
+            
+        for caller, call_insts in caller_list:
             if call_insts is None:
                 continue
-            for i in range(0, len(call_insts)):
+            call_indices = list(range(len(call_insts)))
+            if shuffled:
+                random.shuffle(call_indices)
+                
+            for i in call_indices:
                 change_entry = copy.deepcopy(call_insts[i])
                 func_name = change_entry['type']
                 if func_name not in FUNCTION_PRECISIONS:
@@ -173,6 +196,7 @@ def parse_config(config):
                 change_entry['search_types'] = precision_versions
                 change_set.append(change_entry)
 
+    change_set = set_var_search_types(change_set)
     return change_set
 
 

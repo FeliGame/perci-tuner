@@ -59,6 +59,12 @@ def store_data(run_id, time, result, changes):
 
 # check the current result is nearly equal to old result
 def is_nearly_equal(new_result, old_result, thres):
+    # 屏蔽错误字段（RUNTIME_ERROR或TIMEOUT等）
+    try:
+        float(new_result)
+        float(old_result)
+    except (ValueError, TypeError):
+        return False
     return get_rel_err(new_result, old_result) <= float(thres)
 
 

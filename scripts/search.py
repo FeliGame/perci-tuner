@@ -303,6 +303,7 @@ def parse_arguments():
         '-history': True,
         '-algorithm': 'dd',
         '-timeout': 5.0,
+        '-shuffled': False,
     }
     
     for arg in sys.argv[1:]:
@@ -318,6 +319,8 @@ def parse_arguments():
                     params[key] = value.lower() in ('true', '1', 'yes')
                 elif key == '-timeout':
                     params[key] = float(value)
+                elif key == '-shuffled':
+                    params[key] = value.lower() in ('true', '1', 'yes')
                 else:
                     params[key] = value
         
@@ -395,6 +398,7 @@ def main():
     transform.show_history = args['-history']
     algorithm = args['-algorithm']
     transform.TIMEOUT_THRESHOLD = args['-timeout']
+    shuffled = args['-shuffled']
 
     start_time = time.perf_counter()
     data_utils.delete_data()
@@ -403,7 +407,7 @@ def main():
     original_conf = json.loads(open(original_conf_file, 'r').read())
 
     # change_set keep those need to change precision and available precisions
-    change_set = config_utils.parse_config(original_conf)
+    change_set = config_utils.parse_config(original_conf, shuffled)
     changes_set_len = len(change_set)
 
     print(f"  IR file: {args['-ir']}")
@@ -412,7 +416,8 @@ def main():
     print(f"  Repeat times: {args['-repeat']}")
     print(f"  Show history: {args['-history']}")
     print(f"  Algorithm: {args['-algorithm']}")
-    print(f"  Timeout factor: {args['-timeout']}")
+    print(f"  Timeout seconds: {args['-timeout']}")
+    print(f"  Shuffled: {args['-shuffled']}")
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)
