@@ -46,8 +46,12 @@ do
         MODE_FLAG="multi-version"
     elif test "$arg" = "-mode=fpe"; then
         MODE_FLAG="fpe"
-    elif test "$arg" = "-exhaust"; then
+    elif test "$arg" = "-algorithm=exhaust"; then
         RUN_ALGORITHM=exhaust
+    elif test "$arg" = "-algorithm=dd"; then
+        RUN_ALGORITHM=dd
+    elif test "$arg" = "-algorithm=hidd"; then
+        RUN_ALGORITHM=hidd
     elif test "$arg" = "-shuffled"; then
         SHUFFLED_FLAG=true
     elif test "$arg" = "-history"; then
@@ -78,21 +82,21 @@ do
         echo "  -mode=fpe               Output Floating-Point Exception after searching for optimized config"
         echo ""
         echo "Parameters for different mode:"
-        echo "  -exhaust           (search-optimize | multi-version) Use exhaustive search algorithm"
-        echo "  -thres=<1e-6>      (search-optimize | multi-version) Set error threshold (default 1e-6)"
-        echo "  -repeat=<1>        (search-optimize | multi-version) Set repeat count (default 1)"
-        echo "  -timeout=<5.0>     (search-optimize | multi-version) Set run-time timeout seconds(default 5.0sec)"
-        echo "  -shuffled          (search-optimize | multi-version) Shuffle searched variables (default false)"
-        echo "  -history           (search-optimize | multi-version | fpe) Keep search history (default false)"
-        echo "  -mxp               (all modes) Config only includes pragma precision and autofp variables"
-        echo "  -target            (change-by-config) Set target config file (default changed_config.json)"
-        echo "  -original-version  (multi-version) Use original version in multi-version mode (default false)"
-        echo "  -multi-ir          (multi-version) Set another version IR"
-        echo "  -multi-func        (multi-version) Set multi-version function name"
+        echo "  -algorithm=exhaust/dd/hidd  (search-optimize | multi-version) Select search algorithm (default dd)"
+        echo "  -thres=<1e-6>               (search-optimize | multi-version) Set error threshold (default 1e-6)"
+        echo "  -repeat=<1>                 (search-optimize | multi-version) Set repeat count (default 1)"
+        echo "  -timeout=<5.0>              (search-optimize | multi-version) Set run-time timeout seconds(default 5.0sec)"
+        echo "  -shuffled                   (search-optimize | multi-version) Shuffle searched variables (default false)"
+        echo "  -history                    (search-optimize | multi-version | fpe) Keep search history (default false)"
+        echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables"
+        echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
+        echo "  -original-version           (multi-version) Use original version in multi-version mode (default false)"
+        echo "  -multi-ir                   (multi-version) Set another version IR"
+        echo "  -multi-func                 (multi-version) Set multi-version function name"
         echo ""
         echo "Examples:"
         echo "  mxpcc.sh -mode=generate-config -mxp src.c"
-        echo "  mxpcc.sh -mode=search-optimize -mxp -exhaust -thres=1e-5 -repeat=10 src.c "
+        echo "  mxpcc.sh -mode=search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c "
         echo "  mxpcc.sh -mode=change-by-config -target=config.json src.c"
         echo "  mxpcc.sh -mode=multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c"
         exit 0

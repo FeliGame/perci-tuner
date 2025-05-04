@@ -309,3 +309,8 @@
 
 # 30
 * add: -shuffled option, shuffle variables' order before search.
+
+## May, 2025
+
+# 4
+* add: HiFPTuner search, decouple algorithms.

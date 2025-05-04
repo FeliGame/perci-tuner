@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+# 算法共用的辅助函数
+# @Author: LinLanfeng, Guocheng —— NUDT
+
+import sys, json, shutil
+import config_utils, data_utils, transform
+
+
+# the optimized bitcode & config file prefix
+OPT_PREFIX = "optimized_"
+global run_times
+run_times = 0
+global min_time
+min_time = float('inf')
+global algorithm
+algorithm = 'dd'
+global original_conf
+runned_change_set = set()
+global bitcode_name
+
+# update the best IR and config file
+def update_opt(opt_config):
+    global OPT_PREFIX, bitcode_name
+    shutil.copyfile(transform.TEMP_BC_PATH, OPT_PREFIX + bitcode_name)
+    config_utils.print_config(opt_config, OPT_PREFIX + "config.json")
+
+def compare_json(original, current, diff, prefix=""):
+    """
+    Recursively compare two JSON objects and store differences in diff.
+    :param original: The original JSON object.
+    :param current: The current JSON object.
+    :param diff: The dictionary to store differences.
+    :param prefix: The prefix for nested keys.
+    """
+    if isinstance(original, dict) and isinstance(current, dict):
+        for key in original:
+            if key not in current:
+                diff[prefix + key] = f"{original[key]}->None"
+            else:
+                compare_json(original[key], current[key], diff, prefix + key + ".")
+        for key in current:
+            if key not in original:
+                diff[prefix + key] = f"None->{current[key]}"
+    elif isinstance(original, list) and isinstance(current, list):
+        for i in range(max(len(original), len(current))):
+            if i >= len(original):
+                diff[prefix + str(i)] = f"None->{current[i]}"
+            elif i >= len(current):
+                diff[prefix + str(i)] = f"{original[i]}->None"
+            else:
+                compare_json(original[i], current[i], diff, prefix + str(i) + ".")
+    else:
+        if original != current:
+            diff[prefix[:-1]] = f"{original}->{current}"
+
+
+# run the current config and get the result
+def run_config(bitcode, current_config, change_set, skip_runned=True):
+    global run_times, original_conf, runned_change_set
+    
+    # check if the config has been runned
+    key = json.dumps(change_set, sort_keys=False)
+    if skip_runned and key in runned_change_set: 
+        print('>>> Perci-Tuner(Py): The config has been runned, skipped...')
+        return
+    runned_change_set.add(key)
+
+    # Initialize diff as an empty dictionary
+    diff = {}
+
+    # Compare current_config with original_conf and store differences in diff
+    compare_json(original_conf, current_config, diff)
+
+    result = transform.transform(run_times, bitcode, current_config, diff, data_utils.ORIGINAL_TIME)
+    if result == -1:
+        print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
+        sys.exit(1)
+    elif result == -2:
+        print(">>> Perci-Tuner(Py) Warning: running IR failed, ignored...")
+        # sys.exit(1)
+        return False
+    elif result == -3:
+        print(">>> Perci-Tuner(Py) Error: the running time is not found!")
+        sys.exit(1)
+    elif result == -4:
+        print(">>> Perci-Tuner(Py) Error: the running result is not found!")
+        sys.exit(1)
+
+    # save all configs into json
+    filename = ""
+    if data_utils.ORIGINAL_RESULT == -1: return True
+    if data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres):
+        filename = f"{run_times}_{algorithm}_VALID.json"
+    else:
+        filename = f"{run_times}_{algorithm}_INVALID.json"
+    shutil.copyfile("temp_config.json", filename)
+    print(f">>> Perci-Tuner(Py): Current config saved as {filename}")
+    run_times += 1
+
+    return True
