@@ -314,3 +314,6 @@
 
 # 4
 * add: HiFPTuner search, decouple algorithms.
+
+# 6
+* repair bug: min_time wrong result.

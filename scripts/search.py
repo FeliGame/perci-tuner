@@ -138,7 +138,7 @@ def main():
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
     
     # start searching
-    min_time = data_utils.ORIGINAL_TIME
+    algorithm_utils.min_time = data_utils.ORIGINAL_TIME
     algorithm_utils.bitcode_name = os.path.basename(bitcode)
     if algorithm.lower() == 'dd':
         new_conf = dd_algorithm.run(bitcode, change_set)
@@ -156,7 +156,7 @@ def main():
     end_time = time.perf_counter()
     print(f">>> Perci-Tuner(Py): Search time: {(end_time - start_time):.2e} s")
     print(">>> Perci-Tuner(Py): Search finished! Total run times:", algorithm_utils.run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", change_set_len)
-    print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", algorithm_utils.OPT_PREFIX + algorithm_utils.bitcode_name, "Optimized_time:", min_time, "Original_time:", data_utils.ORIGINAL_TIME, "Acc rate:", 100.0 * (data_utils.ORIGINAL_TIME - min_time) / min_time, "%")
+    print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", algorithm_utils.OPT_PREFIX + algorithm_utils.bitcode_name, "Optimized_time:", algorithm_utils.min_time, "Original_time:", data_utils.ORIGINAL_TIME, "Acc rate:", 100.0 * (data_utils.ORIGINAL_TIME - algorithm_utils.min_time) / algorithm_utils.min_time, "%")
 
     baseline_test(bitcode, algorithm_utils.original_conf)
 
