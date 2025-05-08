@@ -14,6 +14,8 @@ global min_time
 min_time = float('inf')
 global algorithm
 algorithm = 'dd'
+global is_mxp
+is_mxp = False
 global original_conf
 runned_change_set = set()
 global bitcode_name
@@ -54,9 +56,9 @@ def compare_json(original, current, diff, prefix=""):
             diff[prefix[:-1]] = f"{original}->{current}"
 
 
-# run the current config and get the result
-def run_config(bitcode, current_config, change_set, skip_runned=True):
-    global run_times, original_conf, runned_change_set
+# run the current config and get the result if satisfy rel_err threshold
+def run_config(bitcode, current_config, change_set, skip_runned=True, check_error=True):
+    global run_times, original_conf, runned_change_set, is_mxp
     
     # check if the config has been runned
     key = json.dumps(change_set, sort_keys=False)
@@ -71,7 +73,10 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     # Compare current_config with original_conf and store differences in diff
     compare_json(original_conf, current_config, diff)
 
-    result = transform.transform(run_times, bitcode, current_config, diff, data_utils.ORIGINAL_TIME)
+    result = transform.transform(run_times, bitcode, current_config, diff, is_mxp, check_error)
+    satisfy_thres = True
+    if result == 0:  # result not satisfy threshold
+        satisfy_thres = False
     if result == -1:
         print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
         sys.exit(1)
@@ -89,7 +94,7 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     # save all configs into json
     filename = ""
     if data_utils.ORIGINAL_RESULT == -1: return True
-    if data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres):
+    if satisfy_thres:
         filename = f"{run_times}_{algorithm}_VALID.json"
     else:
         filename = f"{run_times}_{algorithm}_INVALID.json"
@@ -97,4 +102,4 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     print(f">>> Perci-Tuner(Py): Current config saved as {filename}")
     run_times += 1
 
-    return True
+    return satisfy_thres

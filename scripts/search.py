@@ -14,6 +14,7 @@ def parse_arguments():
         '-repeat': 1,
         '-history': True,
         '-algorithm': 'dd',
+        '-mxp': False,
         '-timeout': 5.0,
         '-shuffled': False,
         '-partition': 'sorted_partition.json'
@@ -33,6 +34,8 @@ def parse_arguments():
                 elif key == '-timeout':
                     params[key] = float(value)
                 elif key == '-shuffled':
+                    params[key] = value.lower() in ('true', '1', 'yes')
+                elif key == '-mxp':
                     params[key] = value.lower() in ('true', '1', 'yes')
                 else:
                     params[key] = value
@@ -88,7 +91,7 @@ def baseline_test(bitcode, original_conf):
         config_utils.print_config(bench_conf, filename)
         
         # 运行测试配置
-        algorithm_utils.run_config(bitcode, bench_conf, [], skip_runned=False)
+        algorithm_utils.run_config(bitcode, bench_conf, [], skip_runned=False, check_error=False)
         bench_time = transform.current_run_time
         bench_result = transform.current_run_result
         
@@ -110,6 +113,7 @@ def main():
     algorithm = args['-algorithm']
     transform.TIMEOUT_THRESHOLD = args['-timeout']
     shuffled = args['-shuffled']
+    algorithm_utils.is_mxp = args['-mxp']
 
     start_time = time.perf_counter()
     data_utils.delete_data()
@@ -129,10 +133,11 @@ def main():
     print(f"  Algorithm: {args['-algorithm']}")
     print(f"  Timeout seconds: {args['-timeout']}")
     print(f"  Shuffled: {args['-shuffled']}")
+    print(f"  MXP: {args['-mxp']}")
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)
-    algorithm_utils.run_config(bitcode, algorithm_utils.original_conf, change_set)
+    algorithm_utils.run_config(bitcode, algorithm_utils.original_conf, change_set, check_error=False)
     data_utils.ORIGINAL_TIME = transform.current_run_time
     data_utils.ORIGINAL_RESULT = transform.current_run_result
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)

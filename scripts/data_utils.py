@@ -36,13 +36,13 @@ def create_new_data(new_line, path):
 
 
 # store the running time and result to run_history.csv
-def store_data(run_id, time, result, changes):
+def store_data(run_id, time, result, changes, is_mxp=False):
     new_line= {
         "run_id": run_id,
         "acc_rate": f"{((ORIGINAL_TIME - time) / time):.6%}",
         "cycles": f"{time:.2e}",
-        "rel_err": f"{get_rel_err(result, ORIGINAL_RESULT):e}",
-        "result": result,
+        "rel_err": result if is_mxp else f"{get_rel_err(result, ORIGINAL_RESULT):e}",
+        "result": None if is_mxp else result,
         "changes": changes
     }
 

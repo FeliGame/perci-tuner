@@ -31,12 +31,10 @@ def exhaustive_search(bitcode, change_set):
         
         new_config = config_utils.rebuild(temp_change_set, algorithm_utils.original_conf)
         
-        if algorithm_utils.run_config(bitcode, new_config, temp_change_set):
-            if (data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and 
-                transform.current_run_time < algorithm_utils.min_time):
-                algorithm_utils.min_time = transform.current_run_time
-                algorithm_utils.update_opt(new_config)
-                candidates.append((new_config, algorithm_utils.min_time))
+        if algorithm_utils.run_config(bitcode, new_config, temp_change_set) and transform.current_run_time < algorithm_utils.min_time:
+            algorithm_utils.min_time = transform.current_run_time
+            algorithm_utils.update_opt(new_config)
+            candidates.append((new_config, algorithm_utils.min_time))
 
     return candidates
 

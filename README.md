@@ -49,6 +49,10 @@ Each Optional Flag should be enclosed in double quotes, and it must start with '
 ### --mxp(bool)
 Search all floating-point vars in IR if set to false, or search only __autofp vars or vars in #pragma region. From Pass:print_config.
 
+### --is-original(bool)
+Only enabled when --mxp=true. If set true, print result_var as hex format, or print relative error between result_var and env var: PERCI_TUNER_ORIGINAL_RESULT.
+Pass:record_result.
+
 ### --variable-config
 
 Customize target precision input filename, from Pass:change_variable_decl.

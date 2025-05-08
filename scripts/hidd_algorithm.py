@@ -79,7 +79,7 @@ def search_hierarchical_change_set(bitcode, change_set, current_config, div_num)
         dd_algorithm.change_to_2nd_highest_precision(flatten_change_set)
         dd_algorithm.change_to_highest_precision(delta_change)
         new_config = config_utils.rebuild(flatten_change_set, current_config)
-        if algorithm_utils.run_config(bitcode, new_config, flatten_change_set) and data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and transform.current_run_time < algorithm_utils.min_time:
+        if algorithm_utils.run_config(bitcode, new_config, flatten_change_set) and transform.current_run_time < algorithm_utils.min_time:
             algorithm_utils.min_time = transform.current_run_time
             new_change_set = delta_change
             new_div_num = dd_algorithm.INITIAL_DIV_NUM
@@ -90,7 +90,7 @@ def search_hierarchical_change_set(bitcode, change_set, current_config, div_num)
         dd_algorithm.change_to_2nd_highest_precision(flatten_change_set)
         dd_algorithm.change_to_highest_precision(complement_delta_change)
         new_config = config_utils.rebuild(flatten_change_set, current_config)
-        if algorithm_utils.run_config(bitcode, new_config, flatten_change_set) and data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and transform.current_run_time < algorithm_utils.min_time:
+        if algorithm_utils.run_config(bitcode, new_config, flatten_change_set) and transform.current_run_time < algorithm_utils.min_time:
             algorithm_utils.min_time = transform.current_run_time
             new_change_set = complement_delta_change
             new_div_num = div_num  # to optimize performance

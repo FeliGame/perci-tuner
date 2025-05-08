@@ -317,3 +317,7 @@
 
 # 6
 * repair bug: min_time wrong result.
+
+# 8
+* update: skip running IR not satisfy rel_err threshold.
+* BETA add: RecordResult & RemovePragma pass, which customize result var by llvm.precision.error pragma in -mxp mode.
