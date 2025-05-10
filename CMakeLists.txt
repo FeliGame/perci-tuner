@@ -27,6 +27,7 @@ add_llvm_pass_plugin(PerciTuner
     lib/ChangeFunctionCall.cpp
     lib/IRTiming.cpp
     lib/MergeMultiVersion.cpp
+    lib/RemovePragma.cpp
 )
 
 # Link against LLVM libraries

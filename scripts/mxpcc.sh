@@ -82,12 +82,12 @@ do
         echo "  -mode=fpe               Output Floating-Point Exception after searching for optimized config"
         echo ""
         echo "Parameters for different mode:"
-        echo "  -algorithm=exhaust/dd/hidd  (search-optimize | multi-version) Select search algorithm (default dd)"
-        echo "  -thres=<1e-6>               (search-optimize | multi-version) Set error threshold (default 1e-6)"
-        echo "  -repeat=<1>                 (search-optimize | multi-version) Set repeat count (default 1)"
-        echo "  -timeout=<5.0>              (search-optimize | multi-version) Set run-time timeout seconds(default 5.0sec)"
-        echo "  -shuffled                   (search-optimize | multi-version) Shuffle searched variables (default false)"
-        echo "  -history                    (search-optimize | multi-version | fpe) Keep search history (default false)"
+        echo "  -algorithm=exhaust/dd/hidd  (search-optimize | fpe) Select search algorithm (default dd)"
+        echo "  -thres=<1e-6>               (search-optimize | fpe) Set error threshold (default 1e-6)"
+        echo "  -repeat=<1>                 (search-optimize | fpe) Set repeat count (default 1)"
+        echo "  -timeout=<5.0>              (search-optimize | fpe) Set run-time timeout seconds(default 5.0sec)"
+        echo "  -shuffled                   (search-optimize | fpe) Shuffle searched variables (default false)"
+        echo "  -history                    (search-optimize | fpe) Keep search history (default false)"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables"
         echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
         echo "  -original-version           (multi-version) Use original version in multi-version mode (default false)"
@@ -130,7 +130,7 @@ llvm-link $BCS -o output.bc
 
 if test $MODE_FLAG != "change-by-config"; then
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config' --mxp=$MXP_FLAG output.bc -o output.bc
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o output.bc
     clang -O2 -o output output.bc -lgsl -lblas -lm
     echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi
@@ -158,7 +158,6 @@ if test $MODE_FLAG = "multi-version"; then
         echo "Usage: -multi-ir=<another_ir_file> -multi-func=<function_name>"
         exit 1
     fi
-    # TODO, export is useless, should be run by user in shell.
     export PERCI_TUNER_ORIGINAL_VERSION=$ORIGINAL_VERSION_FLAG 
     clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc

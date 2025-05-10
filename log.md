@@ -317,3 +317,6 @@
 
 # 6
 * repair bug: min_time wrong result.
+
+# 10
+* Follow BETA: add RemovePragma Pass.

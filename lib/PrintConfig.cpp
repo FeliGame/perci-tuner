@@ -311,39 +311,7 @@ bool PrintConfig::runOnModule(Module &module) {
     raw_fd_ostream outfile("config.json", errorInfo);
     outfile << config.dump(4);  // 4 space = 1 indent
 
-    // Remove all llvm.precision.* functions to avoid backend crash
-    std::vector<CallInst*> instToErase;
-    for (auto &F : module) {
-        for (auto &BB : F) {
-            for (auto &I : BB) {
-                if (auto *CI = dyn_cast<CallInst>(&I)) {
-                    if (Function *Callee = CI->getCalledFunction()) {
-                        if (Callee->getName().startswith("llvm.precision")) {
-                            instToErase.push_back(CI);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    for (auto *CI : instToErase) {
-        CI->eraseFromParent();
-    }
-
-    // Remove all llvm.precision.* decl
-    bool removedDecl = false;
-    auto &funcList = module.getFunctionList();
-    auto it = funcList.begin();
-    while (it != funcList.end()) {
-        if (it->getName().startswith("llvm.precision")) {
-            it = funcList.erase(it);
-            removedDecl = true;
-        } else {
-            ++it;
-        }
-    }
-
-    return removedDecl;  // hasn't changed IR
+    return false;  // hasn't changed IR
 }  
 
 void PrintConfig::getAnalysisUsage(AnalysisUsage &AU) const {
