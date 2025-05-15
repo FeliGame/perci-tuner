@@ -321,3 +321,7 @@
 # 8
 * update: skip running IR not satisfy rel_err threshold.
 * BETA add: RecordResult & RemovePragma pass, which customize result var by llvm.precision.error pragma in -mxp mode.
+
+# 15
+* BETA repair bug: mxpcc not generate json, wrong rel_err in run_history.
+* BETA: build.sh will build check_result lib.

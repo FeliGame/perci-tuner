@@ -14,3 +14,7 @@ fi
 cd build
 cmake ..
 make
+# Build check_result (for -mxp mode: result var check)
+cd $PERCI_TUNER
+cd lib/check_result
+make

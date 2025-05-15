@@ -110,9 +110,11 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, check_error):
                     print('current_error', output_val)
                     if float(output_val) > config_utils.thres:
                         satisfy_thres = False
+                        current_run_result = output_val
                         break
                 elif not data_utils.is_nearly_equal(output_val, data_utils.ORIGINAL_RESULT, config_utils.thres):
                     satisfy_thres = False
+                    current_run_result = output_val
                     break
         except subprocess.TimeoutExpired:
             print(f">>> Perci-Tuner(Py) Error: Timeout after {TIMEOUT_THRESHOLD} seconds.")

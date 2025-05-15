@@ -108,6 +108,8 @@ if test -z "$MODE_FLAG"; then
     exit $?
 fi
 
+clang --version
+
 # 统一处理源文件
 for src_file in $SOURCE_FILES; do
     # 检查文件是否存在
@@ -132,19 +134,17 @@ if test $MODE_FLAG != "change-by-config"; then
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
     if $MXP_FLAG; then
         # 第一次获取原始值
-        opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='record_result,remove_pragma' --is-original=true --mxp=$MXP_FLAG output.bc -o mxp.bc
+        opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='record_result,remove_pragma' --is-original=true output.bc -o mxp.bc
         clang -O2 -o output mxp.bc -lgsl -lblas -lm -L$PERCI_TUNER/lib/check_result -lcheck_result -Wl,-rpath=$PERCI_TUNER/lib/check_result
         rm mxp.bc
         # 捕获最后一行输出并设置环境变量
-        ./output
         LAST_LINE=$(./output | tail -n 1)
         export PERCI_TUNER_ORIGINAL_RESULT="$LAST_LINE"
         echo "Set PERCI_TUNER_ORIGINAL_RESULT=$LAST_LINE"
-    else
-        opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o original.bc
-        clang -O2 -o output original.bc -lgsl -lblas -lm
-        echo "[Original] Config: config.json, IR: original.bc, Executable: output"
     fi
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o original.bc
+    clang -O2 -o output original.bc -lgsl -lblas -lm
+    echo "[Original] Config: config.json, IR: original.bc, Executable: output"
 fi
 
 if test $MODE_FLAG = "change-by-config"; then
