@@ -20,6 +20,7 @@ TIME_FILE_PATH = "ir_timing.txt"
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
 TIMEOUT_THRESHOLD = 5.0  # 超时阈值（秒）
+LINK_LIBS = []
 
 # time & result in current run
 current_run_time = float("inf")
@@ -81,8 +82,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, check_error):
         return -1
     
     # generate executable
-    command = ['clang', '-O2', '-o', 'temp_output', 'temp_output.bc', 
-            '-lgsl', '-lblas', '-lm'] + \
+    command = ['clang', '-O2', '-o', 'temp_output', 'temp_output.bc'] + LINK_LIBS + \ 
             ([f'-L{CHECK_RESULT_PATH}', f'-lcheck_result', f'-Wl,-rpath={CHECK_RESULT_PATH}'] if is_mxp else [])
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     print('generate executable', retval)
