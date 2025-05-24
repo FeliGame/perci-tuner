@@ -325,3 +325,6 @@
 # 15
 * BETA repair bug: mxpcc not generate json, wrong rel_err in run_history.
 * BETA: build.sh will build check_result lib.
+
+# 24
+* add: -l option in mxpcc & search.py (link libraries).
