@@ -16,7 +16,8 @@ def parse_arguments():
         '-algorithm': 'dd',
         '-timeout': 5.0,
         '-shuffled': False,
-        '-partition': 'sorted_partition.json'
+        '-partition': 'sorted_partition.json',
+        '-link-libs': [],
     }
     
     for arg in sys.argv[1:]:
@@ -36,6 +37,8 @@ def parse_arguments():
                     params[key] = value.lower() in ('true', '1', 'yes')
                 else:
                     params[key] = value
+        elif arg.startswith('-l'):
+            params['-link-libs'].append(arg)
         
     return params
 
@@ -110,6 +113,7 @@ def main():
     algorithm = args['-algorithm']
     transform.TIMEOUT_THRESHOLD = args['-timeout']
     shuffled = args['-shuffled']
+    transform.LINK_LIBS = args['-link-libs']
 
     start_time = time.perf_counter()
     data_utils.delete_data()
@@ -129,6 +133,7 @@ def main():
     print(f"  Algorithm: {args['-algorithm']}")
     print(f"  Timeout seconds: {args['-timeout']}")
     print(f"  Shuffled: {args['-shuffled']}")
+    print(f"  Link libs: {args['-link-libs']}")
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)

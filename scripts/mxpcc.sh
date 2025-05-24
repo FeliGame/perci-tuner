@@ -31,11 +31,16 @@ ORIGINAL_VERSION_FLAG=false
 BCS=""
 HALF_PRECISION_SUPPORT="-Xclang -fnative-half-type"
 
+LINK_LIBS=""
+
 for arg in "$@"
 do
     # 只处理.c/.cpp/.h/.hpp后缀的文件
     if test -f "$arg" & (test "${arg##*.}" = "c" || test "${arg##*.}" = "cpp" || test "${arg##*.}" = "h" || test "${arg##*.}" = "hpp"); then
         SOURCE_FILES="$SOURCE_FILES $arg"
+    # 识别以 -l 开头的参数并添加到 LINK_LIBS 中
+    elif test "${arg#-l}" != "$arg"; then
+        LINK_LIBS="$LINK_LIBS $arg"
     elif test "$arg" = "-mode=generate-config"; then
         MODE_FLAG="generate-config"
     elif test "$arg" = "-mode=search-optimize"; then
@@ -73,7 +78,8 @@ do
     elif test "${arg#-timeout=}" != "$arg"; then
         TIMEOUT="${arg#-timeout=}"
     elif test "$arg" = "-h" -o "$arg" = "--help"; then 
-        echo "Usage: mxpcc.sh [options] src_files"
+        echo "Usage: mxpcc.sh [options] src_files -l<library>"
+        echo "Without -mode options, mxpcc.sh calls clang directly"
         echo "Perci-Tuner Options:"
         echo "  -mode=generate-config   Generate config file (config.json) and executable"
         echo "  -mode=search-optimize   Search for optimized config (includes config mode)"
@@ -95,15 +101,16 @@ do
         echo "  -multi-func                 (multi-version) Set multi-version function name"
         echo ""
         echo "Examples:"
-        echo "  mxpcc.sh -mode=generate-config -mxp src.c"
-        echo "  mxpcc.sh -mode=search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c "
+        echo "  mxpcc.sh -mode=generate-config -mxp src.c -lm"
+        echo "  mxpcc.sh -mode=search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas"
         echo "  mxpcc.sh -mode=change-by-config -target=config.json src.c"
         echo "  mxpcc.sh -mode=multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c"
         exit 0
     fi
 done
-
+# 如果不带有 -mode 参数，直接调用 clang
 if test -z "$MODE_FLAG"; then
+    echo "call clang..."
     clang "$@"
     exit $?
 fi
@@ -131,21 +138,21 @@ llvm-link $BCS -o output.bc
 if test $MODE_FLAG != "change-by-config"; then
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o output.bc
-    clang -O2 -o output output.bc -lgsl -lblas -lm
+    clang -O2 -o output output.bc $LINK_LIBS
     echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi
 
 if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
-    clang -O2 -o changed_output changed_output.bc -lgsl -lblas -lm
+    clang -O2 -o changed_output changed_output.bc $LINK_LIBS
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 fi
 
 if test $MODE_FLAG = "search-optimize" -o $MODE_FLAG = "fpe"; then
     # 动态搜索降精配置
-    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG output.bc
-    clang -O2 -o optimized_output optimized_output.bc -lgsl -lblas -lm
+    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG output.bc $LINK_LIBS
+    clang -O2 -o optimized_output optimized_output.bc $LINK_LIBS
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 
@@ -162,7 +169,7 @@ if test $MODE_FLAG = "multi-version"; then
     clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC output+mvselect.bc -o merged.bc
-    clang -O2 -o merged merged.bc -lgsl -lblas -lm
+    clang -O2 -o merged merged.bc $LINK_LIBS
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi
 

@@ -320,3 +320,6 @@
 
 # 10
 * Follow BETA: add RemovePragma Pass.
+
+# 24
+* add: -l option in mxpcc & search.py (link libraries).
