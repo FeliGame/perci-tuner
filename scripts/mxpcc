@@ -9,8 +9,8 @@
 MODE_FLAG=""
 SOURCE_FILES=""
 
-# config-generation option
 MXP_FLAG=false  # check pragma precision & autofp vars if true, or search all vars
+FPE_FLAG=false
 
 # search/multi-version mode option, default value as below
 RUN_ALGORITHM=dd
@@ -49,8 +49,6 @@ do
         MODE_FLAG="change-by-config"
     elif test "$arg" = "-mode=multi-version"; then
         MODE_FLAG="multi-version"
-    elif test "$arg" = "-mode=fpe"; then
-        MODE_FLAG="fpe"
     elif test "$arg" = "-algorithm=exhaust"; then
         RUN_ALGORITHM=exhaust
     elif test "$arg" = "-algorithm=dd"; then
@@ -63,6 +61,9 @@ do
         HISTORY_FLAG=true
     elif test "$arg" = "-mxp"; then
         MXP_FLAG=true
+    elif test "$arg" = "-fpe"; then
+        FPE_FLAG=true
+        MXP_FLAG=true  # FPE必须启动MXP
     elif test "$arg" = "-original-version"; then
         ORIGINAL_VERSION_FLAG=true
     elif test "${arg#-target=}" != "$arg"; then
@@ -78,33 +79,62 @@ do
     elif test "${arg#-timeout=}" != "$arg"; then
         TIMEOUT="${arg#-timeout=}"
     elif test "$arg" = "-h" -o "$arg" = "--help"; then 
-        echo "Usage: mxpcc.sh [options] src_files -l<library>"
-        echo "Without -mode options, mxpcc.sh calls clang directly"
-        echo "Perci-Tuner Options:"
+        echo "Usage: mxpcc [options] src_files -l<library>"
+        echo "Without -mode options, mxpcc calls clang directly"
+        echo "Available modes:"
         echo "  -mode=generate-config   Generate config file (config.json) and executable"
-        echo "  -mode=search-optimize   Search for optimized config (includes config mode)"
+        echo "  -mode=search-optimize   Search for optimized config (run generate-config first)"
         echo "  -mode=change-by-config  Modify source code precision according to target config"
-        echo "  -mode=multi-version     Generate multi-version executable (includes search mode)"
-        echo "  -mode=fpe               Output Floating-Point Exception after searching for optimized config"
+        echo "  -mode=multi-version     Generate multi-version executable"
         echo ""
         echo "Parameters for different mode:"
-        echo "  -algorithm=exhaust/dd/hidd  (search-optimize | fpe) Select search algorithm (default dd)"
-        echo "  -thres=<1e-6>               (search-optimize | fpe) Set error threshold (default 1e-6)"
-        echo "  -repeat=<1>                 (search-optimize | fpe) Set repeat count (default 1)"
-        echo "  -timeout=<5.0>              (search-optimize | fpe) Set run-time timeout seconds(default 5.0sec)"
-        echo "  -shuffled                   (search-optimize | fpe) Shuffle searched variables (default false)"
-        echo "  -history                    (search-optimize | fpe) Keep search history (default false)"
+        echo "  -algorithm=exhaust/dd/hidd  (search-optimize) Select search algorithm (default dd)"
+        echo "  -thres=<1e-6>               (search-optimize) Set error threshold (default 1e-6)"
+        echo "  -repeat=<1>                 (search-optimize) Set repeat count (default 1)"
+        echo "  -timeout=<5.0>              (search-optimize) Set run-time timeout seconds(default 5.0sec)"
+        echo "  -shuffled                   (search-optimize) Shuffle searched variables (default false)"
+        echo "  -history                    (search-optimize) Keep search history (default false)"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables"
+        echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp"
         echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
         echo "  -original-version           (multi-version) Use original version in multi-version mode (default false)"
         echo "  -multi-ir                   (multi-version) Set another version IR"
         echo "  -multi-func                 (multi-version) Set multi-version function name"
         echo ""
         echo "Examples:"
-        echo "  mxpcc.sh -mode=generate-config -mxp src.c -lm"
-        echo "  mxpcc.sh -mode=search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas"
-        echo "  mxpcc.sh -mode=change-by-config -target=config.json src.c"
-        echo "  mxpcc.sh -mode=multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c"
+        echo "  mxpcc -mode=generate-config -mxp src.c -lm"
+        echo "  mxpcc -mode=search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas"
+        echo "  mxpcc -mode=change-by-config -target=config.json src.c"
+        echo "  mxpcc -mode=multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c"
+        echo ""
+        echo "__autofp Usage (available while -mxp on):"
+        echo "  An flexible floating-type for var declaration, var's actual precision is up to optimized result (driven by search-optimize mode)"
+        echo "  Precision range: [fp16, float, double, long double]"
+        echo "  Code example: __autofp var1, var2[100];"
+        echo ""
+        echo "#pragma Usage (available while -mxp on):"
+        echo "  1. #pragma precision region: Only vars & func calls in {} region will be optimized"
+        echo "  2. #pragma precision error result_var(1e-6): Specify relative-error threshold 1e-6 for result_var while search optimized config (driven by search-optimize mode)"
+        echo "      must be inserted in result_var's decl scope"
+        echo "  3. #pragma precision range(precisions0), var1(precisions1), var2(precisions2)...: Specify precision range for vars in region, precisions0 is default precision range, precisons1 is precision range for var1..."
+        echo "      must be inserted inside #pragma precision region"
+        echo "      Available Precision values: [__float128, double, float, __fp16], __float128 is long double in C/C++"
+        echo "  Code example:  
+                void fun()
+                {
+                    long double fun_result = 0.0;
+                    double t1, t2, s1;
+                    #pragma precision error fun_result(2.1e-7)
+                    #pragma precision region
+                    {
+                        #pragma precision range(__float128, double, float, __fp16), t2(double, float)
+                        t2 += 1.0;
+                        s1 = s1 + sqrt (h*h + (t2 - t1)*(t2 - t1));
+                        t1 = t2; 
+                    }
+                    fun_result = t1;
+                }
+            "
         exit 0
     fi
 done
@@ -124,7 +154,7 @@ for src_file in $SOURCE_FILES; do
         echo "Error: File not found: $src_file"
         exit 1
     fi
-    if test $MODE_FLAG = "fpe"; then
+    if test $FPE_FLAG; then
         # FPE模式预处理
         clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" -fno-discard-value-names -o "$src_file.bc"
     else
@@ -161,7 +191,7 @@ if test $MODE_FLAG = "change-by-config"; then
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 fi
 
-if test $MODE_FLAG = "search-optimize" -o $MODE_FLAG = "fpe"; then
+if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
     python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG output.bc $LINK_LIBS
     clang -O2 -o optimized_output optimized_output.bc $LINK_LIBS
@@ -185,7 +215,7 @@ if test $MODE_FLAG = "multi-version"; then
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi
 
-if test $MODE_FLAG = "fpe"; then
+if test $FPE_FLAG; then
     # 处理fp异常（需要mxp版本LLVM）- 生成可执行文件
-    clang -O2 -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm
+    clang -O2 -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS
 fi

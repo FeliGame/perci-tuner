@@ -328,3 +328,6 @@
 
 # 24
 * add: -l option in mxpcc & search.py (link libraries).
+
+# 27
+* update: mxpcc help info, -fpe option.
