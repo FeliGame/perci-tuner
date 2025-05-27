@@ -152,7 +152,7 @@ for src_file in $SOURCE_FILES; do
         echo "Error: File not found: $src_file"
         exit 1
     fi
-    if test $FPE_FLAG; then
+    if $FPE_FLAG; then
         # FPE模式预处理
         clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" -fno-discard-value-names -o "$src_file.bc"
     else
@@ -203,7 +203,7 @@ if test $MODE_FLAG = "multi-version"; then
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi
 
-if test $FPE_FLAG; then
+if $FPE_FLAG; then
     # 处理fp异常（需要mxp版本LLVM）- 生成可执行文件
     clang -O2 -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS
 fi
