@@ -148,6 +148,8 @@ if test -z "$MODE_FLAG"; then
     exit $?
 fi
 
+clang --version
+
 # 统一处理源文件
 for src_file in $SOURCE_FILES; do
     # 检查文件是否存在
@@ -171,21 +173,21 @@ llvm-link $BCS -o output.bc
 if test $MODE_FLAG != "change-by-config"; then
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o output.bc
-    clang -O2 -o output output.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -o output output.bc $LINK_LIBS $LINK_DIRS
     echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi
 
 if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
-    clang -O2 -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
     python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG output.bc $LINK_LIBS $LINK_DIRS $OPTIMIZE_LEVEL
-    clang -O2 -o optimized_output optimized_output.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -o optimized_output optimized_output.bc $LINK_LIBS $LINK_DIRS
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 
@@ -202,11 +204,11 @@ if test $MODE_FLAG = "multi-version"; then
     clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC output+mvselect.bc -o merged.bc
-    clang -O2 -o merged merged.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -o merged merged.bc $LINK_LIBS $LINK_DIRS
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi
 
 if $FPE_FLAG; then
     # 处理fp异常（需要mxp版本LLVM）- 生成可执行文件
-    clang -O2 -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS $LINK_DIRS
 fi
