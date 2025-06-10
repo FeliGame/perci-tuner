@@ -20,6 +20,8 @@ RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
 TIMEOUT_THRESHOLD = 5.0  # 超时阈值（秒）
 LINK_LIBS = []
+LINK_DIRS = []
+OPTIMIZE_LEVEL = "-O2"
 
 # time & result in current run
 current_run_time = float("inf")
@@ -65,7 +67,7 @@ def transform(run_id, bitcode_file, var_config, diff, original_time):
         return -1
     
     # generate executable
-    command = ['clang', '-O2', '-o', 'temp_output', 'temp_output.bc'] + LINK_LIBS
+    command = ['clang', OPTIMIZE_LEVEL, '-o', 'temp_output', 'temp_output.bc'] + LINK_LIBS + LINK_DIRS
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     if retval != 0:
         return -1

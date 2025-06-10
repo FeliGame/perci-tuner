@@ -38,9 +38,9 @@ This will generate a pass.so under build/ directory.
 
 ## Run Perci-Tuner
 
-`sh scripts/mxpcc src_files... -mode=xxx [Optional Flags]`
+`sh scripts/run.sh src_files... <command> [Optional Flags]`
 
-Check mxpcc for more information.
+Check run.sh -h for more information.
 
 ## Pass Flags
 

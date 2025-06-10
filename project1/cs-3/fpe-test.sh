@@ -1,1 +1,1 @@
-sh $PERCI_TUNER/scripts/mxpcc -mode=fpe -mxp -history fpe-test.c 
+sh $PERCI_TUNER/scripts/run.sh fpe -mxp -history fpe-test.c 
