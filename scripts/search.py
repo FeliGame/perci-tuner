@@ -19,6 +19,8 @@ def parse_arguments():
         '-shuffled': False,
         '-partition': 'sorted_partition.json',
         '-link-libs': [],
+        '-link-dirs': [],
+        '-optimize-level': 'O2',
     }
     
     for arg in sys.argv[1:]:
@@ -42,6 +44,10 @@ def parse_arguments():
                     params[key] = value
         elif arg.startswith('-l'):
             params['-link-libs'].append(arg)
+        elif arg.startswith('-L'):
+            params['-link-dirs'].append(arg)
+        elif arg.startswith('-O'):
+            params['-optimize-level'] = arg
         
     return params
 
@@ -117,6 +123,8 @@ def main():
     transform.TIMEOUT_THRESHOLD = args['-timeout']
     shuffled = args['-shuffled']
     transform.LINK_LIBS = args['-link-libs']
+    transform.LINK_DIRS = args['-link-dirs']
+    transform.OPTIMIZE_LEVEL = args['-optimize-level']
     algorithm_utils.is_mxp = args['-mxp']
 
     start_time = time.perf_counter()
@@ -138,6 +146,8 @@ def main():
     print(f"  Timeout seconds: {args['-timeout']}")
     print(f"  Shuffled: {args['-shuffled']}")
     print(f"  Link libs: {args['-link-libs']}")
+    print(f"  Link dirs: {args['-link-dirs']}")
+    print(f"  Optimize level: {args['-optimize-level']}")
     print(f"  MXP: {args['-mxp']}")
 
     # get the original time and original result for compare

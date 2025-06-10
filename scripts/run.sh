@@ -32,6 +32,9 @@ BCS=""
 HALF_PRECISION_SUPPORT="-Xclang -fnative-half-type"
 
 LINK_LIBS=""
+LINK_DIRS=""
+INCLUDE_DIRS=""
+OPTIMIZE_LEVEL="-O2"
 
 for arg in "$@"
 do
@@ -41,14 +44,14 @@ do
     # 识别以 -l 开头的参数并添加到 LINK_LIBS 中
     elif test "${arg#-l}" != "$arg"; then
         LINK_LIBS="$LINK_LIBS $arg"
-    elif test "$arg" = "-mode=generate-config"; then
-        MODE_FLAG="generate-config"
-    elif test "$arg" = "-mode=search-optimize"; then
-        MODE_FLAG="search-optimize"
-    elif test "$arg" = "-mode=change-by-config"; then
-        MODE_FLAG="change-by-config"
-    elif test "$arg" = "-mode=multi-version"; then
-        MODE_FLAG="multi-version"
+    elif test "${arg#-L}" != "$arg"; then
+        LINK_DIRS="$LINK_DIRS $arg"
+    elif test "${arg#-I}" != "$arg"; then
+        INCLUDE_DIRS="$INCLUDE_DIRS $arg"
+    elif test "${arg#-O}" != "$arg"; then
+        OPTIMIZE_LEVEL="$arg"
+    elif test "$arg" = "generate-config" -o "$arg" = "search-optimize" -o "$arg" = "change-by-config" -o "$arg" = "multi-version"; then
+        MODE_FLAG="$arg"
     elif test "$arg" = "-algorithm=exhaust"; then
         RUN_ALGORITHM=exhaust
     elif test "$arg" = "-algorithm=dd"; then
@@ -79,15 +82,15 @@ do
     elif test "${arg#-timeout=}" != "$arg"; then
         TIMEOUT="${arg#-timeout=}"
     elif test "$arg" = "-h" -o "$arg" = "--help"; then 
-        echo "Usage: mxpcc [options] src_files -l<library>"
-        echo "Without -mode options, mxpcc calls clang directly"
+        echo "Usage: run.sh [options] src_files -l<library> -L<lib_path> -I<include_path> -O<optimize_level, such as -O2>"
+        echo "Without modes option below, run.sh calls clang directly"
         echo "Available modes:"
-        echo "  -mode=generate-config   Generate config file (config.json) and executable"
-        echo "  -mode=search-optimize   Search for optimized config (run generate-config first)"
-        echo "  -mode=change-by-config  Modify source code precision according to target config"
-        echo "  -mode=multi-version     Generate multi-version executable"
+        echo "  generate-config   Generate config file (config.json) and executable"
+        echo "  search-optimize   Search for optimized config (run generate-config first)"
+        echo "  change-by-config  Modify source code precision according to target config"
+        echo "  multi-version     Generate multi-version executable"
         echo ""
-        echo "Parameters for different mode:"
+        echo "Options for different mode:"
         echo "  -algorithm=exhaust/dd/hidd  (search-optimize) Select search algorithm (default dd)"
         echo "  -thres=<1e-6>               (search-optimize) Set error threshold (default 1e-6)"
         echo "  -repeat=<1>                 (search-optimize) Set repeat count (default 1)"
@@ -102,10 +105,10 @@ do
         echo "  -multi-func                 (multi-version) Set multi-version function name"
         echo ""
         echo "Examples:"
-        echo "  mxpcc -mode=generate-config -mxp src.c -lm"
-        echo "  mxpcc -mode=search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas"
-        echo "  mxpcc -mode=change-by-config -target=config.json src.c"
-        echo "  mxpcc -mode=multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c"
+        echo "  run.sh generate-config -mxp src.c -lm"
+        echo "  run.sh search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas"
+        echo "  run.sh change-by-config -target=config.json src.c"
+        echo "  run.sh multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c"
         echo ""
         echo "__autofp Usage (available while -mxp on):"
         echo "  An flexible floating-type for var declaration, var's actual precision is up to optimized result (driven by search-optimize mode)"
@@ -156,10 +159,10 @@ for src_file in $SOURCE_FILES; do
     fi
     if $FPE_FLAG; then
         # FPE模式预处理
-        clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" -fno-discard-value-names -o "$src_file.bc"
+        clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" $INCLUDE_DIRS -fno-discard-value-names -o "$src_file.bc"
     else
         # 其他模式正常处理
-        clang -g -emit-llvm -c "$src_file" $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
+        clang -g -emit-llvm -c "$src_file" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
     fi
     
     BCS="$BCS $src_file.bc"
@@ -180,21 +183,21 @@ if test $MODE_FLAG != "change-by-config"; then
         echo "Set PERCI_TUNER_ORIGINAL_RESULT=$LAST_LINE"
     fi
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o original.bc
-    clang -O2 -o output original.bc $LINK_LIBS
+    clang $OPTIMIZE_LEVEL -o output original.bc $LINK_LIBS $LINK_DIRS
     echo "[Original] Config: config.json, IR: original.bc, Executable: output"
 fi
 
 if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
-    clang -O2 -o changed_output changed_output.bc $LINK_LIBS
+    clang $OPTIMIZE_LEVEL -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
-    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG output.bc $LINK_LIBS
-    clang -O2 -o optimized_output optimized_output.bc $LINK_LIBS
+    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG output.bc $LINK_LIBS $LINK_DIRS $OPTIMIZE_LEVEL
+    clang $OPTIMIZE_LEVEL -o optimized_output optimized_output.bc $LINK_LIBS $LINK_DIRS
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 
@@ -203,7 +206,7 @@ if test $MODE_FLAG = "multi-version"; then
     if test -z "$MULTI_VERSION_IR" -o -z "$MULTI_VERSION_FUNC"; then
         echo $MULTI_VERSION_IR
         echo $MULTI_VERSION_FUNC
-        echo "Error: multi-version mode requires both -multi-ir and -multi-func parameters"
+        echo "Error: multi-version mode requires both -multi-ir and -multi-func options"
         echo "Usage: -multi-ir=<another_ir_file> -multi-func=<function_name>"
         exit 1
     fi
@@ -211,11 +214,11 @@ if test $MODE_FLAG = "multi-version"; then
     clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC output+mvselect.bc -o merged.bc
-    clang -O2 -o merged merged.bc $LINK_LIBS
+    clang $OPTIMIZE_LEVEL -o merged merged.bc $LINK_LIBS $LINK_DIRS
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi
 
 if $FPE_FLAG; then
     # 处理fp异常（需要mxp版本LLVM）- 生成可执行文件
-    clang -O2 -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS
+    clang $OPTIMIZE_LEVEL -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS $LINK_DIRS
 fi

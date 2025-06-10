@@ -331,3 +331,8 @@
 
 # 27
 * update: mxpcc help info, -fpe option.
+
+## Jun, 2025
+
+### 10
+* update: rename mxpcc to run.sh.

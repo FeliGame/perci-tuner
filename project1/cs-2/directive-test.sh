@@ -1,4 +1,4 @@
-sh $PERCI_TUNER/scripts/mxpcc -mode=search-optimize -mxp directive-test.c -history
+sh $PERCI_TUNER/scripts/run.sh search-optimize -mxp directive-test.c -history
 original_output=$(./output)
 optimized_output=$(./optimized_output)
 relative_error=$(awk -v orig="$original_output" -v opt="$optimized_output" '
