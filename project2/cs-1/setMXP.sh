@@ -1,0 +1,1 @@
+ export PATH=/home/xuzicai/LLVM-17-mxp/bin:$PATH

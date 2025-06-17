@@ -4,6 +4,7 @@
 
 import sys, math, json, os, shutil, time, copy
 import config_utils, data_utils, transform
+from datetime import timedelta
 
 # the initial divide number for delta debugging change set
 INITIAL_DIV_NUM = 1
@@ -21,6 +22,8 @@ global original_conf
 runned_change_set = set()
 
 global bitcode_name # the original bitcode's filename
+
+optimized_config_id = 0
 
 
 # change each element's type to the highest precision in change set
@@ -151,7 +154,7 @@ def update_opt(opt_config):
 
 # using delta debugging algorithm to find the minimal change set
 def search_minimal_change_set(bitcode, change_set, current_config, div_num):
-    global min_time
+    global min_time,optimized_config_id
     delta_change_set = []
     complement_delta_change_set = []
     # calculate the size of each part
@@ -197,6 +200,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
             have_better_set = True
             print('delta better')
             update_opt(new_config)
+            optimized_config_id = run_times-1
         
         # if len(complement_delta_change) > 0:
         change_to_2nd_highest_precision(change_set)
@@ -209,6 +213,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
             have_better_set = True
             print('comp_delta better')
             update_opt(new_config)
+            optimized_config_id = run_times-1
 
     if have_better_set:
         change_to_2nd_highest_precision(change_set)
@@ -384,6 +389,10 @@ def baseline_test(bitcode, original_conf):
         error = data_utils.get_rel_err(bench_result, data_utils.ORIGINAL_RESULT)
         print(f"{prec:11} | Time: {bench_time:.2e}cycles | "
               f"Speedup: {speedup:6.2f}% | Relative Error: {error:.2e} | Config: {filename}")
+        
+        with open("baseline.txt", "a") as f:
+            f.write(f"{bench_result}\n")
+            f.write(f"{prec:11} | Time: {bench_time:.2e}cycles | Speedup: {speedup:6.2f}% | Relative Error: {error:.2e} | Config: {filename}\n\n")
 
 
 def main():
@@ -425,6 +434,8 @@ def main():
     data_utils.ORIGINAL_TIME = transform.current_run_time
     data_utils.ORIGINAL_RESULT = transform.current_run_result
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
+
+    # baseline_test(bitcode, original_conf)
     
     # start searching
 
@@ -441,11 +452,26 @@ def main():
     config_utils.print_config(new_conf, "optimized_config.json")
     
     end_time = time.perf_counter()
-    print(f">>> Perci-Tuner(Py): Search time: {(end_time - start_time):.2e} s")
+    print(f">>> Perci-Tuner(Py): Search time: {str(timedelta(seconds=(end_time - start_time)))}")
     print(">>> Perci-Tuner(Py): Search finished! Total run times:", run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", changes_set_len)
-    print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", data_utils.ORIGINAL_TIME, "Acc rate:", 100.0 * (data_utils.ORIGINAL_TIME - min_time) / min_time, "%")
+    print(">>> Perci-Tuner(Py): Config: " , optimized_config_id , "optimized_config.json", "IR:", OPT_PREFIX + bitcode_name, "Optimized_time:", min_time, "Original_time:", data_utils.ORIGINAL_TIME, "Acc rate:", 100.0 * (data_utils.ORIGINAL_TIME - min_time) / data_utils.ORIGINAL_TIME, "%")
 
-    baseline_test(bitcode, original_conf)
+    output_lines = [
+        f">>> Perci-Tuner(Py): Search time: {str(timedelta(seconds=(end_time - start_time)))}",
+        f">>> Perci-Tuner(Py): Search finished! Total run times: {run_times:<5} Fail times: {transform.RUNNING_FAIL_TIMES:<5} Change set len: {changes_set_len:<5}",
+        f">>> Perci-Tuner(Py): Config: {optimized_config_id}_{'optimized_config.json':<25} IR: {OPT_PREFIX + bitcode_name:<25}\nOptimized_time: {min_time:<10f} Original_time: {data_utils.ORIGINAL_TIME:<10f} Acc rate: {100.0 * (data_utils.ORIGINAL_TIME - min_time) / data_utils.ORIGINAL_TIME:<4.2f} %"
+    ]
+    
+    with open("perci_tuner_log.txt", "w") as f:
+        for line in output_lines:
+            f.write(line + "\n")
+
+    Acc_rate = f"{100.0 * (data_utils.ORIGINAL_TIME - min_time) / min_time:<8.6f} %"
+
+    with open("Acc_rate.txt", "a") as f:
+        f.write(Acc_rate + "\n")
+
+    # baseline_test(bitcode, original_conf)
 
 
 if __name__ == "__main__":

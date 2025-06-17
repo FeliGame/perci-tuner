@@ -1,0 +1,68 @@
+>>> Perci-Tuner: Running PrintConfig Pass...
+[Original] Config: config.json, IR: output.bc, Executable: output
+  IR file: output.bc
+  Config file: config.json
+  Threshold: 0.0001
+  Repeat times: 1
+  Show history: True
+  Algorithm: dd
+  Timeout seconds: 120.0
+  Shuffled: False
+ L2 Norm is  3.6986858371217E-06
+
+original time: 2371898725 original result: 3.6986858371217E-06
+
+change set size: 28, div num: 1, div size: 28
+delta size: 1, complement delta size: 1
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 0_dd_VALID.json
+delta better
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 1_dd_INVALID.json
+
+change set size: 28, div num: 1, div size: 28
+delta size: 1, complement delta size: 1
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+none better in current iteration
+
+change set size: 28, div num: 2, div size: 14
+delta size: 2, complement delta size: 2
+
+>>> Perci-Tuner(Py) Error: Command failed with code -15: ./temp_output
+Traceback (most recent call last):
+  File "/home/xuzicai/perci-tuner/scripts/transform.py", line 79, in transform
+    output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD)
+  File "/usr/local/lib/python3.8/subprocess.py", line 415, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+  File "/usr/local/lib/python3.8/subprocess.py", line 516, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['./temp_output']' died with <Signals.SIGTERM: 15>.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/xuzicai/perci-tuner/scripts/search.py", line 474, in <module>
+    main()
+  File "/home/xuzicai/perci-tuner/scripts/search.py", line 442, in main
+    new_conf = search_conf_delta(bitcode, change_set)
+  File "/home/xuzicai/perci-tuner/scripts/search.py", line 244, in search_conf_delta
+    search_minimal_change_set(bitcode, change_set, new_conf, INITIAL_DIV_NUM)
+  File "/home/xuzicai/perci-tuner/scripts/search.py", line 228, in search_minimal_change_set
+    search_minimal_change_set(bitcode, change_set, current_config, div_num)
+  File "/home/xuzicai/perci-tuner/scripts/search.py", line 228, in search_minimal_change_set
+    search_minimal_change_set(bitcode, change_set, current_config, div_num)
+  File "/home/xuzicai/perci-tuner/scripts/search.py", line 194, in search_minimal_change_set
+    if run_config(bitcode, new_config, change_set) and data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and transform.current_run_time < min_time:
+  File "/home/xuzicai/perci-tuner/scripts/search.py", line 117, in run_config
+    result = transform.transform(run_times, bitcode, current_config, diff, data_utils.ORIGINAL_TIME)
+  File "/home/xuzicai/perci-tuner/scripts/transform.py", line 93, in transform
+    data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff)
+  File "/home/xuzicai/perci-tuner/scripts/data_utils.py", line 44, in store_data
+    "rel_err": f"{get_rel_err(result, ORIGINAL_RESULT):e}",
+  File "/home/xuzicai/perci-tuner/scripts/data_utils.py", line 73, in get_rel_err
+    n = float(new_result)
+ValueError: could not convert string to float: 'RUNTIME-ERROR'
+[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output

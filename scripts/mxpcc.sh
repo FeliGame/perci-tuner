@@ -134,7 +134,7 @@ fi
 if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
-    clang -O2 -o changed_output changed_output.bc -lgsl -lblas -lm
+    clang -O2 -o changed_output changed_output.bc -lgsl -lgslcblas -lm
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 fi
 

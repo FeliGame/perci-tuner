@@ -1,0 +1,1 @@
+rm *.json *output* run_history.csv ir_timing.txt

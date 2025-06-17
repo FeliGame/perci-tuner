@@ -1,0 +1,830 @@
+nohup: ignoring input
+>>> Perci-Tuner: Running PrintConfig Pass...
+[Original] Config: config.json, IR: output.bc, Executable: output
+  IR file: output.bc
+  Config file: config.json
+  Threshold: 0.0001
+  Repeat times: 1
+  Show history: True
+  Algorithm: dd
+  Timeout seconds: 120.0
+  Shuffled: False
+ L2 Norm is  3.6986858371217E-06
+
+original time: 2345247481 original result: 3.6986858371217E-06
+
+change set size: 28, div num: 1, div size: 28
+delta size: 1, complement delta size: 1
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 0_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 1_dd_INVALID.json
+none better in current iteration
+
+change set size: 28, div num: 2, div size: 14
+delta size: 2, complement delta size: 2
+ L2 Norm is  5.1637755503682E-06
+
+>>> Perci-Tuner(Py): Current config saved as 2_dd_INVALID.json
+ L2 Norm is  3.1250097526865E-06
+
+>>> Perci-Tuner(Py): Current config saved as 3_dd_INVALID.json
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+none better in current iteration
+
+change set size: 28, div num: 4, div size: 7
+delta size: 4, complement delta size: 4
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 4_dd_INVALID.json
+ L2 Norm is  3.5862641123855E-06
+
+>>> Perci-Tuner(Py): Current config saved as 5_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 6_dd_INVALID.json
+ L2 Norm is  4.6528734355115E-06
+
+>>> Perci-Tuner(Py): Current config saved as 7_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 8_dd_INVALID.json
+ L2 Norm is  3.0327762862340E-06
+
+>>> Perci-Tuner(Py): Current config saved as 9_dd_INVALID.json
+ L2 Norm is  4.0900112536687E-06
+
+>>> Perci-Tuner(Py): Current config saved as 10_dd_INVALID.json
+ L2 Norm is  4.0497601914937E-06
+
+>>> Perci-Tuner(Py): Current config saved as 11_dd_INVALID.json
+none better in current iteration
+
+change set size: 28, div num: 8, div size: 4
+delta size: 7, complement delta size: 7
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 12_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 13_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 14_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 15_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 16_dd_INVALID.json
+ L2 Norm is  3.8104984190382E-06
+
+>>> Perci-Tuner(Py): Current config saved as 17_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 18_dd_INVALID.json
+ L2 Norm is  2.9192528864113E-06
+
+>>> Perci-Tuner(Py): Current config saved as 19_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 20_dd_INVALID.json
+ L2 Norm is  3.7794859624385E-06
+
+>>> Perci-Tuner(Py): Current config saved as 21_dd_INVALID.json
+ L2 Norm is  4.0900112536687E-06
+
+>>> Perci-Tuner(Py): Current config saved as 22_dd_INVALID.json
+ L2 Norm is  3.8489305885664E-06
+
+>>> Perci-Tuner(Py): Current config saved as 23_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 24_dd_INVALID.json
+ L2 Norm is  5.1113027657750E-06
+
+>>> Perci-Tuner(Py): Current config saved as 25_dd_INVALID.json
+none better in current iteration
+
+change set size: 28, div num: 16, div size: 2
+delta size: 14, complement delta size: 14
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 26_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 27_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 28_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 29_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 30_dd_INVALID.json
+ L2 Norm is  4.2539242073902E-06
+
+>>> Perci-Tuner(Py): Current config saved as 31_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 32_dd_INVALID.json
+ L2 Norm is  4.7442663407196E-06
+
+>>> Perci-Tuner(Py): Current config saved as 33_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 34_dd_INVALID.json
+ L2 Norm is  3.8771503705607E-06
+
+>>> Perci-Tuner(Py): Current config saved as 35_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 36_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 37_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 38_dd_INVALID.json
+ L2 Norm is  3.8844268556657E-06
+
+>>> Perci-Tuner(Py): Current config saved as 39_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 40_dd_INVALID.json
+ L2 Norm is  3.7783859012539E-06
+
+>>> Perci-Tuner(Py): Current config saved as 41_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 42_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 43_dd_VALID.json
+comp_delta better
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 44_dd_INVALID.json
+ L2 Norm is  3.7794859624385E-06
+
+>>> Perci-Tuner(Py): Current config saved as 45_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 46_dd_INVALID.json
+ L2 Norm is  3.8113219467575E-06
+
+>>> Perci-Tuner(Py): Current config saved as 47_dd_INVALID.json
+ L2 Norm is  4.0900112536687E-06
+
+>>> Perci-Tuner(Py): Current config saved as 48_dd_INVALID.json
+ L2 Norm is  3.8489305885664E-06
+
+>>> Perci-Tuner(Py): Current config saved as 49_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 50_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 51_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 52_dd_INVALID.json
+ L2 Norm is  5.1113027657750E-06
+
+>>> Perci-Tuner(Py): Current config saved as 53_dd_INVALID.json
+
+change set size: 26, div num: 15, div size: 2
+delta size: 13, complement delta size: 13
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 54_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 55_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 56_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 57_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 58_dd_INVALID.json
+ L2 Norm is  4.2539242073902E-06
+
+>>> Perci-Tuner(Py): Current config saved as 59_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 60_dd_INVALID.json
+ L2 Norm is  4.7442663407196E-06
+
+>>> Perci-Tuner(Py): Current config saved as 61_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 62_dd_INVALID.json
+ L2 Norm is  3.8771503705607E-06
+
+>>> Perci-Tuner(Py): Current config saved as 63_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 64_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 65_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 66_dd_INVALID.json
+ L2 Norm is  3.8844268556657E-06
+
+>>> Perci-Tuner(Py): Current config saved as 67_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 68_dd_INVALID.json
+ L2 Norm is  3.7783859012539E-06
+
+>>> Perci-Tuner(Py): Current config saved as 69_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 70_dd_INVALID.json
+ L2 Norm is  3.7794859624385E-06
+
+>>> Perci-Tuner(Py): Current config saved as 71_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 72_dd_INVALID.json
+ L2 Norm is  3.8113219467575E-06
+
+>>> Perci-Tuner(Py): Current config saved as 73_dd_INVALID.json
+ L2 Norm is  4.0900112536687E-06
+
+>>> Perci-Tuner(Py): Current config saved as 74_dd_INVALID.json
+ L2 Norm is  3.8489305885664E-06
+
+>>> Perci-Tuner(Py): Current config saved as 75_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 76_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 77_dd_VALID.json
+comp_delta better
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 78_dd_INVALID.json
+ L2 Norm is  5.1113027657750E-06
+
+>>> Perci-Tuner(Py): Current config saved as 79_dd_INVALID.json
+
+change set size: 24, div num: 14, div size: 2
+delta size: 12, complement delta size: 12
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 80_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 81_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 82_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 83_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 84_dd_INVALID.json
+ L2 Norm is  4.2539242073902E-06
+
+>>> Perci-Tuner(Py): Current config saved as 85_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 86_dd_INVALID.json
+ L2 Norm is  4.7442663407196E-06
+
+>>> Perci-Tuner(Py): Current config saved as 87_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 88_dd_INVALID.json
+ L2 Norm is  3.8771503705607E-06
+
+>>> Perci-Tuner(Py): Current config saved as 89_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 90_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 91_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 92_dd_INVALID.json
+ L2 Norm is  3.8844268556657E-06
+
+>>> Perci-Tuner(Py): Current config saved as 93_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 94_dd_INVALID.json
+ L2 Norm is  3.7783859012539E-06
+
+>>> Perci-Tuner(Py): Current config saved as 95_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 96_dd_INVALID.json
+ L2 Norm is  3.7794859624385E-06
+
+>>> Perci-Tuner(Py): Current config saved as 97_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 98_dd_INVALID.json
+ L2 Norm is  3.8113219467575E-06
+
+>>> Perci-Tuner(Py): Current config saved as 99_dd_INVALID.json
+ L2 Norm is  4.0900112536687E-06
+
+>>> Perci-Tuner(Py): Current config saved as 100_dd_INVALID.json
+ L2 Norm is  3.8489305885664E-06
+
+>>> Perci-Tuner(Py): Current config saved as 101_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 102_dd_INVALID.json
+ L2 Norm is  5.1113027657750E-06
+
+>>> Perci-Tuner(Py): Current config saved as 103_dd_INVALID.json
+none better in current iteration
+
+change set size: 24, div num: 28, div size: 1
+delta size: 24, complement delta size: 24
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 104_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 105_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 106_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 107_dd_VALID.json
+comp_delta better
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 108_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 109_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 110_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 111_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 112_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 113_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 114_dd_INVALID.json
+ L2 Norm is  3.6446132235517E-06
+
+>>> Perci-Tuner(Py): Current config saved as 115_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 116_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 117_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 118_dd_INVALID.json
+ L2 Norm is  4.3570114443081E-06
+
+>>> Perci-Tuner(Py): Current config saved as 119_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 120_dd_INVALID.json
+ L2 Norm is  3.8771503705607E-06
+
+>>> Perci-Tuner(Py): Current config saved as 121_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 122_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 123_dd_VALID.json
+comp_delta better
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 124_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 125_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 126_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 127_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 128_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 129_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 130_dd_INVALID.json
+ L2 Norm is  3.8844268556657E-06
+
+>>> Perci-Tuner(Py): Current config saved as 131_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 132_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 133_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 134_dd_INVALID.json
+ L2 Norm is  3.7086391209689E-06
+
+>>> Perci-Tuner(Py): Current config saved as 135_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 136_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 137_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 138_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 139_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 140_dd_INVALID.json
+ L2 Norm is  3.8113219467575E-06
+
+>>> Perci-Tuner(Py): Current config saved as 141_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 142_dd_INVALID.json
+ L2 Norm is  3.4995261942264E-06
+
+>>> Perci-Tuner(Py): Current config saved as 143_dd_INVALID.json
+ L2 Norm is  4.0900112536687E-06
+
+>>> Perci-Tuner(Py): Current config saved as 144_dd_INVALID.json
+ L2 Norm is  3.8489305885664E-06
+
+>>> Perci-Tuner(Py): Current config saved as 145_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 146_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 147_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 148_dd_INVALID.json
+ L2 Norm is  5.1113027657750E-06
+
+>>> Perci-Tuner(Py): Current config saved as 149_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 150_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 151_dd_VALID.json
+
+change set size: 23, div num: 27, div size: 1
+delta size: 23, complement delta size: 23
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 152_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 153_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 154_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 155_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 156_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 157_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 158_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 159_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 160_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 161_dd_VALID.json
+comp_delta better
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 162_dd_INVALID.json
+ L2 Norm is  3.6446132235517E-06
+
+>>> Perci-Tuner(Py): Current config saved as 163_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 164_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 165_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 166_dd_INVALID.json
+ L2 Norm is  4.3570114443081E-06
+
+>>> Perci-Tuner(Py): Current config saved as 167_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 168_dd_INVALID.json
+ L2 Norm is  3.8771503705607E-06
+
+>>> Perci-Tuner(Py): Current config saved as 169_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 170_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 171_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 172_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 173_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 174_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 175_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 176_dd_INVALID.json
+ L2 Norm is  3.8844268556657E-06
+
+>>> Perci-Tuner(Py): Current config saved as 177_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 178_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 179_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 180_dd_INVALID.json
+ L2 Norm is  3.7086391209689E-06
+
+>>> Perci-Tuner(Py): Current config saved as 181_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 182_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 183_dd_VALID.json
+comp_delta better
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 184_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 185_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 186_dd_INVALID.json
+ L2 Norm is  3.8113219467575E-06
+
+>>> Perci-Tuner(Py): Current config saved as 187_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 188_dd_INVALID.json
+ L2 Norm is  3.4995261942264E-06
+
+>>> Perci-Tuner(Py): Current config saved as 189_dd_INVALID.json
+ L2 Norm is  4.0900112536687E-06
+
+>>> Perci-Tuner(Py): Current config saved as 190_dd_INVALID.json
+ L2 Norm is  3.8489305885664E-06
+
+>>> Perci-Tuner(Py): Current config saved as 191_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 192_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 193_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 194_dd_INVALID.json
+ L2 Norm is  5.1113027657750E-06
+
+>>> Perci-Tuner(Py): Current config saved as 195_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 196_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 197_dd_VALID.json
+
+change set size: 22, div num: 26, div size: 1
+delta size: 22, complement delta size: 22
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 198_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 199_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 200_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 201_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 202_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 203_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 204_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 205_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 206_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 207_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 208_dd_INVALID.json
+ L2 Norm is  3.6446132235517E-06
+
+>>> Perci-Tuner(Py): Current config saved as 209_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 210_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 211_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 212_dd_INVALID.json
+ L2 Norm is  4.3570114443081E-06
+
+>>> Perci-Tuner(Py): Current config saved as 213_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 214_dd_INVALID.json
+ L2 Norm is  3.8771503705607E-06
+
+>>> Perci-Tuner(Py): Current config saved as 215_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 216_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 217_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 218_dd_INVALID.json
+ L2 Norm is  3.4047115088976E-06
+
+>>> Perci-Tuner(Py): Current config saved as 219_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 220_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 221_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 222_dd_INVALID.json
+ L2 Norm is  3.8844268556657E-06
+
+>>> Perci-Tuner(Py): Current config saved as 223_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 224_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 225_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 226_dd_INVALID.json
+ L2 Norm is  3.7086391209689E-06
+
+>>> Perci-Tuner(Py): Current config saved as 227_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 228_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 229_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 230_dd_INVALID.json
+ L2 Norm is  3.8113219467575E-06
+
+>>> Perci-Tuner(Py): Current config saved as 231_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 232_dd_INVALID.json
+ L2 Norm is  3.4995261942264E-06
+
+>>> Perci-Tuner(Py): Current config saved as 233_dd_INVALID.json
+ L2 Norm is  4.0900112536687E-06
+
+>>> Perci-Tuner(Py): Current config saved as 234_dd_INVALID.json
+ L2 Norm is  3.8489305885664E-06
+
+>>> Perci-Tuner(Py): Current config saved as 235_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 236_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 237_dd_VALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 238_dd_INVALID.json
+ L2 Norm is  5.1113027657750E-06
+
+>>> Perci-Tuner(Py): Current config saved as 239_dd_INVALID.json
+ L2 Norm is  4.2539089898179E-06
+
+>>> Perci-Tuner(Py): Current config saved as 240_dd_INVALID.json
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 241_dd_VALID.json
+none better in current iteration
+
+change set size: 6, div num: 1, div size: 6
+delta size: 1, complement delta size: 1
+ L2 Norm is  3.6986858371217E-06
+
+>>> Perci-Tuner(Py): Current config saved as 242_dd_VALID.json
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+none better in current iteration
+
+change set size: 6, div num: 2, div size: 3
+delta size: 2, complement delta size: 2
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+none better in current iteration
+
+change set size: 6, div num: 4, div size: 2
+delta size: 3, complement delta size: 3
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+none better in current iteration
+
+change set size: 6, div num: 8, div size: 1
+delta size: 6, complement delta size: 6
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+none better in current iteration
+>>> Perci-Tuner(Py): Search time: 1.19e+04 s
+>>> Perci-Tuner(Py): Search finished! Total run times: 243 Fail times: 0 Change set len: 28
+>>> Perci-Tuner(Py): Config: optimized_config.json IR: optimized_output.bc Optimized_time: 2309196972 Original_time: 2345247481 Acc rate: 1.5611708068704326 %
+[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output

@@ -1,0 +1,1 @@
+sh $PERCI_TUNER/scripts/mxpcc.sh -mode=change-by-config -target=$1

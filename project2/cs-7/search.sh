@@ -1,0 +1,1 @@
+sh $PERCI_TUNER/scripts/mxpcc.sh -mode=search-optimize $1 -thres=$2 -repeat=$3 -timeout=$4 -history

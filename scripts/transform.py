@@ -18,7 +18,7 @@ TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "ir_timing.txt"
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
-TIMEOUT_THRESHOLD = 5.0  # 超时阈值（秒）
+TIMEOUT_THRESHOLD = 120.0  # 超时阈值（秒）
 
 # time & result in current run
 current_run_time = float("inf")
@@ -74,6 +74,7 @@ def transform(run_id, bitcode_file, var_config, diff, original_time):
     # run modified bitcode
     for i in range(RUNNING_TIMES):
         command = ['./temp_output']
+        # command = ['./temp_output', '32', 'lbm_result.txt', '0', '1']
         try:
             output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD)
             if not output.strip():

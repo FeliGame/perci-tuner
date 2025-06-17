@@ -1,0 +1,276 @@
+#include <stdio.h>
+#include <gsl/gsl_math.h>
+#include <gsl/gsl_sum.h>
+#include <gsl/gsl_errno.h>
+
+#define N 20
+
+int gsl_sum_levin_u_accel(const double *array, const size_t array_size,
+                          gsl_sum_levin_u_workspace *w,
+                          double *sum_accel, double *abserr)
+{
+  return gsl_sum_levin_u_minmax(array, array_size,
+                                0, array_size - 1, w, sum_accel, abserr);
+}
+
+int gsl_sum_levin_u_minmax(const double *array, const size_t array_size,
+                           const size_t min_terms, const size_t max_terms,
+                           gsl_sum_levin_u_workspace *w,
+                           double *sum_accel, double *abserr)
+{
+  /* Ignore any trailing zeros in the array */
+  size_t size = array_size;
+
+  while (size > 0 && array[size - 1] == 0)
+  {
+    size--;
+  }
+
+  if (size == 0)
+  {
+    *sum_accel = 0.0;
+    *abserr = 0.0;
+    w->sum_plain = 0.0;
+    w->terms_used = 0;
+    return GSL_SUCCESS;
+  }
+  else if (size == 1)
+  {
+    *sum_accel = array[0];
+    *abserr = 0.0;
+    w->sum_plain = array[0];
+    w->terms_used = 1;
+    return GSL_SUCCESS;
+  }
+  else
+  {
+    const float SMALL = 0.01f;
+    const size_t nmax = GSL_MAX(max_terms, array_size) - 1;
+    float noise_n = 0.0f;
+    float noise_nm1 = 0.0f;
+    float trunc_n = 0.0f;
+    float trunc_nm1 = 0.0f;
+    float actual_trunc_n = 0.0f;
+    float actual_trunc_nm1 = 0.0f;
+    double result_n = 0.0;
+    double result_nm1 = 0.0;
+    float variance = 0.0f;
+    size_t n;
+    unsigned int i;
+    int better = 0;
+    int before = 0;
+    int converging = 0;
+    double least_trunc = GSL_DBL_MAX;
+    double least_trunc_noise = GSL_DBL_MAX;
+    double least_trunc_result;
+
+    /* Calculate specified minimum number of terms.  No convergence
+       tests are made, and no truncation information is stored.  */
+
+    for (n = 0; n < min_terms; n++)
+    {
+      const double t = array[n];
+      result_nm1 = result_n;
+      gsl_sum_levin_u_step(t, n, nmax, w, &result_n);
+    }
+
+    least_trunc_result = result_n;
+
+    variance = 0.0f;
+    for (i = 0; i < n; i++)
+    {
+      float dn = (float)(w->dsum[i]) * GSL_MACH_EPS * (float)(array[i]);
+      variance += dn * dn;
+    }
+    noise_n = sqrtf(variance);
+
+    /* Calculate up to maximum number of terms.  Check truncation
+       condition.  */
+
+    for (; n <= nmax; n++)
+    {
+      const double t = array[n];
+
+      result_nm1 = result_n;
+      gsl_sum_levin_u_step(t, n, nmax, w, &result_n);
+
+      /* Compute the truncation error directly */
+
+      actual_trunc_nm1 = actual_trunc_n;
+      actual_trunc_n = fabsf((float)(result_n - result_nm1));
+
+      /* Average results to make a more reliable estimate of the
+         real truncation error */
+
+      trunc_nm1 = trunc_n;
+      trunc_n = 0.5f * (actual_trunc_n + actual_trunc_nm1);
+
+      noise_nm1 = noise_n;
+      variance = 0.0f;
+
+      for (i = 0; i <= n; i++)
+      {
+        float dn = (float)(w->dsum[i]) * GSL_MACH_EPS * (float)(array[i]);
+        variance += dn * dn;
+      }
+
+      noise_n = sqrtf(variance);
+
+      /* Determine if we are in the convergence region.  */
+
+      better = (trunc_n < trunc_nm1 || trunc_n < SMALL * fabsf((float)result_n));
+      converging = converging || (better && before);
+      before = better;
+
+      if (converging)
+      {
+        if (trunc_n < (float)least_trunc)
+        {
+          /* Found a low truncation point in the convergence
+             region. Save it. */
+
+          least_trunc_result = result_n;
+          least_trunc = (double)trunc_n;
+          least_trunc_noise = (double)noise_n;
+        }
+
+        if (noise_n > trunc_n / 3.0f)
+          break;
+
+        if (trunc_n < 10.0f * GSL_MACH_EPS * fabsf((float)result_n))
+          break;
+      }
+    }
+
+    if (converging)
+    {
+      /* Stopped in the convergence region.  Return result and
+         error estimate.  */
+
+      *sum_accel = least_trunc_result;
+      *abserr = GSL_MAX_DBL(least_trunc, least_trunc_noise);
+      w->terms_used = n;
+      return GSL_SUCCESS;
+    }
+    else
+    {
+      /* Never reached the convergence region.  Use the last
+         calculated values.  */
+
+      *sum_accel = result_n;
+      *abserr = GSL_MAX_DBL((double)trunc_n, (double)noise_n);
+      w->terms_used = n;
+      return GSL_SUCCESS;
+    }
+  }
+}
+
+int gsl_sum_levin_u_step(const double term, const size_t n, const size_t nmax,
+                         gsl_sum_levin_u_workspace *w, double *sum_accel)
+{
+
+#define I(i, j) ((i) * (nmax + 1) + (j))
+
+  if (n == 0)
+  {
+    *sum_accel = term;
+    w->sum_plain = term;
+
+    w->q_den[0] = 1.0f / (float)term;
+    w->q_num[0] = 1.0f;
+
+    w->dq_den[I(0, 0)] = -1.0f / ((float)term * (float)term);
+    w->dq_num[I(0, 0)] = 0.0f;
+
+    w->dsum[0] = 1.0f;
+
+    return GSL_SUCCESS;
+  }
+  else
+  {
+    double result;
+    float factor = 1.0f;
+    float ratio = (float)n / ((float)n + 1.0f);
+    unsigned int i;
+    int j;
+
+    w->sum_plain += term;
+
+    w->q_den[n] = 1.0f / ((float)term * ((float)(n + 1.0)) * ((float)(n + 1.0)));
+    w->q_num[n] = (float)(w->sum_plain) * w->q_den[n];
+
+    for (i = 0; i < n; i++)
+    {
+      w->dq_den[I(i, n)] = 0.0f;
+      w->dq_num[I(i, n)] = w->q_den[n];
+    }
+
+    w->dq_den[I(n, n)] = -w->q_den[n] / (float)term;
+    w->dq_num[I(n, n)] =
+        w->q_den[n] + (float)(w->sum_plain) * w->dq_den[I(n, n)];
+
+    for (j = n - 1; j >= 0; j--)
+    {
+      float c = factor * ((float)(j + 1)) / (n + 1);
+      factor *= ratio;
+      w->q_den[j] = w->q_den[j + 1] - c * w->q_den[j];
+      w->q_num[j] = w->q_num[j + 1] - c * w->q_num[j];
+
+      for (i = 0; i < n; i++)
+      {
+        w->dq_den[I(i, j)] =
+            w->dq_den[I(i, j + 1)] - c * w->dq_den[I(i, j)];
+        w->dq_num[I(i, j)] =
+            w->dq_num[I(i, j + 1)] - c * w->dq_num[I(i, j)];
+      }
+
+      w->dq_den[I(n, j)] = w->dq_den[I(n, j + 1)];
+      w->dq_num[I(n, j)] = w->dq_num[I(n, j + 1)];
+    }
+
+    result = (double)(w->q_num[0]) / (double)(w->q_den[0]);
+
+    *sum_accel = result;
+
+    for (i = 0; i <= n; i++)
+    {
+      w->dsum[i] =
+          ((float)(w->dq_num[I(i, 0)]) -
+           (float)(result) * (float)(w->dq_den[I(i, 0)])) /
+          (float)(w->q_den[0]);
+    }
+
+    return GSL_SUCCESS;
+  }
+}
+
+int main(void)
+{
+  double t[N];
+  double sum_accel;
+  double err;
+  double sum = 0;
+  int n;
+
+  gsl_sum_levin_u_workspace *w = gsl_sum_levin_u_alloc(N);
+
+  const double zeta_2 = M_PI * M_PI / 6.0;
+
+  for (n = 0; n < N; n++)
+  {
+    double np1 = n + 1.0;
+    t[n] = 1.0 / (np1 * np1);
+    sum += t[n];
+  }
+  int count = 10000;
+  while (count--)
+  {
+    gsl_sum_levin_u_accel(t, N, w, &sum_accel, &err);
+  }
+
+  gsl_sum_levin_u_free(w);
+
+  printf("%.13e\n", sum_accel);
+
+  return 0;
+}
