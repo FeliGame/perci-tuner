@@ -340,3 +340,6 @@
 ### 17
 * BETA add: -fp128todd (ChangeVariableDecl pass).
 * remove build.sh.
+
+### 18
+* fix: check_result not work.

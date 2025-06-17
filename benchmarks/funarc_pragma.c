@@ -45,6 +45,7 @@ int main()
 
   // variables for logging/checking
   long double result;
+  #pragma precision error result(2.1e-7)
 
 
   // dummy calls
@@ -63,7 +64,6 @@ int main()
 
     for( i = 1; i <= n; i++ )
     {
-      #pragma precision error result(2.1e-7)
       #pragma precision region
       {
         #pragma precision range(__float128, double, float, __fp16), h(double, float)

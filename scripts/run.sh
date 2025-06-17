@@ -80,17 +80,23 @@ do
         SHUFFLED_FLAG=true
     elif test "$arg" = "-history"; then
         HISTORY_FLAG=true
+    elif test "$arg" = "-mxp"; then
+        MXP_FLAG=true
+        LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -lcheck_result"
+        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-fp128todd"; then
         DD_FLAG=true
         MXP_FLAG=true
         LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/dd_real -L$PERCI_TUNER/lib/check_result"
         LINK_LIBS="$LINK_LIBS -ldd_real -lcheck_result"
         RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/dd_real -Wl,-rpath=$PERCI_TUNER/lib/check_result"
-    elif test "$arg" = "-mxp"; then
-        MXP_FLAG=true
     elif test "$arg" = "-fpe"; then
         FPE_FLAG=true
-        MXP_FLAG=true  # FPE必须启动MXP
+        MXP_FLAG=true
+        LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -lcheck_result"
+        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-original-version"; then
         ORIGINAL_VERSION_FLAG=true
     elif test "${arg#-target=}" != "$arg"; then

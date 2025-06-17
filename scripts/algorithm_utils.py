@@ -57,7 +57,7 @@ def compare_json(original, current, diff, prefix=""):
 
 
 # run the current config and get the result if satisfy rel_err threshold
-def run_config(bitcode, current_config, change_set, skip_runned=True, check_error=True):
+def run_config(bitcode, current_config, change_set, skip_runned=True):
     global run_times, original_conf, runned_change_set, is_mxp
     
     # check if the config has been runned
@@ -73,7 +73,7 @@ def run_config(bitcode, current_config, change_set, skip_runned=True, check_erro
     # Compare current_config with original_conf and store differences in diff
     compare_json(original_conf, current_config, diff)
 
-    result = transform.transform(run_times, bitcode, current_config, diff, is_mxp, check_error)
+    result = transform.transform(run_times, bitcode, current_config, diff, is_mxp)
     satisfy_thres = True
     if result == 0:  # result not satisfy threshold
         satisfy_thres = False

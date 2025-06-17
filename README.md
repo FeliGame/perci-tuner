@@ -41,34 +41,36 @@ Check run.sh for more information.
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
 ### --mxp(bool)
-Search all floating-point vars in IR if set to false, or search only __autofp vars or vars in #pragma region. From Pass:print_config.
+Search all floating-point vars in IR if set to false, or search only __autofp vars or vars in #pragma region.
+From Pass: print_config.
 
 ### --is-original(bool)
 Only enabled when --mxp=true. If set true, print result_var as hex format, or print relative error between result_var and env var: PERCI_TUNER_ORIGINAL_RESULT.
-Pass:record_result.
+From Pass: record_result.
 
 ### --variable-config
 
-Customize target precision input filename, from Pass:change_variable_decl.
+Customize target precision input filename.
+From Pass: change_variable_decl.
 
 ### --fp128-to-dd(bool)
 
-Change fp128(long double) to dd(double-double), pay attention that libdd_real.a/so & libcheck_result.a/.so should be installed if you want to run optimized exec, these libraries can be generated under lib/dd_real & lib/check_result, from Pass:change_variable_decl.
+Change fp128(long double) to dd(double-double), pay attention that libdd_real.a/so & libcheck_result.a/.so should be installed if you want to run optimized exec, these libraries can be generated under lib/dd_real & lib/check_result. From Pass: change_variable_decl.
 
 ### --function-config
 
-Customize target function calls input filename, from Pass:change_function_call.
+Customize target function calls input filename. From Pass: change_function_call.
 
 ### --ir-timing-result
 
-Customize IR timing result's output filename, from Pass:ir_timing.
+Customize IR timing result's output filename. From Pass: ir_timing.
 
 ### --ir-multi
 
-Customize another version input IR filename, from
-Pass: merge_multi.
+Customize another version input IR filename.
+From Pass: merge_multi.
 
 ### --function-multi
 
-Decide which function should be merged from another version input IR, from
-Pass: merge_multi.
+Decide which function should be merged from another version input IR.
+From Pass: merge_multi.

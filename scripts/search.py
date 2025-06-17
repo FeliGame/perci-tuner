@@ -106,7 +106,7 @@ def baseline_test(bitcode, original_conf):
         config_utils.print_config(bench_conf, filename)
         
         # 运行测试配置
-        algorithm_utils.run_config(bitcode, bench_conf, [], skip_runned=False, check_error=False)
+        algorithm_utils.run_config(bitcode, bench_conf, [], skip_runned=False)
         bench_time = transform.current_run_time
         bench_result = transform.current_run_result
         
@@ -162,7 +162,7 @@ def main():
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)
-    algorithm_utils.run_config(bitcode, algorithm_utils.original_conf, change_set, check_error=False)
+    algorithm_utils.run_config(bitcode, algorithm_utils.original_conf, change_set)
     data_utils.ORIGINAL_TIME = transform.current_run_time
     data_utils.ORIGINAL_RESULT = transform.current_run_result
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)

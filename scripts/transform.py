@@ -56,7 +56,7 @@ def read_result(text):
 
 
 # run the current variable config and get the result
-def transform(run_id, bitcode_file, var_config, diff, is_mxp, check_error):
+def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     global current_run_time, current_run_result, RUNNING_FAIL_TIMES
     # write the config to the temp file 
     config_utils.print_config(var_config, TEMP_CONFIG_FILE)
@@ -92,7 +92,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, check_error):
         return -1
 
     time_list = []  # 改为存储所有运行时间的列表
-    test_result_once = not check_error  # 是否检查一次符合误差阈值（结果固定没必要重复运行，只需测试一次）
+    logged = False  # 是否登记过运行结果/误差
     satisfy_thres = True  # 是否满足误差阈值
 
     # run modified bitcode
@@ -103,8 +103,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, check_error):
             if not output.strip():
                 print(">>> Perci-Tuner(Py) Error: Program has no output, search failed!")
                 sys.exit(1)
-            if not test_result_once:
-                test_result_once = True
+            if not logged:  # 同一程序只需登记一次运行结果/误差
+                logged = True
                 output = output.splitlines()[-1]  # 取最后一行
                 output_text = output.decode()
                 output_val = read_result(output_text)
@@ -113,10 +113,12 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, check_error):
                     if float(output_val) > config_utils.thres:
                         satisfy_thres = False
                         current_run_result = output_val
+                        current_run_time = float("nan")
                         break
                 elif not data_utils.is_nearly_equal(output_val, data_utils.ORIGINAL_RESULT, config_utils.thres):
                     satisfy_thres = False
                     current_run_result = output_val
+                    current_run_time = float("nan")
                     break
         except subprocess.TimeoutExpired:
             print(f">>> Perci-Tuner(Py) Error: Timeout after {TIMEOUT_THRESHOLD} seconds.")
