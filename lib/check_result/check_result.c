@@ -15,13 +15,11 @@ void printf_fp64(double a)
 	printf("\n%016lx\n", *(uint64_t *)(&a));
 }
 
-#if defined(DD)
 void printf_fp106(dd_real a)
 {
 	uint64_t *t = (uint64_t *)&a;
 	printf("\n%016lx %016lx\n", t[0], t[1]);
 }
-#endif
 
 void printf_fp128(long double a)
 {
@@ -137,11 +135,9 @@ void printf_RE_fp64(double a)
 	printf_RE_fp128((long double)a);
 }
 
-#if defined(DD)
 void printf_RE_fp106(dd_real a)
 {
 	long double t = (long double)a.x[0];
 	t += (long double)a.x[1];
 	printf_RE_fp128(t);
 }
-#endif

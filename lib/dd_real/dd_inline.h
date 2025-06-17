@@ -1,0 +1,27 @@
+#ifndef DD_INLINE_H
+#define DD_INLINE_H
+#include <limits.h>
+#include <math.h>
+#include <stdbool.h>
+
+#define DD_E dd_init2(2.718281828459045091e+00, 1.445646891729250158e-16)
+#define DD_LOG2 dd_init2(6.931471805599452862e-01, 2.319046813846299558e-17)
+#define DD_LOG10 dd_init2(2.302585092994045901e+00, -2.170756223382249351e-16)
+#define DD_EPS 4.93038065763132e-32
+#define DD_NAN dd_init2(NAN, NAN)
+#define DD_INF dd_init2(INFINITY, INFINITY)
+#define DD_2PI dd_init2(6.283185307179586232e+00, 2.449293598294706414e-16)
+#define DD_PI dd_init2(3.141592653589793116e+00, 1.224646799147353207e-16)
+#define DD_PI2 dd_init2(1.570796326794896558e+00, 6.123233995736766036e-17)
+#define DD_PI4 dd_init2(7.853981633974482790e-01, 3.061616997868383018e-17)
+#define DD_3PI4 dd_init2(2.356194490192344837e+00, 9.1848509936051484375e-17)
+
+#ifndef DD_REAL
+#define DD_REAL
+typedef struct
+{
+  double x[2];
+} dd_real;
+#endif
+
+#endif

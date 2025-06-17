@@ -1,6 +1,6 @@
 build/
 scripts/__pycache__/
-*.txt
+ir_timing.txt
 *.csv
 *.bc
 *.ll

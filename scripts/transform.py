@@ -12,8 +12,8 @@ import re
 
 
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
-CHECK_RESULT_PATH = os.path.join(os.getenv("PERCI_TUNER"), "lib/check_result")
 PASSES = "change_variable_decl,change_function_call,ir_timing"
+FP128_TO_DD = False
 TEMP_BC_PATH = "temp_output.bc"
 TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "ir_timing.txt"
@@ -22,6 +22,7 @@ RUNNING_FAIL_TIMES = 0
 TIMEOUT_THRESHOLD = 5.0  # 超时阈值（秒）
 LINK_LIBS = []
 LINK_DIRS = []
+RUNTIME_LIB_DIRS = []
 OPTIMIZE_LEVEL = "-O2"
 
 # time & result in current run
@@ -66,6 +67,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, check_error):
                "-S", 
                # record_result加在ir_timing后面防止被记入用时, remove_pragma必须在record_result之后
                "-passes=" + PASSES + ",record_result,remove_pragma",
+               "--fp128-to-dd=" + str(FP128_TO_DD),
                "--variable-config=" + TEMP_CONFIG_FILE , 
                "--function-config=" + TEMP_CONFIG_FILE, 
                "--is-original=false", 
@@ -84,10 +86,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, check_error):
         return -1
     
     # generate executable
-    command = ['clang', OPTIMIZE_LEVEL, '-o', 'temp_output', 'temp_output.bc'] + LINK_LIBS + LINK_DIRS\ 
-            ([f'-L{CHECK_RESULT_PATH}', f'-lcheck_result', f'-Wl,-rpath={CHECK_RESULT_PATH}'] if is_mxp else [])
+    command = ['clang', OPTIMIZE_LEVEL, '-o', 'temp_output', 'temp_output.bc'] + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
-    print('generate executable', retval)
     if retval != 0:
         return -1
 

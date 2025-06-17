@@ -64,9 +64,14 @@ private:
 
     bool changeStructDeclarations(Module &module);
 
-    void replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst);
+    void updateMultiOpReplacement(Instruction* oldInst, Instruction* newInst);
 
     void removeRedundantReplacements();
+
+    std::string getDDBinOpCallName(BinaryOperator *bo);
+    template <typename T>
+    Instruction* changeToDDCall(T *I, const std::string &FunctionName, const std::vector<Value *> &Args, Type *ReturnType);
+    void handleFP128ToDD(Instruction &I);
 
     DenseSet<StringRef> includedFunctions;
 

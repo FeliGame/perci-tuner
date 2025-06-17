@@ -18,13 +18,23 @@ def parse_arguments():
         '-timeout': 5.0,
         '-shuffled': False,
         '-partition': 'sorted_partition.json',
+        '-fp128todd': False,
         '-link-libs': [],
         '-link-dirs': [],
+        '-rpath': [],
         '-optimize-level': 'O2',
     }
     
     for arg in sys.argv[1:]:
-        if '=' in arg:
+        if arg.startswith('-l'):
+            params['-link-libs'].append(arg)
+        elif arg.startswith('-L'):
+            params['-link-dirs'].append(arg)
+        elif arg.startswith('-Wl,-rpath'):
+            params['-rpath'].append(arg)
+        elif arg.startswith('-O'):
+            params['-optimize-level'] = arg
+        elif '=' in arg:
             key, value = arg.split('=', 1)
             if key in params:
                 # type cast
@@ -40,14 +50,10 @@ def parse_arguments():
                     params[key] = value.lower() in ('true', '1', 'yes')
                 elif key == '-mxp':
                     params[key] = value.lower() in ('true', '1', 'yes')
+                elif key == '-fp128todd':
+                    params[key] = value.lower() in ('true', '1', 'yes')
                 else:
                     params[key] = value
-        elif arg.startswith('-l'):
-            params['-link-libs'].append(arg)
-        elif arg.startswith('-L'):
-            params['-link-dirs'].append(arg)
-        elif arg.startswith('-O'):
-            params['-optimize-level'] = arg
         
     return params
 
@@ -122,8 +128,10 @@ def main():
     algorithm = args['-algorithm']
     transform.TIMEOUT_THRESHOLD = args['-timeout']
     shuffled = args['-shuffled']
+    transform.FP128_TO_DD = args['-fp128todd']
     transform.LINK_LIBS = args['-link-libs']
     transform.LINK_DIRS = args['-link-dirs']
+    transform.RUNTIME_LIB_DIRS = args['-rpath']
     transform.OPTIMIZE_LEVEL = args['-optimize-level']
     algorithm_utils.is_mxp = args['-mxp']
 
@@ -145,8 +153,10 @@ def main():
     print(f"  Algorithm: {args['-algorithm']}")
     print(f"  Timeout seconds: {args['-timeout']}")
     print(f"  Shuffled: {args['-shuffled']}")
+    print(f"  FP128 to DD: {args['-fp128todd']}")
     print(f"  Link libs: {args['-link-libs']}")
     print(f"  Link dirs: {args['-link-dirs']}")
+    print(f"  Runtime lib dirs: {args['-rpath']}")
     print(f"  Optimize level: {args['-optimize-level']}")
     print(f"  MXP: {args['-mxp']}")
 

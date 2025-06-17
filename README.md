@@ -30,13 +30,7 @@ Add this into ~/.bashrc:
 
 Then run `source ~/.bashrc` to enable it:
 
-## Building
-
-`sh scripts/build.sh`
-
-This will generate a pass.so under build/ directory.  
-
-## Run Perci-Tuner
+## Build & Run Perci-Tuner
 
 `sh scripts/run.sh src_files... <command> [Optional Flags]`
 
@@ -56,6 +50,10 @@ Pass:record_result.
 ### --variable-config
 
 Customize target precision input filename, from Pass:change_variable_decl.
+
+### --fp128-to-dd(bool)
+
+Change fp128(long double) to dd(double-double), pay attention that libdd_real.a/so & libcheck_result.a/.so should be installed if you want to run optimized exec, these libraries can be generated under lib/dd_real & lib/check_result, from Pass:change_variable_decl.
 
 ### --function-config
 

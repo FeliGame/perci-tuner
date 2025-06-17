@@ -336,3 +336,7 @@
 
 ### 10
 * update: rename mxpcc to run.sh.
+
+### 17
+* BETA add: -fp128todd (ChangeVariableDecl pass).
+* remove build.sh.

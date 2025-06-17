@@ -11,14 +11,10 @@
 #include <errno.h>
 #include <math.h>
 
-#if defined(DD)
-
-#include "dd_real.h"
+#include "../dd_real/dd_real.h"
 
 void printf_fp106(dd_real a);
 void printf_RE_fp106(dd_real a);
-
-#endif
 
 #define MYPI 3.1415926535897932384626433832795
 #define ORIGINAL_RESULT "PERCI_TUNER_ORIGINAL_RESULT"

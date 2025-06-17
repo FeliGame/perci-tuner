@@ -2,6 +2,20 @@
 
 # @Author: Guocheng —— NUDT
 
+####################################
+# Build PerciTuner automatically   #
+####################################
+
+cd $PERCI_TUNER
+# rm -rf build
+if [ ! -d "build" ]; then
+    mkdir build
+fi
+cd build
+cmake ..
+make
+cd $PERCI_TUNER
+
 ################################################################################
 # Run PerciTuner automatically
 ################################################################################
@@ -20,6 +34,9 @@ TIMEOUT=5.0
 HISTORY_FLAG=false
 SHUFFLED_FLAG=false
 
+# optional fp128->double double pass
+DD_FLAG=false
+
 # change mode option
 TARGET_CONFIG=changed_config.json
 
@@ -33,6 +50,7 @@ HALF_PRECISION_SUPPORT="-Xclang -fnative-half-type"
 
 LINK_LIBS=""
 LINK_DIRS=""
+RUNTIME_LIB_DIRS=""
 INCLUDE_DIRS=""
 OPTIMIZE_LEVEL="-O2"
 
@@ -62,6 +80,12 @@ do
         SHUFFLED_FLAG=true
     elif test "$arg" = "-history"; then
         HISTORY_FLAG=true
+    elif test "$arg" = "-fp128todd"; then
+        DD_FLAG=true
+        MXP_FLAG=true
+        LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/dd_real -L$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -ldd_real -lcheck_result"
+        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/dd_real -Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-mxp"; then
         MXP_FLAG=true
     elif test "$arg" = "-fpe"; then
@@ -97,6 +121,7 @@ do
         echo "  -timeout=<5.0>              (search-optimize) Set run-time timeout seconds(default 5.0sec)"
         echo "  -shuffled                   (search-optimize) Shuffle searched variables (default false)"
         echo "  -history                    (search-optimize) Keep search history (default false)"
+        echo "  -fp128todd                  (search-optimize) fp128 regarded as double-double, will auto enable -mxp"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables"
         echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp"
         echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
@@ -170,12 +195,17 @@ done
 
 llvm-link $BCS -o output.bc
 
-if test $MODE_FLAG != "change-by-config"; then
+if test $MODE_FLAG = "change-by-config"; then
+    # 根据config修改源程序
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
+    clang $OPTIMIZE_LEVEL -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
+    echo "[Changed] IR: changed_output.bc, Executable: changed_output"
+else
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
     if $MXP_FLAG; then
         # 第一次获取原始值
         opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='record_result,remove_pragma' --is-original=true output.bc -o mxp.bc
-        clang -O2 -o output mxp.bc $LINK_LIBS -L$PERCI_TUNER/lib/check_result -lcheck_result -Wl,-rpath=$PERCI_TUNER/lib/check_result
+        clang -O2 -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
         rm mxp.bc
         # 捕获最后一行输出并设置环境变量
         LAST_LINE=$(./output | tail -n 1)
@@ -183,21 +213,14 @@ if test $MODE_FLAG != "change-by-config"; then
         echo "Set PERCI_TUNER_ORIGINAL_RESULT=$LAST_LINE"
     fi
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o original.bc
-    clang $OPTIMIZE_LEVEL -o output original.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -o output original.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     echo "[Original] Config: config.json, IR: original.bc, Executable: output"
-fi
-
-if test $MODE_FLAG = "change-by-config"; then
-    # 根据config修改源程序
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
-    clang $OPTIMIZE_LEVEL -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
-    echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
-    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG output.bc $LINK_LIBS $LINK_DIRS $OPTIMIZE_LEVEL
-    clang $OPTIMIZE_LEVEL -o optimized_output optimized_output.bc $LINK_LIBS $LINK_DIRS
+    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $OPTIMIZE_LEVEL
+    clang $OPTIMIZE_LEVEL -o optimized_output optimized_output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 
@@ -214,11 +237,11 @@ if test $MODE_FLAG = "multi-version"; then
     clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC output+mvselect.bc -o merged.bc
-    clang $OPTIMIZE_LEVEL -o merged merged.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi
 
 if $FPE_FLAG; then
     # 处理fp异常（需要mxp版本LLVM）- 生成可执行文件
-    clang $OPTIMIZE_LEVEL -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
 fi
