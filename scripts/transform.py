@@ -67,6 +67,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                "-S", 
                # record_result加在ir_timing后面防止被记入用时, remove_pragma必须在record_result之后
                "-passes=" + PASSES + ",record_result,remove_pragma",
+               "--print-dd=" + str(FP128_TO_DD),
                "--fp128-to-dd=" + str(FP128_TO_DD),
                "--variable-config=" + TEMP_CONFIG_FILE , 
                "--function-config=" + TEMP_CONFIG_FILE, 
@@ -109,7 +110,6 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                 output_text = output.decode()
                 output_val = read_result(output_text)
                 if is_mxp:  # 如果是mxp模式，则output接收到的最后一行是误差值，不是结果值
-                    print('current_error', output_val)
                     if float(output_val) > config_utils.thres:
                         satisfy_thres = False
                         current_run_result = output_val

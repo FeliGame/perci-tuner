@@ -17,6 +17,7 @@ using namespace llvm;
 
 
 cl::opt<bool> IsOriginal("is-original", cl::value_desc("true or false"), cl::desc("if true, record original; otherwise check rel_err with original"), cl::init(false));
+cl::opt<bool> PrintDDFlag("print-dd", cl::desc("Printf for double-double"), cl::init(false));
 
 
 // 1. 遇到#pragma error var_name，在【当前作用域】内找到并维护var_name的声明信息(DILocalVariable)
@@ -123,7 +124,7 @@ void RecordResult::insertPrintFP(Module &M) {
                 funcName = "printf_fp64";
                 argTy = Type::getDoubleTy(context);
             } else if (resultVarType->isFP128Ty()) {
-                funcName = "printf_fp128";
+                funcName = PrintDDFlag ? "printf_fp106" : "printf_fp128";
                 argTy = Type::getFP128Ty(context);
             } else {
                 errs() << "Unsupported type for printf: " << parseTypeName(resultVarType) << "\n";
@@ -171,7 +172,7 @@ void RecordResult::insertCheckRE(Module &M) {
                 funcName = "printf_RE_fp64";
                 argTy = Type::getDoubleTy(context);
             } else if (resultVarType->isFP128Ty()) {
-                funcName = "printf_RE_fp128";
+                funcName = PrintDDFlag ? "printf_RE_fp106" : "printf_RE_fp128";
                 argTy = Type::getFP128Ty(context);
             } else {
                 errs() << "Unsupported type for check: " << parseTypeName(resultVarType) << "\n";

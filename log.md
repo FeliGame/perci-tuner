@@ -343,3 +343,6 @@
 
 ### 18
 * fix: check_result not work.
+
+### 19
+* fix: RecordResult recognize double-double printf (by 'printf_fp106').
