@@ -21,16 +21,16 @@ public:
 
     virtual bool runOnModule(Module &module);
     
-    bool runOnFunction(Function &F);
+    void runOnFunction(Function &F);
 
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
 private:
     void parseConfig();
 
-    bool changeAllocaInst(DbgDeclareInst *DDI, Type *newType);
+    AllocaInst* changeAllocaInst(DbgDeclareInst *DDI, Type *newType);
 
-    Value *insertCast(Value *val, Type *targetType, Instruction *insertBefore);
+    Value* insertCast(Value *val, Type *targetType, Instruction *insertBefore);
 
     Type* findHighestPrecisionType(BinaryOperator*);
     
@@ -39,6 +39,8 @@ private:
     Type* findHighestPrecisionType(PHINode*);
 
     Instruction* repairReturnInst(ReturnInst *ret);
+
+    Instruction* repairLoadInst(LoadInst *load);
 
     Instruction* repairStoreInst(StoreInst *store);
 
@@ -54,15 +56,15 @@ private:
 
     void repairAllocaUsers(AllocaInst* alloca);
 
-    bool repairUserType(User *user);
+    void repairUserType(User *user);
 
-    bool repairCasts(Function &F);
+    void repairCasts(Function &F);
 
     AllocaInst* findOriginalAlloca(Value* value);
 
     Type* translateValidTypeName(std::string typeName, LLVMContext& context);
 
-    bool changeStructDeclarations(Module &module);
+    void changeStructDeclarations(Module &module);
 
     void replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst);
 
@@ -75,6 +77,8 @@ private:
     DenseSet<AllocaInst*> newAllocas;
 
     DenseMap<Instruction*, Instruction*> instReplaceMap;    // MultiOperandInst replacement
+
+    DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
 
     nlohmann::json config;
 };

@@ -41,17 +41,31 @@ fmod(a, arr[0]);
     return  (b == c ? a : 0) + sin(d) * sin(e);
 }
 
+double pointer_test()
+{
+    float a_val = 3.0f;
+    double b_val = 1.0;
+    float* a = &a_val;
+    double* b = &b_val;
+
+    float c = *a + *b;
+    return (double)(c);
+}
+
 double fun()
 {
-    int i = 10;
-    return fp_test() - i;
+    return pointer_test();
 }
 
 int main()
 {
     long double l = 2.0+1e-20L;
-    while(l != 2.0+1e-20L);
+    if(l != 2.0+1e-20L) {
+        printf("0");
+        return 0;
+    }
     const float m = 32.0;
-    printf("%lf\n", fun());
+    double c = l - m;
+    printf("%lf\n", c);
     // return 0;
 }

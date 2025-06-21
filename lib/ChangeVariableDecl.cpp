@@ -44,7 +44,7 @@ void ChangeVariableDecl::parseConfig() {
     }
 }
 
-bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
+AllocaInst* ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
     auto *var = DDI->getAddress();
     Align align;
 
@@ -55,17 +55,15 @@ bool ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
         align = Align(newType->getPrimitiveSizeInBits() / 8);
     }
 
-    if (auto alloca = dyn_cast<AllocaInst>(var)) {
-        IRBuilder<> builder(alloca);
-        auto *newAlloca = builder.CreateAlloca(newType, nullptr, alloca->getName());
-        newAlloca->setAlignment(align);
-        newAlloca->takeName(alloca);
-        newAllocas.insert(newAlloca);
-        instToErase.insert(alloca);
-        alloca->replaceAllUsesWith(newAlloca);
-        return true;
-    }
-    return false;
+    auto alloca = dyn_cast<AllocaInst>(var);
+    IRBuilder<> builder(alloca);
+    auto *newAlloca = builder.CreateAlloca(newType, nullptr, alloca->getName());
+    newAlloca->setAlignment(align);
+    newAlloca->takeName(alloca);
+    newAllocas.insert(newAlloca);
+    instToErase.insert(alloca);
+    alloca->replaceAllUsesWith(newAlloca);
+    return newAlloca;
 }
 
 void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
@@ -75,6 +73,8 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
     if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
         auto *elementType = arrayType->getElementType();
         align = Align(elementType->getPrimitiveSizeInBits() / 8);
+    } else if (newType->isPointerTy()) {
+        align = Align(alloca->getModule()->getDataLayout().getPointerPrefAlignment());
     } else {
         align = Align(newType->getPrimitiveSizeInBits() / 8);
     }
@@ -90,6 +90,13 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
         }
         else if (auto load = dyn_cast<LoadInst>(user)) {
             auto *oldType = load->getType();
+
+            if (oldType->isPointerTy()) {  // don't replace ptr's LoadInst, directly replace user
+                for (auto *user : load->users())
+                    repairUserType(user);
+                continue;
+            }
+
             if (oldType == newType) continue;
 
             auto *newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
@@ -267,6 +274,33 @@ Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
         }
     }
     return nullptr;  // nothing changed
+}
+
+Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load) {
+    auto *ptrOperand = load->getPointerOperand();
+    if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
+        if (auto *loadType = pointeeTypeMap[allocaInst]) {
+            if (loadType != load->getType()) {
+                Align newAlign;
+                if (auto *arrayType = dyn_cast<ArrayType>(loadType)) {
+                    auto *elementType = arrayType->getElementType();
+                    newAlign = Align(elementType->getPrimitiveSizeInBits() / 8);
+                } else if (loadType->isPointerTy()) {
+                    newAlign = Align(load->getModule()->getDataLayout().getPointerPrefAlignment());
+                } else {
+                    newAlign = Align(loadType->getPrimitiveSizeInBits() / 8);
+                }
+
+                auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load);
+                newLoad->setAlignment(newAlign);
+                load->replaceAllUsesWith(newLoad);
+                instToErase.insert(load);
+
+                return newLoad;
+            }
+        }
+    }
+    return nullptr;
 }
 
 Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store) {
@@ -451,23 +485,25 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
 }
 
 // Make inst operands type consistent
-bool ChangeVariableDecl::repairUserType(User *user) {
+void ChangeVariableDecl::repairUserType(User *user) {
     if (!isa<Instruction>(user)) {
         errs() << "RepairUser: User is not an inst.\n";
-        return false;
+        return;
     }
 
     auto *inst = cast<Instruction>(user);
     Instruction *newInst = nullptr;
     if (isa<FPExtInst>(inst) || isa<FPTruncInst>(inst)) {
         errs() << "RepairUser: skip cast inst: " << *inst << "\n";
-        return false;
+        return;
     }
 
     errs() << "RepairUser: " << *inst << "\n";
 
     if (auto ret = dyn_cast<ReturnInst>(inst))
         newInst = repairReturnInst(ret);
+    else if (auto load = dyn_cast<LoadInst>(inst))
+        newInst = repairLoadInst(load);
     else if (auto store = dyn_cast<StoreInst>(inst))
         newInst = repairStoreInst(store);
     else if (auto *unaOp = dyn_cast<UnaryOperator>(inst))
@@ -485,16 +521,14 @@ bool ChangeVariableDecl::repairUserType(User *user) {
         for (auto *user : newInst->users()) {
             repairUserType(user);
         }
-        return true;
     }
 
-    return false;
+    return;
 }
 
 // Remove redundant & Replace wrong fpext/fptrunc insts
-bool llvm::ChangeVariableDecl::repairCasts(Function &F)
+void llvm::ChangeVariableDecl::repairCasts(Function &F)
 {
-    bool modified = false;
     IRBuilder<> builder(F.getContext());
 
     for (auto &BB : F) {
@@ -503,7 +537,6 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
                 if (castInst->use_empty()) {
                     errs() << "Remove unused cast: " << *castInst << "\n";
                     instToErase.insert(castInst);
-                    modified = true;
                     continue;
                 }
 
@@ -511,7 +544,6 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
                     errs() << "Remove redundant cast: " << *castInst << "\n";
                     castInst->replaceAllUsesWith(castInst->getOperand(0));
                     instToErase.insert(castInst);
-                    modified = true;
                     continue;
                 }
 
@@ -526,7 +558,6 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
                         auto *newCast = builder.CreateFPTrunc(castInst->getOperand(0), destType);
                         castInst->replaceAllUsesWith(newCast);
                         instToErase.insert(castInst);
-                        modified = true;
                         continue;
                     }
                     // 如果目标类型精度高于源类型，且当前是FPTrunc，则改为FPExt
@@ -536,15 +567,12 @@ bool llvm::ChangeVariableDecl::repairCasts(Function &F)
                         auto *newCast = builder.CreateFPExt(castInst->getOperand(0), destType);
                         castInst->replaceAllUsesWith(newCast);
                         instToErase.insert(castInst);
-                        modified = true;
                         continue;
                     }
                 }
             }
         }
     }
-
-    return modified;
 }
 
 // find the original AllocaInst of given inst
@@ -553,7 +581,10 @@ AllocaInst* ChangeVariableDecl::findOriginalAlloca(Value* value) {
         if (auto *alloca = dyn_cast<AllocaInst>(value)) {
             return alloca;
         }
-        if (auto *gep = dyn_cast<GetElementPtrInst>(value)) {
+        if (auto *load = dyn_cast<LoadInst>(value)) {
+            value = load->getPointerOperand();
+        }
+        else if (auto *gep = dyn_cast<GetElementPtrInst>(value)) {
             value = gep->getPointerOperand();
         } else {
             break;
@@ -604,10 +635,9 @@ Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& c
     return nullptr;
 }
 
-bool ChangeVariableDecl::runOnFunction(Function &F) {
+void ChangeVariableDecl::runOnFunction(Function &F) {
     auto &context = F.getContext();
     auto functionConfig = config["local"][demangle(F.getName())];
-    bool modified = false;
     // Check if decl inst need to be changed
     for (auto &BB : F) {
         for (auto &I : BB) {
@@ -623,10 +653,19 @@ bool ChangeVariableDecl::runOnFunction(Function &F) {
 
                             if (typeName == parseDITypeName(DV->getType())) continue;
                             auto *targetType = translateValidTypeName(typeName, context);
+
                             if (targetType == nullptr) continue;
 
                             errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
-                            modified |= changeAllocaInst(DDI, targetType);
+                            
+                            if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
+                                auto *alloca = dyn_cast<AllocaInst>(DDI->getAddress());
+                                pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
+                                newAllocas.insert(alloca);
+                            } else {
+                                changeAllocaInst(DDI, targetType);
+                            }
+
                             break;  // found & changed
                         }
                     }
@@ -646,19 +685,17 @@ bool ChangeVariableDecl::runOnFunction(Function &F) {
     }
     instToErase.clear();
 
-    modified |= repairCasts(F);
+    repairCasts(F);
 
     for (auto *inst : instToErase) {
         inst->eraseFromParent();
     }
     instToErase.clear();
-    return modified;
 }
 
-bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
-    if (!config.contains("structs")) return false;
+void ChangeVariableDecl::changeStructDeclarations(Module &module) {
+    if (!config.contains("structs")) return;
 
-    bool modified = false;
     nlohmann::json structInfos = config["structs"];
     auto &context = module.getContext();
     // Iterate all struct decls in the module
@@ -688,7 +725,6 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
 
             if (needsUpdate) {
                 sty->setBody(newElements, sty->isPacked());
-                modified = true;
                 
                 // Replace global/static initializers
                 for (auto &global : module.globals()) {
@@ -804,7 +840,7 @@ bool ChangeVariableDecl::changeStructDeclarations(Module &module) {
             }
         }
     }
-    return modified;
+    return;
 }
 
 // Replace multi-operand Inst safely (such as BinOp, FCmpInst)
@@ -836,12 +872,11 @@ void ChangeVariableDecl::removeRedundantReplacements() {
 
 bool ChangeVariableDecl::runOnModule(Module &module) {
     parseConfig();
-    bool modified = false;
-    modified |= changeStructDeclarations(module);
+    changeStructDeclarations(module);
     for(auto f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();
         if(!f->isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
-            modified |= runOnFunction(*f);
+            runOnFunction(*f);
         }
     }
 
@@ -855,7 +890,7 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         errs() << "Module verify success!\n";
     }
 
-    return modified;
+    return true;
 }  
 
 void ChangeVariableDecl::getAnalysisUsage(AnalysisUsage &AU) const {

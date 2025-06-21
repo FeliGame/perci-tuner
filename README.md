@@ -30,13 +30,7 @@ Add this into ~/.bashrc:
 
 Then run `source ~/.bashrc` to enable it:
 
-## Building
-
-`sh scripts/build.sh`
-
-This will generate a pass.so under build/ directory.  
-
-## Run Perci-Tuner
+## Build & Run Perci-Tuner
 
 `sh scripts/run.sh src_files... <command> [Optional Flags]`
 
