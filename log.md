@@ -346,3 +346,6 @@
 
 ### 19
 * fix: RecordResult recognize double-double printf (by 'printf_fp106').
+
+### 22
+* add: floating-types' pointer type (ChangeVariableDecl).

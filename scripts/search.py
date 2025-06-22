@@ -75,7 +75,10 @@ def baseline_test(bitcode, original_conf):
             if bench_conf['local'][func]:
                 for var in bench_conf['local'][func]:
                     if any(p in var['type'] for p in config_utils.PRECISIONS):
-                        var['type'] = prec
+                        if var['type'].endswith('*'):
+                            var['type'] = prec + '*'
+                        else:
+                            var['type'] = prec
         
         # 修改结构体成员精度
         if bench_conf['structs']:
@@ -83,7 +86,10 @@ def baseline_test(bitcode, original_conf):
                 if bench_conf['structs'][struct]:
                     for member in bench_conf['structs'][struct]:
                         if any(p in member['type'] for p in config_utils.PRECISIONS):
-                            member['type'] = prec
+                            if member['type'].endswith('*'):
+                                member['type'] = prec + '*'
+                            else:
+                                member['type'] = prec
         
         # 修改函数调用精度
         if bench_conf['calls']:

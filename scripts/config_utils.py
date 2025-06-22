@@ -112,7 +112,7 @@ def parse_config(config, shuffled=False):
                 
             for i in var_indices:
                 type_str = func_vars[i]['type']
-                if (('*' in type_str) or not any(p in type_str for p in PRECISIONS)):
+                if not any(p in type_str for p in PRECISIONS):
                     continue
                 change_entry = copy.deepcopy(func_vars[i])
                 change_entry['fvar_index'] = i
@@ -136,7 +136,7 @@ def parse_config(config, shuffled=False):
                 
             for i in member_indices:
                 type_str = members[i]['type']
-                if (('*' in type_str) or not any(p in type_str for p in PRECISIONS)):
+                if not any(p in type_str for p in PRECISIONS):
                     continue
                 change_entry = copy.deepcopy(members[i])
                 change_entry['struct'] = struct
