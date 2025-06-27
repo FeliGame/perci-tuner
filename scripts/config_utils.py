@@ -211,8 +211,12 @@ def rebuild(change_set, config):
                 member_index = item['fvar_index']
                 if member_index < len(local_vars):
                     member_info = local_vars[member_index]
-                    if member_info['type'] != item['type']:
-                        member_info['type'] = item['type']
+                    is_pointer = member_info['type'].endswith('*')
+                    new_type = item['type']
+                    if is_pointer and not new_type.endswith('*'):
+                        new_type += '*'
+                    if member_info['type'] != new_type:
+                        member_info['type'] = new_type
                         
         elif 'caller' in item:
             caller = item['caller']
@@ -221,8 +225,12 @@ def rebuild(change_set, config):
                 fcall_index = item['fcall_index']
                 if fcall_index < len(call_entries):
                     callee_info = call_entries[fcall_index]
-                    if callee_info['type'] != item['type']:
-                        callee_info['type'] = item['type']
+                    is_pointer = callee_info['type'].endswith('*')
+                    new_type = item['type']
+                    if is_pointer and not new_type.endswith('*'):
+                        new_type += '*'
+                    if callee_info['type'] != new_type:
+                        callee_info['type'] = new_type
         
         elif 'struct' in item:
             struct = item['struct']
@@ -231,8 +239,12 @@ def rebuild(change_set, config):
                 member_index = item['member_index']
                 if member_index < len(struct_members):
                     member_info = struct_members[member_index]
-                    if member_info['type'] != item['type']:
-                        member_info['type'] = item['type']
+                    is_pointer = member_info['type'].endswith('*')
+                    new_type = item['type']
+                    if is_pointer and not new_type.endswith('*'):
+                        new_type += '*'
+                    if member_info['type'] != new_type:
+                        member_info['type'] = new_type
        
     return new_config
 

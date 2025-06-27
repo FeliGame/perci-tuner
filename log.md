@@ -349,3 +349,6 @@
 
 ### 22
 * add: floating-types' pointer type (ChangeVariableDecl).
+
+### 27
+* fix: hidd_algorithm, pointer type config.

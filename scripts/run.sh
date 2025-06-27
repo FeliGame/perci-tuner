@@ -216,7 +216,7 @@ else
         # 捕获最后一行输出并设置环境变量
         LAST_LINE=$(./output | tail -n 1)
         export PERCI_TUNER_ORIGINAL_RESULT="$LAST_LINE"
-        echo "Set PERCI_TUNER_ORIGINAL_RESULT=$LAST_LINE"
+        echo "Set PERCI_TUNER_ORIGINAL_RESULT=$PERCI_TUNER_ORIGINAL_RESULT"
     fi
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o original.bc
     clang $OPTIMIZE_LEVEL -o output original.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
