@@ -120,6 +120,9 @@ void PrintConfig::findLocalVariables(Function &F) {
                     else if (auto *SI = dyn_cast<StoreInst>(V)) {
                         searchableVars.insert(SI->getPointerOperand()->getName().str());
                     }
+                    else if (auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
+                        searchableVars.insert(GEP->getPointerOperand()->getName().str());
+                    }
                     // 涵盖了BinOp、UnaOp、FCmp、CallInst等所有其他指令返回结果情形
                     else if (auto *I = dyn_cast<Instruction>(V)) {
                         for (auto *User : I->users()) {

@@ -352,3 +352,4 @@
 
 ### 27
 * fix: hidd_algorithm, pointer type config.
+* add: -mxp option recognize array type.

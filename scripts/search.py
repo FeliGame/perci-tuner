@@ -77,6 +77,9 @@ def baseline_test(bitcode, original_conf):
                     if any(p in var['type'] for p in config_utils.PRECISIONS):
                         if var['type'].endswith('*'):
                             var['type'] = prec + '*'
+                        elif '[' in var['type']:
+                            arr_size = var['type'].split('[')[1].split(']')[0]
+                            var['type'] = f"{prec}[{arr_size}]"
                         else:
                             var['type'] = prec
         
@@ -88,6 +91,9 @@ def baseline_test(bitcode, original_conf):
                         if any(p in member['type'] for p in config_utils.PRECISIONS):
                             if member['type'].endswith('*'):
                                 member['type'] = prec + '*'
+                            elif '[' in member['type']:
+                                arr_size = member['type'].split('[')[1].split(']')[0]
+                                member['type'] = f"{prec}[{arr_size}]"  
                             else:
                                 member['type'] = prec
         
