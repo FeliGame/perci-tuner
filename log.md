@@ -335,3 +335,6 @@
 ### 22
 * add: floating-types' pointer type (ChangeVariableDecl).
 * remove build.sh.
+
+### 27
+* fix: hidd_algorithm, pointer type config.

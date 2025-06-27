@@ -3,22 +3,74 @@
 # @Author: LiLei —— NUDT
 
 import math
-import transform, config_utils, data_utils, dd_algorithm, algorithm_utils
+import transform, config_utils, data_utils, algorithm_utils
+
+INITIAL_DIV_NUM = 2
+
+# change each element's type to the highest precision in change set
+def change_to_highest_precision(change_set):
+    for c in change_set:
+        t = c["search_types"]
+        if len(t) > 0:
+            c["type"] = t[-1]
+
+# change each element's type to the 2nd highest precision in change set
+def change_to_2nd_highest_precision(change_set):
+    for c in change_set:
+        t = c["search_types"]
+        if len(t) > 1:
+            c["type"] = t[-2]
+
+# remove the highest precision from the search types
+def remove_highest_precision_from_selections(change_set):
+    for c in change_set:
+        if len(c["search_types"]) > 0:
+            c["search_types"].pop()  # remove current highest precision
 
 
-# 分层搜索相关函数
 def remove_highest_precision_from_selections_in_hier(change_set):
-    for sublist in change_set:
-        dd_algorithm.remove_highest_precision_from_selections(sublist)
+    for com in range(0, len(change_set)):
+        for c in change_set[com]:
+            if len(c["search_types"]) > 0:
+                c["search_types"].pop()  # remove current highest precision
+
+# can only be used in searching period
+def remove_unchangable(change_set):
+    new_change_set = []
+    for c in change_set:
+        t = c["search_types"]
+        if t != [] and c["type"] != t[-1]:
+            new_change_set.append(c)
+    return new_change_set
 
 def remove_unchangable_from_hier(change_set):
-    for sublist in change_set:
-        dd_algorithm.remove_unchangable(sublist)
+    output_change_set = []
+    com_change_set = []
+    for com in range(0, len(change_set)):
+        for c in change_set[com]:
+            t = c["search_types"]
+            if t != [] and c["type"] != t[-1]:
+                com_change_set.append(c)
+        output_change_set.append(com_change_set)
+    return output_change_set
+
+# can only be used in searching period
+def get_unchangable_set(change_set):
+    unchangbale_set = []
+    for c in change_set:
+        t = c["search_types"]
+        if t == [] or c["type"] == t[-1]:
+            unchangbale_set.append(c)
+    return unchangbale_set
+
 
 def get_unchangable_set_from_hier(change_set):
     unchangbale_set = []
-    for sublist in change_set:
-        unchangbale_set.append(dd_algorithm.get_unchangable_set(sublist))
+    for com in range(0, len(change_set)):
+        for c in change_set[com]:
+            t = c["search_types"]
+            if t == [] or c["type"] == t[-1]:
+                unchangbale_set.append(c)
     return unchangbale_set
 
 def regroup_by_change_set(change_set, new_change_set):
@@ -50,6 +102,7 @@ def regroup_by_change_set(change_set, new_change_set):
     return regrouped
 
 def search_hierarchical_change_set(bitcode, change_set, current_config, div_num):
+    print("get into search_hierarchical_change_set")
     delta_change_set = []
     complement_delta_change_set = []
     # flatten change_set[]
@@ -76,19 +129,19 @@ def search_hierarchical_change_set(bitcode, change_set, current_config, div_num)
     for i in range(len(delta_change_set)):
         delta_change = delta_change_set[i]
         complement_delta_change = complement_delta_change_set[i]
-        dd_algorithm.change_to_2nd_highest_precision(flatten_change_set)
-        dd_algorithm.change_to_highest_precision(delta_change)
+        change_to_2nd_highest_precision(flatten_change_set)
+        change_to_highest_precision(delta_change)
         new_config = config_utils.rebuild(flatten_change_set, current_config)
         if algorithm_utils.run_config(bitcode, new_config, flatten_change_set) and data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and transform.current_run_time < algorithm_utils.min_time:
             algorithm_utils.min_time = transform.current_run_time
             new_change_set = delta_change
-            new_div_num = dd_algorithm.INITIAL_DIV_NUM
+            new_div_num = INITIAL_DIV_NUM
             have_better_set = True
             print('delta better')
             algorithm_utils.update_opt(new_config)
 
-        dd_algorithm.change_to_2nd_highest_precision(flatten_change_set)
-        dd_algorithm.change_to_highest_precision(complement_delta_change)
+        change_to_2nd_highest_precision(flatten_change_set)
+        change_to_highest_precision(complement_delta_change)
         new_config = config_utils.rebuild(flatten_change_set, current_config)
         if algorithm_utils.run_config(bitcode, new_config, flatten_change_set) and data_utils.is_nearly_equal(transform.current_run_result, data_utils.ORIGINAL_RESULT, config_utils.thres) and transform.current_run_time < algorithm_utils.min_time:
             algorithm_utils.min_time = transform.current_run_time
@@ -99,8 +152,8 @@ def search_hierarchical_change_set(bitcode, change_set, current_config, div_num)
             algorithm_utils.update_opt(new_config)
 
     if have_better_set:
-        dd_algorithm.change_to_2nd_highest_precision(flatten_change_set)
-        dd_algorithm.change_to_highest_precision(new_change_set)
+        change_to_2nd_highest_precision(flatten_change_set)
+        change_to_highest_precision(new_change_set)
         new_config = config_utils.rebuild(flatten_change_set, current_config)
         div_num = new_div_num
         change_set = regroup_by_change_set(change_set, new_change_set)
@@ -108,15 +161,17 @@ def search_hierarchical_change_set(bitcode, change_set, current_config, div_num)
     else:
         print("none better in current iteration")
         if div_num >= len(flatten_change_set):
-            dd_algorithm.change_to_highest_precision(flatten_change_set)
+            change_to_highest_precision(flatten_change_set)
             return
         else:
             div_num *= 2
     search_hierarchical_change_set(bitcode, change_set, current_config, div_num)
 
 def hier_is_type_empty(change_set):
-    for sublist in change_set:
-        dd_algorithm.is_type_empty(sublist)
+    for com in range(0, len(change_set)):
+        for change in change_set[com]:
+            if len(change["search_types"]) > 0:
+                return False
     return True
 
 def group_change_set_by_partition(change_set, partition):
@@ -176,11 +231,13 @@ def run(bitcode, change_set, partition_tree):
     # searching until every search types is empty
     level = len(partition_tree)-1
     hichange_set = change_set
+    
     while level>=0:
         hichange_set = group_change_set_by_partition(change_set, partition_tree[level])
+        # print("hichange_set",hichange_set)
         while not hier_is_type_empty(hichange_set):
             # search which need highest precision & try to lower others' precision
-            search_hierarchical_change_set(bitcode, hichange_set, new_conf, dd_algorithm.INITIAL_DIV_NUM)
+            search_hierarchical_change_set(bitcode, hichange_set, new_conf, INITIAL_DIV_NUM)
             # rebuild the new config from new change set
             new_conf = config_utils.rebuild(get_unchangable_set_from_hier(hichange_set), new_conf)
             # remove highest precision
