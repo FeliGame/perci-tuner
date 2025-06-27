@@ -3,7 +3,7 @@
 # @Author: LiLei —— NUDT
 
 import math
-import transform, config_utils, data_utils, dd_algorithm, algorithm_utils
+import transform, config_utils, data_utils, algorithm_utils
 
 INITIAL_DIV_NUM = 2
 
