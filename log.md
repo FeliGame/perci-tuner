@@ -353,3 +353,8 @@
 ### 27
 * fix: hidd_algorithm, pointer type config.
 * add: -mxp option recognize array type.
+
+## Jul, 2025
+
+### 18
+* add: search all c/cpp if given dir options.

@@ -54,8 +54,22 @@ RUNTIME_LIB_DIRS=""
 INCLUDE_DIRS=""
 OPTIMIZE_LEVEL="-O2"
 
+# 遍历目录获取 .c 和 .cpp 文件
+get_source_files_from_dir() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        find "$dir" -type f \( -name "*.c" -o -name "*.cpp" \) -print0 | while IFS= read -r -d '' file; do
+            SOURCE_FILES="$SOURCE_FILES $file"
+        done
+    fi
+}
+
 for arg in "$@"
 do
+    # 检查参数是否包含斜杠，若包含则视为目录
+    if [[ "$arg" == *"/"* ]]; then
+        get_source_files_from_dir "$arg"
+    fi
     # 只处理.c/.cpp/.h/.hpp后缀的文件
     if test -f "$arg" & (test "${arg##*.}" = "c" || test "${arg##*.}" = "cpp" || test "${arg##*.}" = "h" || test "${arg##*.}" = "hpp"); then
         SOURCE_FILES="$SOURCE_FILES $arg"
