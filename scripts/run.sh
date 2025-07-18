@@ -58,16 +58,16 @@ OPTIMIZE_LEVEL="-O2"
 get_source_files_from_dir() {
     local dir="$1"
     if [ -d "$dir" ]; then
-        find "$dir" -type f \( -name "*.c" -o -name "*.cpp" \) -print0 | while IFS= read -r -d '' file; do
-            SOURCE_FILES="$SOURCE_FILES $file"
-        done
+        find "$dir" -type f \( -name "*.c" -o -name "*.cpp" \) -print0 | xargs -0 printf "%s " >> /tmp/source_files.txt
+        SOURCE_FILES="$SOURCE_FILES $(cat /tmp/source_files.txt)"
+        rm /tmp/source_files.txt
     fi
 }
 
 for arg in "$@"
 do
     # 检查参数是否包含斜杠，若包含则视为目录
-    if [[ "$arg" == *"/"* ]]; then
+    if test "$arg" != "${arg#*/}"; then
         get_source_files_from_dir "$arg"
     fi
     # 只处理.c/.cpp/.h/.hpp后缀的文件
