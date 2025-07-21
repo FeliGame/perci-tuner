@@ -1,0 +1,375 @@
+diff --git a/.gitignore b/.gitignore
+index 20c4f52cd378..204c8c47ac9a 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -28,6 +28,7 @@
+ 
+ # Nested build directory
+ /build*
++/install*
+ 
+ #==============================================================================#
+ # Explicit files to ignore (only matches one).
+diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.td
+index 9b9e5bbaaf89..cbd4deed8d9b 100644
+--- a/clang/include/clang/Basic/Attr.td
++++ b/clang/include/clang/Basic/Attr.td
+@@ -4266,3 +4266,15 @@ def AvailableOnlyInDefaultEvalMethod : InheritableAttr {
+   let Documentation = [Undocumented];
+ }
+ 
++def AutoMxPrec : StmtAttr {
++  let Spellings = [Pragma<"", "AutoMxPrec">]; // 使用Pragma
++  let Subjects = SubjectList<[CompoundStmt], ErrorDiag,
++                             "'#pragma precision region' only applies to a compound statement">;
++  let Args = [];
++  let Accessors = [];
++  let AdditionalMembers = [{
++    void printPrettyPragma(raw_ostream &OS, const PrintingPolicy &Policy) const {}
++  }];
++  let Documentation = [Undocumented];
++}
++
+diff --git a/clang/include/clang/Basic/TokenKinds.def b/clang/include/clang/Basic/TokenKinds.def
+index a540a3ee1bf0..65cba671af0f 100644
+--- a/clang/include/clang/Basic/TokenKinds.def
++++ b/clang/include/clang/Basic/TokenKinds.def
+@@ -954,6 +954,9 @@ PRAGMA_ANNOTATION(pragma_attribute)
+ // Annotation for the riscv pragma directives - #pragma clang riscv intrinsic ...
+ PRAGMA_ANNOTATION(pragma_riscv)
+ 
++// Annotation for the precision directives - #pragma AutoMxPrec(start)...
++PRAGMA_ANNOTATION(pragma_AutoMxPrec)
++
+ // Annotations for module import translated from #include etc.
+ ANNOTATION(module_include)
+ ANNOTATION(module_begin)
+diff --git a/clang/include/clang/Parse/ParseAutoMxPrec.h b/clang/include/clang/Parse/ParseAutoMxPrec.h
+new file mode 100644
+index 000000000000..10d6941d3320
+--- /dev/null
++++ b/clang/include/clang/Parse/ParseAutoMxPrec.h
+@@ -0,0 +1,14 @@
++#ifndef LLVM_CLANG_PARSE_AUTOMXPREC_H
++#define LLVM_CLANG_PARSE_AUTOMXPREC_H
++#include "clang/Lex/Token.h"
++namespace clang {
++class Expr;
++struct IdentifierLoc;
++
++class AutoMxPrecInfo {
++public:
++  Token AutoMxPrec;
++};
++
++} // end namespace clang
++#endif // LLVM_CLANG_PARSE_AUTOMXPREC_H
+\ No newline at end of file
+diff --git a/clang/include/clang/Parse/Parser.h b/clang/include/clang/Parse/Parser.h
+index 43e3a9d4d398..22800ded2140 100644
+--- a/clang/include/clang/Parse/Parser.h
++++ b/clang/include/clang/Parse/Parser.h
+@@ -220,6 +220,7 @@ class Parser : public CodeCompletionHandler {
+   std::unique_ptr<PragmaHandler> MaxTokensHerePragmaHandler;
+   std::unique_ptr<PragmaHandler> MaxTokensTotalPragmaHandler;
+   std::unique_ptr<PragmaHandler> RISCVPragmaHandler;
++  std::unique_ptr<PragmaHandler> AutoMxPrecHandler;
+ 
+   std::unique_ptr<CommentHandler> CommentSemaHandler;
+ 
+@@ -2130,6 +2131,9 @@ private:
+   StmtResult ParsePragmaLoopHint(StmtVector &Stmts, ParsedStmtContext StmtCtx,
+                                  SourceLocation *TrailingElseLoc,
+                                  ParsedAttributes &Attrs);
++  StmtResult ParsePragmaAutoMxPrec(StmtVector &Stmts, ParsedStmtContext StmtCtx,
++                                               SourceLocation *TrailingElseLoc,
++                                               ParsedAttributes &Attrs); 
+ 
+   /// Describes the behavior that should be taken for an __if_exists
+   /// block.
+diff --git a/clang/lib/CodeGen/CGStmt.cpp b/clang/lib/CodeGen/CGStmt.cpp
+index 2184b8600d76..b50fe254f1e2 100644
+--- a/clang/lib/CodeGen/CGStmt.cpp
++++ b/clang/lib/CodeGen/CGStmt.cpp
+@@ -700,10 +700,31 @@ void CodeGenFunction::EmitLabelStmt(const LabelStmt &S) {
+   EmitStmt(S.getSubStmt());
+ }
+ 
++// 实现并获取其调用，subName传入start或end
++llvm::Function* CodeGenFunction::getAutoMxPrecFunction(std::string subName)
++{
++  auto& M = CGM.getModule();
++  auto& C = M.getContext();
++  // If found decl, return immediately
++  std::string funcName = "AutoMxPrec_" + subName;
++  if (auto* F = M.getFunction(funcName.c_str())) {
++    return F;
++  }
++  // Create decl
++  auto* FT = llvm::FunctionType::get(llvm::Type::getVoidTy(C), false);
++  auto* F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, funcName, M);
++  // Create impl, ret void immediately
++  llvm::BasicBlock* BB = llvm::BasicBlock::Create(C, "entry", F);
++  llvm::IRBuilder<> Builder(BB);
++  Builder.CreateRetVoid();
++  return F;
++}
++
+ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
+   bool nomerge = false;
+   bool noinline = false;
+   bool alwaysinline = false;
++  bool inAutoMxPrecRegion = false;
+   const CallExpr *musttail = nullptr;
+ 
+   for (const auto *A : S.getAttrs()) {
+@@ -719,6 +740,11 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
+     case attr::AlwaysInline:
+       alwaysinline = true;
+       break;
++    case attr::AutoMxPrec:
++      assert (not inAutoMxPrecRegion);
++      Builder.CreateCall(getAutoMxPrecFunction("start"));
++      inAutoMxPrecRegion = true;      
++      break;
+     case attr::MustTail:
+       const Stmt *Sub = S.getSubStmt();
+       const ReturnStmt *R = cast<ReturnStmt>(Sub);
+@@ -731,6 +757,10 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
+   SaveAndRestore save_alwaysinline(InAlwaysInlineAttributedStmt, alwaysinline);
+   SaveAndRestore save_musttail(MustTailCall, musttail);
+   EmitStmt(S.getSubStmt(), S.getAttrs());
++  if (inAutoMxPrecRegion) {
++    Builder.CreateCall(getAutoMxPrecFunction("end"));
++    inAutoMxPrecRegion = false;
++  }
+ }
+ 
+ void CodeGenFunction::EmitGotoStmt(const GotoStmt &S) {
+diff --git a/clang/lib/CodeGen/CodeGenFunction.h b/clang/lib/CodeGen/CodeGenFunction.h
+index 18de5116c519..9077dc761874 100644
+--- a/clang/lib/CodeGen/CodeGenFunction.h
++++ b/clang/lib/CodeGen/CodeGenFunction.h
+@@ -3338,6 +3338,8 @@ public:
+   void EmitCXXForRangeStmt(const CXXForRangeStmt &S,
+                            ArrayRef<const Attr *> Attrs = std::nullopt);
+ 
++  llvm::Function* getAutoMxPrecFunction(std::string subName);
++
+   /// Controls insertion of cancellation exit blocks in worksharing constructs.
+   class OMPCancelStackRAII {
+     CodeGenFunction &CGF;
+diff --git a/clang/lib/Parse/ParsePragma.cpp b/clang/lib/Parse/ParsePragma.cpp
+index b3178aef64d7..573c470ad4a5 100644
+--- a/clang/lib/Parse/ParsePragma.cpp
++++ b/clang/lib/Parse/ParsePragma.cpp
+@@ -13,11 +13,13 @@
+ #include "clang/AST/ASTContext.h"
+ #include "clang/Basic/PragmaKinds.h"
+ #include "clang/Basic/TargetInfo.h"
++#include "clang/Basic/TokenKinds.h"
+ #include "clang/Lex/Preprocessor.h"
+ #include "clang/Lex/Token.h"
+ #include "clang/Parse/LoopHint.h"
+ #include "clang/Parse/ParseDiagnostic.h"
+ #include "clang/Parse/Parser.h"
++#include "clang/Parse/ParseAutoMxPrec.h"
+ #include "clang/Parse/RAIIObjectsForParser.h"
+ #include "clang/Sema/EnterExpressionEvaluationContext.h"
+ #include "clang/Sema/Scope.h"
+@@ -27,6 +29,12 @@
+ using namespace clang;
+ 
+ namespace {
++struct AutoMxPrecPragmaHandler : public PragmaHandler {
++  // 修改构造函数以匹配新的#pragma指令
++  explicit AutoMxPrecPragmaHandler() : PragmaHandler("AutoMxPrec") {}
++  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
++                    Token &FirstToken) override;
++};
+ 
+ struct PragmaAlignHandler : public PragmaHandler {
+   explicit PragmaAlignHandler() : PragmaHandler("align") {}
+@@ -513,6 +521,9 @@ void Parser::initializePragmaHandlers() {
+     RISCVPragmaHandler = std::make_unique<PragmaRISCVHandler>(Actions);
+     PP.AddPragmaHandler("clang", RISCVPragmaHandler.get());
+   }
++
++  AutoMxPrecHandler = std::make_unique<AutoMxPrecPragmaHandler>();
++  PP.AddPragmaHandler(AutoMxPrecHandler.get());
+ }
+ 
+ void Parser::resetPragmaHandlers() {
+@@ -644,6 +655,9 @@ void Parser::resetPragmaHandlers() {
+     PP.RemovePragmaHandler("clang", RISCVPragmaHandler.get());
+     RISCVPragmaHandler.reset();
+   }
++
++  PP.RemovePragmaHandler(AutoMxPrecHandler.get());
++  AutoMxPrecHandler.reset();
+ }
+ 
+ /// Handle the annotation token produced for #pragma unused(...)
+@@ -4061,3 +4075,38 @@ void PragmaRISCVHandler::HandlePragma(Preprocessor &PP,
+   else if (II->isStr("sifive_vector"))
+     Actions.DeclareRISCVSiFiveVectorBuiltins = true;
+ }
++
++void AutoMxPrecPragmaHandler::HandlePragma(Preprocessor &PP,
++                                           PragmaIntroducer Introducer,
++                                           Token &Tok) {
++  auto *Info = new (PP.getPreprocessorAllocator()) AutoMxPrecInfo;
++  // 验证初始token是否为"AutoMxPrec"标识符
++  assert(Tok.is(tok::identifier));
++  if (Tok.getIdentifierInfo()->getName() != "AutoMxPrec") return;
++
++  Info->AutoMxPrec = Tok;
++
++  // 创建一个新的annotation token
++  Token AutoMxPrecTok;
++  AutoMxPrecTok.startToken();
++  AutoMxPrecTok.setKind(tok::annot_pragma_AutoMxPrec);
++  AutoMxPrecTok.setLocation(Tok.getLocation());
++  AutoMxPrecTok.setAnnotationEndLoc(Tok.getLocation());
++  AutoMxPrecTok.setAnnotationValue(Info);
++
++  // 检查是否在指令之后有额外的token
++  PP.Lex(Tok);
++  if (Tok.isNot(tok::eod)) {
++    PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
++      << "AutoMxPrec";
++    return;
++  }
++
++  // 创建一个包含新annotation token的数组
++  auto TokenArray = std::make_unique<Token[]>(1);
++  TokenArray[0] = AutoMxPrecTok;
++
++  // 将新的token数组注入到token流中
++  PP.EnterTokenStream(std::move(TokenArray), 1,
++                      /*DisableMacroExpansion=*/false, /*IsReinject=*/false);
++}
+\ No newline at end of file
+diff --git a/clang/lib/Parse/ParseStmt.cpp b/clang/lib/Parse/ParseStmt.cpp
+index 2346470dbdb7..14ac745b3f55 100644
+--- a/clang/lib/Parse/ParseStmt.cpp
++++ b/clang/lib/Parse/ParseStmt.cpp
+@@ -18,6 +18,7 @@
+ #include "clang/Parse/LoopHint.h"
+ #include "clang/Parse/Parser.h"
+ #include "clang/Parse/RAIIObjectsForParser.h"
++#include "clang/Parse/ParseAutoMxPrec.h"
+ #include "clang/Sema/DeclSpec.h"
+ #include "clang/Sema/EnterExpressionEvaluationContext.h"
+ #include "clang/Sema/Scope.h"
+@@ -504,6 +505,11 @@ Retry:
+   case tok::annot_pragma_attribute:
+     HandlePragmaAttribute();
+     return StmtEmpty();
++  
++  case tok::annot_pragma_AutoMxPrec:
++      ProhibitAttributes(CXX11Attrs);
++      ProhibitAttributes(GNUAttrs);
++      return ParsePragmaAutoMxPrec(Stmts, StmtCtx, TrailingElseLoc, CXX11Attrs);
+   }
+ 
+   // If we reached this code, the statement must end in a semicolon.
+@@ -2756,3 +2762,30 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
+   }
+   Braces.consumeClose();
+ }
++
++StmtResult Parser::ParsePragmaAutoMxPrec(StmtVector &Stmts,
++                                              ParsedStmtContext StmtCtx,
++                                              SourceLocation *TrailingElseLoc,
++                                              ParsedAttributes &Attrs) {
++  assert(Tok.is(tok::annot_pragma_AutoMxPrec));
++
++  auto Command = static_cast<AutoMxPrecInfo *>(Tok.getAnnotationValue())->AutoMxPrec;
++
++  // 创建存储AutoMxPrecStart属性的ParsedAttributes对象
++  ParsedAttributes AutoMxPrecAttrs(AttrFactory);
++  // 创建一个新的属性并添加到AutoMxPrec属性容器中
++  AutoMxPrecAttrs.addNew(Command.getIdentifierInfo(), Command.getLocation(), nullptr, {}, nullptr,
++                              0, ParsedAttr::Form::Pragma());
++
++  // 消耗掉当前的annotation token
++  ConsumeAnnotationToken();
++  // 解析pragma之后的任何C++11属性
++  MaybeParseCXX11Attributes(Attrs);
++  // 创建一个空的ParsedAttributes对象，用于存储函数声明规范属性
++  ParsedAttributes EmptyDeclSpecAttrs(AttrFactory);
++  // 解析pragma之后的语句或声明
++  StmtResult S = ParseStatementOrDeclarationAfterAttributes(
++      Stmts, StmtCtx, TrailingElseLoc, Attrs, EmptyDeclSpecAttrs);
++  Attrs.takeAllFrom(AutoMxPrecAttrs);
++  return S;
++}
+\ No newline at end of file
+diff --git a/clang/lib/Sema/SemaStmtAttr.cpp b/clang/lib/Sema/SemaStmtAttr.cpp
+index ad20bc8871f1..071ba4a000bf 100644
+--- a/clang/lib/Sema/SemaStmtAttr.cpp
++++ b/clang/lib/Sema/SemaStmtAttr.cpp
+@@ -477,6 +477,12 @@ static Attr *handleOpenCLUnrollHint(Sema &S, Stmt *St, const ParsedAttr &A,
+   return ::new (S.Context) OpenCLUnrollHintAttr(S.Context, A, UnrollFactor);
+ }
+ 
++static Attr *handleAutoMxPrecAttr(Sema &S, Stmt *St, const ParsedAttr &A, SourceRange Range) {
++  // 将解析的属性转换为 AutoMxPrecAttr 的逻辑
++  // IdentifierInfo *II = A.getArg(0).get<IdentifierLoc *>()->Ident;
++  return AutoMxPrecAttr::CreateImplicit(S.Context, A);
++}
++
+ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
+                                   SourceRange Range) {
+   if (A.isInvalid() || A.getKind() == ParsedAttr::IgnoredAttribute)
+@@ -523,6 +529,8 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
+     return handleLikely(S, St, A, Range);
+   case ParsedAttr::AT_Unlikely:
+     return handleUnlikely(S, St, A, Range);
++  case ParsedAttr::AT_AutoMxPrec:
++    return handleAutoMxPrecAttr(S, St, A, Range);  
+   default:
+     // N.B., ClangAttrEmitter.cpp emits a diagnostic helper that ensures a
+     // declaration attribute is not written on a statement, but this code is
+diff --git a/llvm/lib/Analysis/ConstantFolding.cpp b/llvm/lib/Analysis/ConstantFolding.cpp
+index 3da9c9b293eb..037ee81a103e 100644
+--- a/llvm/lib/Analysis/ConstantFolding.cpp
++++ b/llvm/lib/Analysis/ConstantFolding.cpp
+@@ -2127,21 +2127,21 @@ static Constant *ConstantFoldScalarCall1(StringRef Name,
+     if (IntrinsicID == Intrinsic::canonicalize)
+       return constantFoldCanonicalize(Ty, Call, U);
+ 
+-#if defined(HAS_IEE754_FLOAT128) && defined(HAS_LOGF128)
+-    if (Ty->isFP128Ty()) {
+-      if (IntrinsicID == Intrinsic::log) {
+-        float128 Result = logf128(Op->getValueAPF().convertToQuad());
+-        if (EnableLoglConstantFold)
+-          return GetConstantFoldFPValue128(Result, Ty);
+-      }
+-
+-      LibFunc Fp128Func = NotLibFunc;
+-      if (Name == "logl" && TLI->getLibFunc(Name, Fp128Func) &&
+-          TLI->has(Fp128Func) && Fp128Func == LibFunc_logl)
+-        if (EnableLoglConstantFold)
+-          return ConstantFoldFP128(logf128, Op->getValueAPF(), Ty);
+-    }
+-#endif
++// #if defined(HAS_IEE754_FLOAT128) && defined(HAS_LOGF128)
++//     if (Ty->isFP128Ty()) {
++//       if (IntrinsicID == Intrinsic::log) {
++//         float128 Result = logf128(Op->getValueAPF().convertToQuad());
++//         if (EnableLoglConstantFold)
++//           return GetConstantFoldFPValue128(Result, Ty);
++//       }
++
++//       LibFunc Fp128Func = NotLibFunc;
++//       if (Name == "logl" && TLI->getLibFunc(Name, Fp128Func) &&
++//           TLI->has(Fp128Func) && Fp128Func == LibFunc_logl)
++//         if (EnableLoglConstantFold)
++//           return ConstantFoldFP128(logf128, Op->getValueAPF(), Ty);
++//     }
++// #endif
+ 
+     if (!Ty->isHalfTy() && !Ty->isFloatTy() && !Ty->isDoubleTy())
+       return nullptr;

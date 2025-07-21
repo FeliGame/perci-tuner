@@ -338,3 +338,10 @@
 
 ### 27
 * fix: hidd_algorithm, pointer type config.
+
+## Jul, 2025
+
+* for openEuler-LLVM-17.0.6 only.
+* add: search all c/cpp if given dir options.
+* recognize AutoMxPrec in PrintConfig.
+* ChangeVariableDecl is able to change func args.

@@ -22,7 +22,7 @@ using namespace std;
 using namespace llvm;
 
 
-cl::opt<bool> EnableMXP("mxp", cl::value_desc("enable pragma & autofp"), cl::desc("true or false"), cl::init(false));
+cl::opt<bool> EnableMXP("mxp", cl::value_desc("enable AutoMxPrec"), cl::desc("true or false"), cl::init(false));
 
 
 // Find Local vars and local static vars
@@ -64,7 +64,6 @@ void PrintConfig::findLocalVariables(Function &F) {
                     if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
                         varName = DV->getName();
                         typeName = parseDITypeName(DV->getType());
-                        if (DV->isParameter()) continue;  // 函数参数不应该被调整，会有对齐等问题
                         if (varName == "this") continue;
                         DL = DDI->getDebugLoc();
                         isStatic = false;
@@ -74,39 +73,10 @@ void PrintConfig::findLocalVariables(Function &F) {
                 // Handle __autofp intrinsic
                 else if (Function *Callee = CI->getCalledFunction()) {
                     auto name = Callee->getName();
-                    if (name == "llvm.precision.region.start") {
+                    if (name == "AutoMxPrec_start") {
                         inRegion = true;
-                    } else if (name == "llvm.precision.region.end") {
+                    } else if (name == "AutoMxPrec_end") {
                         inRegion = false;
-                    } else if (name == "llvm.precision.range") {
-                        if (auto *MD = getMetadataNode(CI, 0)) {
-                            auto precisionRange = extractStringsFromMD(MD);
-                            // 如果是(float, double)形式，则一定是在region内声明的通用搜索范围
-                            if (inRegion && (std::find(validSearchRange.begin(), validSearchRange.end(), precisionRange[0]) != validSearchRange.end())) {
-                                defaultPrecisionRange = precisionRange;
-                            } 
-                            else if (precisionRange.size() > 1) {
-                                if (inRegion) {
-                                    for (auto &localVar : function) {
-                                        // 找到varName对应的config项
-                                        if (localVar["name"] == precisionRange[0].str()) {
-                                            for (size_t i = 1; i < precisionRange.size(); ++i) {
-                                                localVar["range"].push_back(precisionRange[i].str());
-                                            }
-                                            break;
-                                        }
-                                    }
-                                } else {
-                                    // 保存精度范围到临时map中
-                                    autoFPRange[precisionRange[0].str()] = 
-                                        SmallVector<std::string>(precisionRange.begin()+1, precisionRange.end());
-                                }
-                            }
-                        }
-                    } else if (name == "llvm.precision.error") {
-                        auto *errorMD = getMetadataNode(CI, 0);
-                        auto errors = extractStringsFromMD(errorMD);
-                        config["result_error"] = errors[1];  // errors[0] is var_name
                     }
                 }
             }
@@ -154,11 +124,6 @@ void PrintConfig::findLocalVariables(Function &F) {
                 localVar["file"] = file->getFilename().str();
                 localVar["isStatic"] = isStatic;
                 localVar["isParam"] = isParam;
-                // Handle __autofp
-                if (autoFPRange.count(varName)) {
-                    localVar["range"] = autoFPRange[varName];
-                    searchableVars.insert(varName);
-                }
             
                 function.emplace_back(localVar); 
             }
@@ -179,7 +144,6 @@ void PrintConfig::findLocalVariables(Function &F) {
     }
 
     config["local"][funcName] = (EnableMXP ? newFunction : function);
-    autoFPRange.clear();
 }
 
 void PrintConfig::findGlobalVariables(Module &M) { 
@@ -212,18 +176,6 @@ void PrintConfig::findGlobalVariables(Module &M) {
             }
         }
 
-        // handle __autofp
-        if (MDNode *MD = GV.getMetadata("precision_range")) {
-            SmallVector<string> precisionRange;
-            for (const MDOperand &MDOp : drop_begin(MD->operands(), 1)) {
-                if (auto *MDStr = dyn_cast<MDString>(MDOp.get())) {
-                    precisionRange.push_back(MDStr->getString().str());
-                }
-            }
-            globalVar["range"] = precisionRange;
-            if (EnableMXP)
-                globalVars.emplace_back(globalVar);  // only __autofp globalVar available
-        }
         if (!EnableMXP)
             globalVars.emplace_back(globalVar);
     }
@@ -260,11 +212,11 @@ void PrintConfig::findFunctionCalls(Function &F) {
             if (auto *CI = dyn_cast<CallInst>(&I)) {
                 if (Function *Callee = CI->getCalledFunction()) {
                     auto name = Callee->getName();
-                    if (name == "llvm.precision.region.start") {
+                    if (name == "AutoMxPrec_start") {
                         inRegion = true;
                         continue;
                     } 
-                    if (name == "llvm.precision.region.end") {
+                    if (name == "AutoMxPrec_end") {
                         inRegion = false;
                         continue;
                     }
@@ -291,6 +243,7 @@ void PrintConfig::findFunctionCalls(Function &F) {
 }
 
 bool PrintConfig::runOnFunction(Function &F) {
+    if (F.getName().startswith("AutoMxPrec")) return false;
     findLocalVariables(F);
     findFunctionCalls(F);
     return false;

@@ -638,6 +638,7 @@ Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& c
 void ChangeVariableDecl::runOnFunction(Function &F) {
     auto &context = F.getContext();
     auto functionConfig = config["local"][demangle(F.getName())];
+    auto functionPtr = &F;
     // Check if decl inst need to be changed
     for (auto &BB : F) {
         for (auto &I : BB) {
@@ -663,6 +664,16 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                                 pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
                                 newAllocas.insert(alloca);
                             } else {
+                                if (configEntry["isParam"]) {
+                                    unsigned argIndex = 0;
+                                    for (auto argIt = functionPtr->arg_begin(); argIt != functionPtr->arg_end(); ++argIt, ++argIndex) {
+                                        if (argIt->getName() == varName) {
+                                            errs() << "change arg: " << argIt->getName() << "'s type to " << *targetType << '\n';
+                                            funcArgNewTypeMap[functionPtr][argIndex] = targetType;
+                                            break;
+                                        }
+                                    }
+                                }
                                 changeAllocaInst(DDI, targetType);
                             }
 
@@ -843,6 +854,75 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
     return;
 }
 
+Function* ChangeVariableDecl::changeFunctionArgTypes(Function &F, DenseMap<unsigned, Type*> argNewTypeMap) {
+    if (argNewTypeMap.empty()) return &F;
+
+    FunctionType *oldFuncType = F.getFunctionType();
+    SmallVector<Type*, 8> newArgTypes;
+    for (unsigned i = 0; i < oldFuncType->getNumParams(); ++i) {
+        if (argNewTypeMap.count(i)) {
+            newArgTypes.push_back(argNewTypeMap.lookup(i));
+        } else {
+            newArgTypes.push_back(oldFuncType->getParamType(i));
+        }
+    }
+
+    FunctionType *newFuncType = FunctionType::get(
+        oldFuncType->getReturnType(),
+        newArgTypes,
+        oldFuncType->isVarArg()
+    );
+
+    // 创建一个新的函数，其类型为新的函数类型
+    Function *newFunc = Function::Create(
+        newFuncType,
+        F.getLinkage(),
+        F.getName(),
+        F.getParent()
+    );
+
+    // 复制原函数的属性到新函数
+    newFunc->copyAttributesFrom(&F);
+
+    // 把原函数的基本块转移到新函数
+    while (!F.empty()) {
+        BasicBlock *BB = &F.front();
+        BB->removeFromParent();
+        BB->insertInto(newFunc);
+    }
+
+    // 用新函数的参数替换原函数参数的所有使用
+    for (auto &oldArg : F.args()) {
+        auto &newArg = *(newFunc->arg_begin() + oldArg.getArgNo());
+        oldArg.replaceAllUsesWith(&newArg);
+    }
+
+    return newFunc;
+}
+
+void ChangeVariableDecl::updateCallersArgTypes(Function &oldFunc, Function &newFunc, DenseMap<unsigned, Type*>& argNewTypeMap) {
+    // 遍历所有调用点
+    for (User *U : oldFunc.users()) {
+        if (CallInst *call = dyn_cast<CallInst>(U)) {
+            for (const auto& argEntry : argNewTypeMap) {
+                unsigned argIndex = argEntry.first;
+                Type* targetType = argEntry.second;
+                Value *oldArg = call->getArgOperand(argIndex);
+                if (oldArg->getType() != targetType) {
+                    if (Value *castedArg = insertCast(oldArg, targetType, call)) {
+                        call->setArgOperand(argIndex, castedArg);
+                    }
+                }
+            }
+            // 替换调用的函数为新函数
+            call->setCalledFunction(&newFunc);
+        }
+    }
+
+    oldFunc.replaceAllUsesWith(&newFunc);
+    oldFunc.eraseFromParent();
+}
+
 // Replace multi-operand Inst safely (such as BinOp, FCmpInst)
 void ChangeVariableDecl::replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst) {
     if (instReplaceMap.count(oldInst))
@@ -873,12 +953,31 @@ void ChangeVariableDecl::removeRedundantReplacements() {
 bool ChangeVariableDecl::runOnModule(Module &module) {
     parseConfig();
     changeStructDeclarations(module);
-    for(auto f = module.begin(), fe = module.end(); f != fe; f++) {
-        string name = f->getName().str();
-        if(!f->isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
-            runOnFunction(*f);
+    for(auto &F : module) {
+        string name = F.getName().str();
+        if(!F.isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
+            runOnFunction(F);
         }
     }
+
+    // 遍历整个funcArgNewTypeMap，将其中的函数替换
+    DenseMap<Function*, Function*> replaceMap;
+    for (auto &funcEntry : funcArgNewTypeMap) {
+        auto *functionPtr = funcEntry.first;
+        auto &argNewTypeMap = funcEntry.second;
+        auto newFunc = changeFunctionArgTypes(*functionPtr, argNewTypeMap);
+        replaceMap[functionPtr] = newFunc;
+    }
+
+    for (auto &funcEntry : replaceMap) {
+        auto *oldFunc = funcEntry.first;
+        auto *newFunc = funcEntry.second;
+        updateCallersArgTypes(*oldFunc, *newFunc, funcArgNewTypeMap[oldFunc]);
+    }
+
+    for (auto &F : module) repairCasts(F);
+    for (auto *inst : instToErase) inst->eraseFromParent();
+    instToErase.clear();
 
     if (verifyModule(module, &errs()))
     {

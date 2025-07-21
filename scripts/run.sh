@@ -43,18 +43,31 @@ MULTI_VERSION_FUNC=""
 ORIGINAL_VERSION_FLAG=false
 
 BCS=""
-HALF_PRECISION_SUPPORT="-Xclang -fnative-half-type"
+HALF_PRECISION_SUPPORT="-Xclang -fnative-half-type -march=armv8.2-a+fp16"
 
 LINK_LIBS=""
 LINK_DIRS=""
 INCLUDE_DIRS=""
 OPTIMIZE_LEVEL="-O2"
 
+# 遍历目录获取 .c 和 .cpp 文件
+get_source_files_from_dir() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        find "$dir" -type f \( -name "*.c" -o -name "*.cpp" \) -print0 | xargs -0 printf "%s " >> /tmp/source_files.txt
+        SOURCE_FILES="$SOURCE_FILES $(cat /tmp/source_files.txt)"
+        rm /tmp/source_files.txt
+    fi
+}
+
 for arg in "$@"
 do
     # 只处理.c/.cpp/.h/.hpp后缀的文件
     if test -f "$arg" & (test "${arg##*.}" = "c" || test "${arg##*.}" = "cpp" || test "${arg##*.}" = "h" || test "${arg##*.}" = "hpp"); then
         SOURCE_FILES="$SOURCE_FILES $arg"
+    # 检查参数是否包含斜杠，若包含则视为目录
+    elif test "$arg" != "${arg#*/}"; then
+        get_source_files_from_dir "$arg"
     # 识别以 -l 开头的参数并添加到 LINK_LIBS 中
     elif test "${arg#-l}" != "$arg"; then
         LINK_LIBS="$LINK_LIBS $arg"
@@ -184,18 +197,16 @@ done
 
 llvm-link $BCS -o output.bc
 
-if test $MODE_FLAG != "change-by-config"; then
-    # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o output.bc
-    clang $OPTIMIZE_LEVEL -o output output.bc $LINK_LIBS $LINK_DIRS
-    echo "[Original] Config: config.json, IR: output.bc, Executable: output"
-fi
-
 if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
-    clang $OPTIMIZE_LEVEL -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL -g -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
+else
+    # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o output.bc
+    clang $OPTIMIZE_LEVEL -g -o output output.bc $LINK_LIBS $LINK_DIRS
+    echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi
 
 if test $MODE_FLAG = "search-optimize"; then
