@@ -9,7 +9,7 @@ import data_utils
 import subprocess
 import config_utils
 import re
-
+import json
 
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
 PASSES = "change_variable_decl,change_function_call,ir_timing"
@@ -24,8 +24,8 @@ LINK_DIRS = []
 OPTIMIZE_LEVEL = "-O2"
 
 # time & result in current run
-current_run_time = float("inf")
-current_run_result = float("inf")
+current_run_time = 0.0
+current_run_result = ''
 show_history = False
 
 
@@ -39,7 +39,7 @@ def read_main_running_time():
     return None
 
 
-# read runned program's output
+# 分析程序直接输出的数值结果（Perci-Tuner原始版本）
 def read_result(text):
     # 只匹配字符串末尾的浮点数或科学计数法，并去掉空白字符
     pattern = r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*$"
@@ -51,6 +51,47 @@ def read_result(text):
         return sys.maxsize
     else:
         return None
+
+
+# 分析HPL-AI程序输出结果，摘自比赛平台case_judge.py
+def analyze_hpl_output(output_text):
+    global current_run_result, current_run_time
+    lines = output_text.splitlines()
+    pass_rate = 0
+    flops = []
+    rate_exist = False
+    
+    # 比赛平台预设的最大、最小和平均 T0 值
+    max_T0 = 9.6609
+    min_T0 = 4.5471
+    mean_T0 = 7.5516
+
+    for line in lines:
+        if "Rate" in line:
+            pass_rate = float(line.strip().split(":")[-1].strip("%")) / 100
+            rate_exist = True
+        if "Smallest" in line:
+            temps = line.split("=")[-1].split(",")
+
+    if not rate_exist:
+        pass_rate = 0
+        final_marks = 0
+    else:
+        max_flops = float(temps[2].strip().split()[0])
+        min_flops = float(temps[0].strip().split()[0])
+        mean_flops = float(temps[1].strip().split()[0])
+
+        flops_marks = 100 * (0.6 * max_flops / max_T0 + 0.3 * mean_flops / mean_T0 + 0.1 * min_flops / min_T0) / 2
+        final_marks = pass_rate * 100 * 0.4 + flops_marks * 0.6
+        final_marks = round(final_marks, 2)
+
+    result = {
+        "verdict": "AC" if rate_exist else "WA",
+        "rank": final_marks,
+    }
+    current_run_result = rate_exist
+    current_run_time = final_marks
+    return result
 
 
 # run the current variable config and get the result
@@ -103,17 +144,21 @@ def transform(run_id, bitcode_file, var_config, diff, original_time):
         
         if i == RUNNING_TIMES - 1:
             output_text = output.decode()
-            print(output_text)
-            current_run_result = read_result(output_text)
-            if current_run_result is None:
-                return -4
+            # print(output_text)
+            # current_run_result = read_result(output_text)
+            # if current_run_result is None:
+            #     return -4
 
-    # 计算中位数
-    time_list.sort()
-    if RUNNING_TIMES % 2 == 1:
-        current_run_time = time_list[RUNNING_TIMES//2]
-    else:
-        current_run_time = (time_list[RUNNING_TIMES//2-1] + time_list[RUNNING_TIMES//2]) / 2
+            # 分析程序输出结果
+            analysis_result = analyze_hpl_output(output_text)
+            print(json.dumps(analysis_result, ensure_ascii=False))
+
+    # 计算中位数（HPL-AI的rank一次性计算）
+    # time_list.sort()
+    # if RUNNING_TIMES % 2 == 1:
+    #     current_run_time = time_list[RUNNING_TIMES//2]
+    # else:
+    #     current_run_time = (time_list[RUNNING_TIMES//2-1] + time_list[RUNNING_TIMES//2]) / 2
 
     if show_history:
         data_utils.store_data(run_id, current_run_time, current_run_result, diff)

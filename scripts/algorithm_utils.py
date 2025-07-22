@@ -11,7 +11,7 @@ OPT_PREFIX = "optimized_"
 global run_times
 run_times = 0
 global min_time
-min_time = float('inf')
+min_time = 0.0
 global algorithm
 algorithm = 'dd'
 global original_conf
