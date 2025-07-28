@@ -30,7 +30,7 @@ FPE_FLAG=false
 RUN_ALGORITHM=dd
 THRESHOLD=1e-6
 REPEAT_TIMES=1
-TIMEOUT=5.0
+TIMEOUT=100000.0
 HISTORY_FLAG=false
 SHUFFLED_FLAG=false
 
@@ -186,10 +186,10 @@ for src_file in $SOURCE_FILES; do
     fi
     if $FPE_FLAG; then
         # FPE模式预处理
-        clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" $INCLUDE_DIRS -fno-discard-value-names -o "$src_file.bc" 
+        clang $OPTIMIZE_LEVEL -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" $INCLUDE_DIRS -fno-discard-value-names -o "$src_file.bc" 
     else
         # 其他模式正常处理
-        clang -g -emit-llvm -c "$src_file" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
+        clang $OPTIMIZE_LEVEL -g -emit-llvm -c "$src_file" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
     fi
     
     BCS="$BCS $src_file.bc"
@@ -204,7 +204,7 @@ if test $MODE_FLAG = "change-by-config"; then
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 else
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o output.bc
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config' --mxp=$MXP_FLAG output.bc -o output.bc
     clang $OPTIMIZE_LEVEL -g -o output output.bc $LINK_LIBS $LINK_DIRS
     echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi

@@ -345,3 +345,6 @@
 * add: search all c/cpp if given dir options.
 * recognize AutoMxPrec in PrintConfig.
 * ChangeVariableDecl is able to change func args.
+
+### 28
+CRUCIAL add: OPTIMIZE LEVEL for each .c, add ./temp_output 3 128 1280 for performance test.

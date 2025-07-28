@@ -117,7 +117,7 @@ def transform(run_id, bitcode_file, var_config, diff, original_time):
 
     # run modified bitcode
     for i in range(RUNNING_TIMES):
-        command = ['./temp_output']
+        command = ['./temp_output', '3', '128', '1280']
         try:
             output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD)
             if not output.strip():
