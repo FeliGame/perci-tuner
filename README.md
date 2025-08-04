@@ -3,9 +3,6 @@
 Perci-Tuner increases C program's runtime speed while keeping errors within an acceptable range, by reducing floating-point variables & C-Math function calls' precision.
 Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features a modular design for easier expansion and modification.
 
-# Bisheng for openEuler LLVM-17.0.6
-Perci-Tuner-AutoMxPrec is for specific LLVM version shown above, you should run `git apply Bisheng_AutoMxPrec_diff.patch` under llvm-project dir, then install the specific LLVM via build.sh.
-
 # User Manual
 
 First things first, install LLVM (recommended version: 17.0.6) build `-DCMAKE_BUILD_TYPE=Release` option, or Perci-Tuner might crash.
