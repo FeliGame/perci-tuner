@@ -347,4 +347,10 @@
 * ChangeVariableDecl is able to change func args.
 
 ### 28
-CRUCIAL add: OPTIMIZE LEVEL for each .c, add ./temp_output 3 128 1280 for performance test.
+* CRUCIAL add: OPTIMIZE LEVEL for each .c, add ./temp_output 3 128 1280 for performance test.
+
+## Aug, 2025
+
+### 5
+* repair ChangeVariableDecl: pointer-type bugs.
+* update: run -O1 -disable-llvm-passes when search, run -O2 when run program.

@@ -12,7 +12,7 @@ import re
 import json
 
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
-PASSES = "change_variable_decl,change_function_call,ir_timing"
+PASSES = "change_variable_decl,change_function_call"
 TEMP_BC_PATH = "temp_output.bc"
 TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "ir_timing.txt"
@@ -67,6 +67,9 @@ def analyze_hpl_output(output_text):
     mean_T0 = 7.5516
 
     for line in lines:
+        if "Not supported in DTRSM." in line:
+            rate_exist = False
+            break
         if "Rate" in line:
             pass_rate = float(line.strip().split(":")[-1].strip("%")) / 100
             rate_exist = True
@@ -117,7 +120,7 @@ def transform(run_id, bitcode_file, var_config, diff, original_time):
 
     # run modified bitcode
     for i in range(RUNNING_TIMES):
-        command = ['./temp_output', '3', '128', '1280']
+        command = ['./temp_output', '10', '128', '1280']
         try:
             output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD)
             if not output.strip():
@@ -144,7 +147,7 @@ def transform(run_id, bitcode_file, var_config, diff, original_time):
         
         if i == RUNNING_TIMES - 1:
             output_text = output.decode()
-            # print(output_text)
+            print(output_text)
             # current_run_result = read_result(output_text)
             # if current_run_result is None:
             #     return -4

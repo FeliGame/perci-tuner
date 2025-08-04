@@ -42,7 +42,7 @@ private:
 
     Instruction* repairLoadInst(LoadInst *load);
 
-    Instruction* repairStoreInst(StoreInst *store);
+    Instruction* repairStoreInst(StoreInst *store, Type *baseType);
 
     Instruction* repairUnaryOp(UnaryOperator *unaOp);
 
@@ -54,9 +54,13 @@ private:
 
     Instruction* repairPHINode(PHINode *phi);
 
+    Instruction* repairGEPInst(GetElementPtrInst* gep, Type* baseType);
+
+    Instruction* repairBitCastInst(BitCastInst* bitCast);
+
     void repairAllocaUsers(AllocaInst* alloca);
 
-    void repairUserType(User *user);
+    void repairUserType(User *user, Type* baseType);
 
     void repairCasts(Function &F);
 

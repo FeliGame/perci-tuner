@@ -56,6 +56,12 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newT
     }
 
     auto alloca = dyn_cast<AllocaInst>(var);
+    // alloca原始类型为指针类型，不需要改变对齐（机器字长决定）
+    if (alloca->getAllocatedType()->isPointerTy()) {
+        newAllocas.insert(alloca);  // keep for change type later
+        errs() << *alloca << " is ptr ty\n";
+        return alloca;
+    }
     IRBuilder<> builder(alloca);
     auto *newAlloca = builder.CreateAlloca(newType, nullptr, alloca->getName());
     newAlloca->setAlignment(align);
@@ -83,6 +89,10 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
         if (auto store = dyn_cast<StoreInst>(user)) {
             // StoreInst has no users, replace its operand directly.
             auto *oldValue = store->getOperand(0);
+            if (oldValue->getType()->isPointerTy()) {
+                // do nothing
+                continue;
+            }
             if (auto *newValue = insertCast(oldValue, newType, store)) {
                 store->setOperand(0, newValue);
                 store->setAlignment(align);
@@ -91,9 +101,15 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
         else if (auto load = dyn_cast<LoadInst>(user)) {
             auto *oldType = load->getType();
 
-            if (oldType->isPointerTy()) {  // don't replace ptr's LoadInst, directly replace user
+            if (oldType->isPointerTy()) {  // keep pointee type
+                Type* ptrBaseType = nullptr;
+                if (auto* alloca = findOriginalAlloca(load->getPointerOperand())) {
+                    ptrBaseType = pointeeTypeMap[alloca];
+                    errs() << "repair load: " << *load << " 's users\n";
+                }
+                
                 for (auto *user : load->users())
-                    repairUserType(user);
+                    repairUserType(user, ptrBaseType);
                 continue;
             }
 
@@ -105,7 +121,7 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
             load->replaceAllUsesWith(newLoad);
             instToErase.insert(load);    // erase later to avoid broken iterator
             for (auto *user : newLoad->users())
-                repairUserType(user);
+                repairUserType(user, nullptr);
         }
         else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
             SmallVector<Value*, 4> indices;
@@ -124,7 +140,7 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
             gep->replaceAllUsesWith(newGEP);
             instToErase.insert(gep);
             for (auto *user : newGEP->users())
-                repairUserType(user);
+                repairUserType(user, nullptr);
         }
         else if (auto call = dyn_cast<CallInst>(user)) {
             // Handle llvm.memcpy calls(it generated while alloc array size)
@@ -153,7 +169,7 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
                     call->replaceAllUsesWith(newCall);
                     instToErase.insert(call);    // erase later to avoid broken iterator
                     for (auto *user : newCall->users())
-                        repairUserType(user);
+                        repairUserType(user, nullptr);
 
                     errs() << "New llvm.memcpy call: " << *newCall << "\n";
                 }
@@ -303,15 +319,16 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load) {
     return nullptr;
 }
 
-Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store) {
+Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type *baseType) {
     Value *oldValue = store->getOperand(0);
     auto *ptrOperand = store->getPointerOperand();
     if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
-        auto *storeType = allocaInst->getAllocatedType();
+        auto *storeType = baseType ? baseType : allocaInst->getAllocatedType();
         errs() << "New store type: " << *storeType << "\n";
         if (oldValue->getType() != storeType) {
             if (auto *castValue = insertCast(oldValue, storeType, store)) {
                 store->setOperand(0, castValue);
+                store->setAlignment(Align(storeType->getPrimitiveSizeInBits() / 8));
                 return dyn_cast<Instruction>(store);
             }
         }
@@ -484,8 +501,82 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
     return nullptr;
 }
 
+Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* baseType) {
+    if (!baseType || gep->getSourceElementType() == baseType) {
+        return nullptr; // 类型一致，无需替换
+    }
+
+    // 提取 GEP 指令的索引
+    SmallVector<Value*, 4> indices;
+    for (auto& index : gep->indices()) {
+        indices.push_back(index.get());
+    }
+
+    // 创建新的 GEP 指令，使用传入的 baseType 作为基础类型
+    auto* newGEP = GetElementPtrInst::Create(
+        baseType,
+        gep->getPointerOperand(),
+        indices,
+        gep->getName(),
+        gep
+    );
+
+    errs() << "repaired GEP: " << *newGEP << '\n';
+
+    // 用新的 GEP 指令替换旧的 GEP 指令
+    gep->replaceAllUsesWith(newGEP);
+    instToErase.insert(gep);
+
+    return newGEP;
+}
+
+Instruction* ChangeVariableDecl::repairBitCastInst(BitCastInst* bitCast) {
+    Value* srcValue = bitCast->getOperand(0);
+    Type* srcType = srcValue->getType();
+    Type* destType = bitCast->getDestTy();
+
+    // 仅处理源类型为浮点类型的情况
+    if (!srcType->isFloatingPointTy()) {
+        return nullptr;
+    }
+
+    // 确定与目标类型位宽相同的浮点类型
+    LLVMContext& context = bitCast->getContext();
+    Type* targetFloatType;
+    unsigned destBitWidth = destType->getPrimitiveSizeInBits();
+    switch (destBitWidth) {
+        case 16:
+            targetFloatType = Type::getHalfTy(context);
+            break;
+        case 32:
+            targetFloatType = Type::getFloatTy(context);
+            break;
+        case 64:
+            targetFloatType = Type::getDoubleTy(context);
+            break;
+        case 128:
+            targetFloatType = Type::getFP128Ty(context);
+            break;
+        default:
+            errs() << "Unsupported bit width for floating point extension: " << destBitWidth << "\n";
+            return nullptr;
+    }
+
+    Value* newSrcValue = insertCast(srcValue, targetFloatType, bitCast);
+    if (!newSrcValue) {
+        errs() << "Failed to cast source value in BitCastInst: " << *bitCast << "\n";
+        return nullptr;
+    }
+
+    BitCastInst* newBitCast = new BitCastInst(newSrcValue, destType, bitCast->getName(), bitCast);
+    bitCast->replaceAllUsesWith(newBitCast);
+    instToErase.insert(bitCast);
+
+    return newBitCast;
+}
+
 // Make inst operands type consistent
-void ChangeVariableDecl::repairUserType(User *user) {
+void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
     if (!isa<Instruction>(user)) {
         errs() << "RepairUser: User is not an inst.\n";
         return;
@@ -505,7 +596,7 @@ void ChangeVariableDecl::repairUserType(User *user) {
     else if (auto load = dyn_cast<LoadInst>(inst))
         newInst = repairLoadInst(load);
     else if (auto store = dyn_cast<StoreInst>(inst))
-        newInst = repairStoreInst(store);
+        newInst = repairStoreInst(store, baseType);
     else if (auto *unaOp = dyn_cast<UnaryOperator>(inst))
         newInst = repairUnaryOp(unaOp);
     else if (auto *binOp = dyn_cast<BinaryOperator>(inst))
@@ -516,10 +607,12 @@ void ChangeVariableDecl::repairUserType(User *user) {
         newInst = repairCallInst(call);
     else if (auto *phi = dyn_cast<PHINode>(inst))
         newInst = repairPHINode(phi);
+    else if (auto *gep = dyn_cast<GetElementPtrInst>(inst))
+        newInst = repairGEPInst(gep, baseType);
 
     if (newInst) {
         for (auto *user : newInst->users()) {
-            repairUserType(user);
+            repairUserType(user, baseType);
         }
     }
 
@@ -561,13 +654,122 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
                         continue;
                     }
                     // 如果目标类型精度高于源类型，且当前是FPTrunc，则改为FPExt
-                    else if (destType->getPrimitiveSizeInBits() > srcType->getPrimitiveSizeInBits() && 
-                             isa<FPTruncInst>(castInst)) {
+                    if (destType->getPrimitiveSizeInBits() > srcType->getPrimitiveSizeInBits() && 
+                        isa<FPTruncInst>(castInst)) {
                         builder.SetInsertPoint(castInst);
                         auto *newCast = builder.CreateFPExt(castInst->getOperand(0), destType);
                         castInst->replaceAllUsesWith(newCast);
                         instToErase.insert(castInst);
                         continue;
+                    }
+                }
+
+                if (auto *bitCast = dyn_cast<BitCastInst>(&I)) {
+                    repairBitCastInst(bitCast);
+                    continue;
+                }
+            }
+
+            if (auto *call = dyn_cast<CallInst>(&I)) {
+                if (auto *callee = call->getCalledFunction()) {
+                    if (callee->getName().startswith("llvm.fmuladd")) {
+                        // 检查三个操作数，统计从更低精度 cast 过来的数量
+                        unsigned lowPrecisionCastCount = 0;
+                        SmallVector<Value*, 3> originalOperands;
+                        SmallVector<Value*, 3> lowPrecisionOperands;
+
+                        for (unsigned i = 0; i < 3; ++i) {
+                            Value* operand = call->getArgOperand(i);
+                            originalOperands.push_back(operand);
+
+                            auto checkCastSrcOp = [&lowPrecisionCastCount](Value* val, Value*& original, bool needOp) {
+                                if (auto castInst = dyn_cast<CastInst>(val)) {
+                                    if (castInst->getOpcode() == Instruction::FPExt) {
+                                        lowPrecisionCastCount++;
+                                        if(needOp) original = castInst->getOperand(0);
+                                    }
+                                }
+                            };
+
+                            Value* originalPrecisionOperand = operand;
+                            bool needOp = true;  // 是否需要获取原始操作数
+                            // 尝试找到单操作数的源 Cast 操作的原始操作数类型
+                            if (auto unaOp = dyn_cast<UnaryOperator>(operand)) {
+                                operand = unaOp->getOperand(0);
+                                needOp = false;
+                            }
+                            checkCastSrcOp(operand, originalPrecisionOperand, needOp);
+                            lowPrecisionOperands.push_back(originalPrecisionOperand);
+                        }
+
+                        if (lowPrecisionCastCount >= 2) {  // TODO: 通用版本全部3个都是低精度，才降，防止精度损失
+                            // 获取原始低精度类型，假设从 FPExt 源类型获取
+                            Type* lowPrecisionType = nullptr;
+                            for (Value* operand : originalOperands) {
+                                if (auto castInst = dyn_cast<CastInst>(operand)) {
+                                    if (castInst->getOpcode() == Instruction::FPExt) {
+                                        lowPrecisionType = castInst->getSrcTy();
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (lowPrecisionType) {
+                                // 构建低精度版本的函数名
+                                std::string newFuncName;
+                                if (lowPrecisionType->isDoubleTy()) {
+                                    newFuncName = "llvm.fmuladd.f64";
+                                } else if (lowPrecisionType->isFloatTy()) {
+                                    newFuncName = "llvm.fmuladd.f32";
+                                } else if (lowPrecisionType->isHalfTy()) {
+                                    newFuncName = "llvm.fmuladd.f16";
+                                } else {
+                                    // 不支持的类型，跳过
+                                    return;
+                                }
+
+                                // 获取低精度版本的函数
+                                Function* newFunc = call->getModule()->getFunction(newFuncName);
+                                if (!newFunc) {
+                                    // 若函数不存在则创建
+                                    FunctionType* newFuncType = FunctionType::get(
+                                        lowPrecisionType, 
+                                        {lowPrecisionType, lowPrecisionType, lowPrecisionType}, 
+                                        false
+                                    );
+                                    newFunc = Function::Create(
+                                        newFuncType, 
+                                        GlobalValue::ExternalLinkage, 
+                                        newFuncName, 
+                                        call->getModule()
+                                    );
+                                }
+
+                                // 确保所有操作数为低精度类型
+                                for (unsigned i = 0; i < 3; ++i) {
+                                    Value* operand = lowPrecisionOperands[i];
+                                    if (operand->getType() != lowPrecisionType) {
+                                        // 调用 insertCast 转换操作数类型
+                                        if (Value* castedOperand = insertCast(operand, lowPrecisionType, call)) {
+                                            lowPrecisionOperands[i] = castedOperand;
+                                        } else {
+                                            errs() << "Failed to cast operand " << i << " to low precision type in llvm.fmuladd call.\n";
+                                            return;
+                                        }
+                                    }
+                                }
+
+                                // 创建新的 call 指令
+                                CallInst* newCall = CallInst::Create(newFunc, lowPrecisionOperands, "", call);
+                                newCall->setDebugLoc(call->getDebugLoc());
+                                call->replaceAllUsesWith(newCall);
+                                instToErase.insert(call);
+
+                                for (auto* user : newCall->users()) {
+                                    repairUserType(user, nullptr);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -659,23 +861,21 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
 
                             errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
                             
-                            if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
+                            if (typeName.find("*") != string::npos) {  // ptr's func-param no need to change
                                 auto *alloca = dyn_cast<AllocaInst>(DDI->getAddress());
                                 pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
-                                newAllocas.insert(alloca);
-                            } else {
-                                if (configEntry["isParam"]) {
-                                    unsigned argIndex = 0;
-                                    for (auto argIt = functionPtr->arg_begin(); argIt != functionPtr->arg_end(); ++argIt, ++argIndex) {
-                                        if (argIt->getName() == varName) {
-                                            errs() << "change arg: " << argIt->getName() << "'s type to " << *targetType << '\n';
-                                            funcArgNewTypeMap[functionPtr][argIndex] = targetType;
-                                            break;
-                                        }
+                            } 
+                            else if (configEntry["isParam"]) {
+                                unsigned argIndex = 0;
+                                for (auto argIt = functionPtr->arg_begin(); argIt != functionPtr->arg_end(); ++argIt, ++argIndex) {
+                                    if (argIt->getName() == varName) {
+                                        errs() << "change arg: " << argIt->getName() << "'s type to " << *targetType << '\n';
+                                        funcArgNewTypeMap[functionPtr][argIndex] = targetType;
+                                        break;
                                     }
                                 }
-                                changeAllocaInst(DDI, targetType);
                             }
+                            changeAllocaInst(DDI, targetType);
 
                             break;  // found & changed
                         }
@@ -819,7 +1019,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                                                     store->setOperand(0, newValue);
                                                     store->setAlignment(Align(maxAlign));
                                                     for (auto *user : store->users())
-                                                        repairUserType(user);
+                                                        repairUserType(user, nullptr);
                                                 }
                                             }
                                         }
@@ -840,7 +1040,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                                             load->replaceAllUsesWith(newLoad);
                                             instToErase.insert(load);
                                             for (auto *loadUser : newLoad->users())
-                                                repairUserType(loadUser);
+                                                repairUserType(loadUser, nullptr);
                                         }
                                     }
                                 }
@@ -952,7 +1152,7 @@ void ChangeVariableDecl::removeRedundantReplacements() {
 
 bool ChangeVariableDecl::runOnModule(Module &module) {
     parseConfig();
-    changeStructDeclarations(module);
+    // changeStructDeclarations(module);
     for(auto &F : module) {
         string name = F.getName().str();
         if(!F.isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {

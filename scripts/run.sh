@@ -49,6 +49,7 @@ LINK_LIBS=""
 LINK_DIRS=""
 INCLUDE_DIRS=""
 OPTIMIZE_LEVEL="-O2"
+OPTIMIZE_ARGS=""
 
 # 遍历目录获取 .c 和 .cpp 文件
 get_source_files_from_dir() {
@@ -186,33 +187,36 @@ for src_file in $SOURCE_FILES; do
     fi
     if $FPE_FLAG; then
         # FPE模式预处理
-        clang $OPTIMIZE_LEVEL -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" $INCLUDE_DIRS -fno-discard-value-names -o "$src_file.bc" 
+        clang -O1 -Xclang -disable-llvm-passes -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc" 
     else
         # 其他模式正常处理
-        clang $OPTIMIZE_LEVEL -g -emit-llvm -c "$src_file" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
+        clang -O1 -Xclang -disable-llvm-passes -g -emit-llvm -c "$src_file" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
     fi
     
     BCS="$BCS $src_file.bc"
 done
 
 llvm-link $BCS -o output.bc
+# 加载空Pass，为了IR人类可读、Pass也需要可读形式才能修改
+opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S --mxp=$MXP_FLAG output.bc -o output.bc
 
 if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
-    clang $OPTIMIZE_LEVEL -g -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL $OPTIMIZE_ARGS $HALF_PRECISION_SUPPORT -g -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
+    ./changed_output 10 128 1280
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
-else
+elif test $MODE_FLAG = "generate-config"; then
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config' --mxp=$MXP_FLAG output.bc -o output.bc
-    clang $OPTIMIZE_LEVEL -g -o output output.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL $OPTIMIZE_ARGS -g -o output output.bc $LINK_LIBS $LINK_DIRS
     echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
     python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG output.bc $LINK_LIBS $LINK_DIRS $OPTIMIZE_LEVEL
-    clang $OPTIMIZE_LEVEL -o optimized_output optimized_output.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL $OPTIMIZE_ARGS $HALF_PRECISION_SUPPORT -o optimized_output optimized_output.bc $LINK_LIBS $LINK_DIRS
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 
@@ -229,7 +233,7 @@ if test $MODE_FLAG = "multi-version"; then
     clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC output+mvselect.bc -o merged.bc
-    clang $OPTIMIZE_LEVEL -o merged merged.bc $LINK_LIBS $LINK_DIRS
+    clang $OPTIMIZE_LEVEL $OPTIMIZE_ARGS -o merged merged.bc $LINK_LIBS $LINK_DIRS
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi
 
