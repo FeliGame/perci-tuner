@@ -19,7 +19,7 @@ TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "ir_timing.txt"
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
-TIMEOUT_THRESHOLD = 5.0  # 超时阈值（秒）
+TIMEOUT_THRESHOLD = 60.0  # 超时阈值（秒）
 LINK_LIBS = []
 LINK_DIRS = []
 RUNTIME_LIB_DIRS = []
@@ -115,7 +115,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                         current_run_result = output_val
                         current_run_time = float("nan")
                         break
-                elif not data_utils.is_nearly_equal(output_val, data_utils.ORIGINAL_RESULT, config_utils.thres):
+                elif data_utils.ORIGINAL_TIME != float('inf') and not data_utils.is_nearly_equal(output_val, data_utils.ORIGINAL_RESULT, config_utils.thres):
                     satisfy_thres = False
                     current_run_result = output_val
                     current_run_time = float("nan")

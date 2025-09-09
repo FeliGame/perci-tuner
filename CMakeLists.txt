@@ -20,7 +20,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall -fno-rtti")
 
 add_subdirectory(lib/check_result)
-add_subdirectory(lib/dd_real)
+# add_subdirectory(lib/dd_real)
 
 # Register pass plugin
 add_llvm_pass_plugin(PerciTuner

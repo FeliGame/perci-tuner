@@ -18,8 +18,7 @@
 
 #ifndef DD_REAL
 #define DD_REAL
-typedef struct
-{
+typedef struct {
   double x[2];
 } dd_real;
 #endif

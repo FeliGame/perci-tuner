@@ -30,7 +30,7 @@ FPE_FLAG=false
 RUN_ALGORITHM=dd
 THRESHOLD=1e-6
 REPEAT_TIMES=1
-TIMEOUT=5.0
+TIMEOUT=60.0
 HISTORY_FLAG=false
 SHUFFLED_FLAG=false
 
@@ -52,7 +52,7 @@ LINK_LIBS=""
 LINK_DIRS=""
 RUNTIME_LIB_DIRS=""
 INCLUDE_DIRS=""
-OPTIMIZE_LEVEL="-O2"
+OPTIMIZE_LEVEL="-O2 -fno-builtin" # -fno-builtin 防止不同优化等级导致的结果差异
 
 # 遍历目录获取 .c 和 .cpp 文件
 get_source_files_from_dir() {
@@ -97,20 +97,20 @@ do
     elif test "$arg" = "-mxp"; then
         MXP_FLAG=true
         LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -lcheck_result"
-        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -lcheck_result -static"
+        # RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-fp128todd"; then
         DD_FLAG=true
         MXP_FLAG=true
         LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/dd_real -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -ldd_real -lcheck_result"
-        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/dd_real -Wl,-rpath=$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -ldd_real -lcheck_result -lautop -static -lm"
+        # RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/dd_real -Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-fpe"; then
         FPE_FLAG=true
         MXP_FLAG=true
         LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -lcheck_result"
-        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -lcheck_result  -static"
+        # RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-original-version"; then
         ORIGINAL_VERSION_FLAG=true
     elif test "${arg#-target=}" != "$arg"; then
@@ -138,7 +138,7 @@ do
         echo "  -algorithm=exhaust/dd/hidd  (search-optimize) Select search algorithm (default dd)"
         echo "  -thres=<1e-6>               (search-optimize) Set error threshold (default 1e-6)"
         echo "  -repeat=<1>                 (search-optimize) Set repeat count (default 1)"
-        echo "  -timeout=<5.0>              (search-optimize) Set run-time timeout seconds(default 5.0sec)"
+        echo "  -timeout=<60.0>              (search-optimize) Set run-time timeout seconds(default 60.0sec)"
         echo "  -shuffled                   (search-optimize) Shuffle searched variables (default false)"
         echo "  -history                    (search-optimize) Keep search history (default false)"
         echo "  -fp128todd                  (search-optimize) fp128 regarded as double-double, will auto enable -mxp"

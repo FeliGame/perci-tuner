@@ -70,6 +70,8 @@ def is_nearly_equal(new_result, old_result, thres):
 
 # use relative error to compare
 def get_rel_err(new_result, old_result):    
+    if new_result == "RUNTIME-ERROR" or old_result == "RUNTIME-ERROR":
+        return float('inf')
     n = float(new_result)
     o = float(old_result)
     # if old_result is 0, then use absolute error to compare

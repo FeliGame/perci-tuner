@@ -15,7 +15,7 @@ def parse_arguments():
         '-history': True,
         '-algorithm': 'dd',
         '-mxp': False,
-        '-timeout': 5.0,
+        '-timeout': 60.0,
         '-shuffled': False,
         '-partition': 'sorted_partition.json',
         '-fp128todd': False,

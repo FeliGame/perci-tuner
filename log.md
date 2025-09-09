@@ -358,3 +358,8 @@
 
 ### 18
 * add: search all c/cpp if given dir options.
+
+## Sep, 2025
+
+### 9
+* update: libdd, -fno-builtin option.

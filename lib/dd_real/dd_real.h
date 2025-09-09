@@ -2,8 +2,8 @@
 #define DD_REAL_H
 #include "dd_inline.h"
 
-#define DP(s, t) // printf("In %s, %lf, %lf\n", s, t.dd.x[0], t.dd.x[1])
-// OUT
+#define DP(s, t) //printf("In %s, %lf, %lf\n", s, t.dd.x[0], t.dd.x[1])
+//OUT
 
 dd_real dd_init(const double cx);
 dd_real dd_init2(const double cx1, const double cx2);
