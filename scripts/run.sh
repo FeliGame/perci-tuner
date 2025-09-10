@@ -25,6 +25,7 @@ SOURCE_FILES=""
 
 MXP_FLAG=false  # check pragma precision & autofp vars if true, or search all vars
 FPE_FLAG=false
+CHECK_RESULT_FLAG=false  # 是否插桩相对误差输出（适用double-double，更精准）
 
 # search/multi-version mode option, default value as below
 RUN_ALGORITHM=dd
@@ -94,23 +95,31 @@ do
         SHUFFLED_FLAG=true
     elif test "$arg" = "-history"; then
         HISTORY_FLAG=true
+    elif test "$arg" = "-check-result"; then
+        CHECK_RESULT_FLAG=true
+        LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -lcheck_result"
+        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-mxp"; then
         MXP_FLAG=true
+        CHECK_RESULT_FLAG=true
         LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -lcheck_result -static"
-        # RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -lcheck_result"
+        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-fp128todd"; then
         DD_FLAG=true
         MXP_FLAG=true
+        CHECK_RESULT_FLAG=true
         LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/dd_real -L$PERCI_TUNER/lib/check_result"
         LINK_LIBS="$LINK_LIBS -ldd_real -lcheck_result -lautop -static -lm"
-        # RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/dd_real -Wl,-rpath=$PERCI_TUNER/lib/check_result"
+        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-fpe"; then
         FPE_FLAG=true
         MXP_FLAG=true
+        CHECK_RESULT_FLAG=true
         LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -lcheck_result  -static"
-        # RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
+        LINK_LIBS="$LINK_LIBS -lcheck_result"
+        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-original-version"; then
         ORIGINAL_VERSION_FLAG=true
     elif test "${arg#-target=}" != "$arg"; then
@@ -141,9 +150,10 @@ do
         echo "  -timeout=<60.0>              (search-optimize) Set run-time timeout seconds(default 60.0sec)"
         echo "  -shuffled                   (search-optimize) Shuffle searched variables (default false)"
         echo "  -history                    (search-optimize) Keep search history (default false)"
-        echo "  -fp128todd                  (search-optimize) fp128 regarded as double-double, will auto enable -mxp"
-        echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables"
-        echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp"
+        echo "  -check-result               (all modes) Print relative error in exec"
+        echo "  -fp128todd                  (search-optimize) fp128 regarded as double-double, will auto enable -mxp & -check-result"
+        echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables, will auto enable -check-result"
+        echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp & -check-result"
         echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
         echo "  -original-version           (multi-version) Use original version in multi-version mode (default false)"
         echo "  -multi-ir                   (multi-version) Set another version IR"
@@ -222,7 +232,7 @@ if test $MODE_FLAG = "change-by-config"; then
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 else
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
-    if $MXP_FLAG; then
+    if $CHECK_RESULT_FLAG; then
         # 第一次获取原始值
         opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='record_result,remove_pragma' --is-original=true output.bc -o mxp.bc
         clang -O2 -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS

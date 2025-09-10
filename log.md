@@ -363,3 +363,6 @@
 
 ### 9
 * update: libdd, -fno-builtin option.
+
+### 10
+* add: -check-result option in run.sh.
