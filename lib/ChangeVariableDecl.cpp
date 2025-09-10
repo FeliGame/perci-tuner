@@ -70,6 +70,35 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newT
     newAllocas.insert(newAlloca);
     instToErase.insert(alloca);
     alloca->replaceAllUsesWith(newAlloca);
+
+    // 更新调试信息
+    auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable());
+    if (!DV) {
+        errs() << "Warning: No debug info for variable, skipping debug update\n";
+        return newAlloca;
+    }
+
+    // 创建新的DIType（调试类型）
+    DIScope *scope = DV->getScope();
+    DIType *newDIType = createDIType(newType, scope, DIB);
+    if (!newDIType) {
+        errs() << "Warning: Failed to create new debug type, skipping debug update\n";
+        return newAlloca;
+    }
+
+    // 创建新的DILocalVariable（调试变量描述）
+    auto *newDV = DIB->createAutoVariable(
+        scope,               // 保持原作用域
+        DV->getName(),       // 添加：变量名称
+        DV->getFile(),       // 保持原文件
+        DV->getLine(),       // 保持原行号
+        newDIType,           // 更新为新类型
+        DV->isArtificial(),  // 修改：isAlwaysPreserved -> isArtificial
+        DV->getFlags()       // 保留flags，移除后续不存在的参数
+    );
+
+    DDI->setVariable(newDV);
+
     return newAlloca;
 }
 
@@ -1255,8 +1284,55 @@ void ChangeVariableDecl::removeRedundantReplacements() {
     instReplaceMap.clear();
 }
 
+DIType* ChangeVariableDecl::createDIType(Type* type, DIScope* scope, DIBuilder* DIB) {
+    // 处理数组类型
+    if (auto *arrayType = dyn_cast<ArrayType>(type)) {
+        Type *elemType = arrayType->getElementType();
+        DIType *elemDIType = createDIType(elemType, scope, DIB);
+        if (!elemDIType) return nullptr;
+
+        uint64_t elemSize = elemType->getPrimitiveSizeInBits();
+        uint64_t arraySize = arrayType->getNumElements();
+        uint64_t totalSize = elemSize * arraySize;
+        uint64_t align = elemType->getPrimitiveSizeInBits();  // 按位对齐
+
+        // 创建子范围数组（将单个DISubrange包装为DINodeArray）
+        auto *subrange = DIB->getOrCreateSubrange(0, arraySize);
+        auto subranges = DIB->getOrCreateArray({subrange});
+        
+        return DIB->createArrayType(totalSize, align, elemDIType, subranges);
+    }
+
+    // 处理基础浮点类型
+    if (type->isFloatingPointTy()) {
+        StringRef name;
+        unsigned size;
+        if (type->isHalfTy()) {
+            name = "__fp16";
+            size = 16;
+        } else if (type->isFloatTy()) {
+            name = "float";
+            size = 32;
+        } else if (type->isDoubleTy()) {
+            name = "double";
+            size = 64;
+        } else if (type->isFP128Ty()) {
+            name = "long double";
+            size = 128;
+        } else {
+            errs() << "Unsupported float type for debug info: " << *type << "\n";
+            return nullptr;
+        }
+        return DIB->createBasicType(name, size, dwarf::DW_ATE_float);
+    }
+
+    errs() << "Unsupported type for debug info: " << *type << "\n";
+    return nullptr;
+}
+
 bool ChangeVariableDecl::runOnModule(Module &module) {
     parseConfig();
+    DIB = new DIBuilder(module);
     changeStructDeclarations(module);
     for(auto f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();
@@ -1275,6 +1351,8 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         errs() << "Module verify success!\n";
     }
 
+    DIB->finalize();
+    delete DIB;
     return true;
 }  
 

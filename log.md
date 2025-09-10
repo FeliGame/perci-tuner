@@ -366,3 +366,4 @@
 
 ### 10
 * add: -check-result option in run.sh.
+* add: DebugInfo for local vars in ChangeVariableDecl.

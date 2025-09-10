@@ -9,6 +9,7 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Passes/PassPlugin.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/IR/DIBuilder.h>
 
 #include "nlohmann/json.hpp"
 
@@ -75,6 +76,8 @@ private:
     Instruction* changeToDDCall(T *I, const std::string &FunctionName, const std::vector<Value *> &Args, Type *ReturnType);
     void handleFP128ToDD(Instruction &I);
 
+    DIType* createDIType(Type* type, DIScope* scope, DIBuilder* DIB);
+
     DenseSet<StringRef> includedFunctions;
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
@@ -86,6 +89,8 @@ private:
     DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
     
     nlohmann::json config;
+
+    DIBuilder *DIB;
 };
 
 } // namespace llvm
