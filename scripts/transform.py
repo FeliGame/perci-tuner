@@ -23,7 +23,7 @@ TIMEOUT_THRESHOLD = 60.0  # 超时阈值（秒）
 LINK_LIBS = []
 LINK_DIRS = []
 RUNTIME_LIB_DIRS = []
-OPTIMIZE_LEVEL = "-O2"
+CFLAGS = []
 
 # time & result in current run
 current_run_time = float("inf")
@@ -87,7 +87,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         return -1
     
     # generate executable
-    command = ['clang', OPTIMIZE_LEVEL, '-o', 'temp_output', 'temp_output.bc'] + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
+    command = ['clang', '-o', 'temp_output', 'temp_output.bc'] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     if retval != 0:
         return -1
@@ -141,7 +141,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         
         if i == RUNNING_TIMES - 1:
             output_text = output.decode()
-            print(output_text)
+            print('current result:', output_text)
             current_run_result = read_result(output_text)
             if current_run_result is None:
                 return -4

@@ -7,6 +7,9 @@ project(check_result)
 # 设置 C 标准
 set(CMAKE_C_STANDARD 11)
 
+# 明确指定使用Clang编译器以支持x86_64下的__fp16
+set(CMAKE_C_COMPILER clang)
+
 # 设置编译选项
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -DGL -DDD")
 

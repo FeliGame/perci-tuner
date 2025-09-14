@@ -367,3 +367,7 @@
 ### 10
 * add: -check-result option in run.sh.
 * add: DebugInfo for local vars in ChangeVariableDecl.
+
+### 15
+* remove: -O2 option, which cause unexpected result.
+* update: data_utils.py use decimal to get more accurate relative error.

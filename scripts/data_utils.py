@@ -3,7 +3,7 @@
 
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import os, csv
+import os, csv, decimal
 
 RUN_HISTORY = "run_history.csv"
 ORIGINAL_TIME = float('inf')  # running time of original program
@@ -61,22 +61,72 @@ def store_data(run_id, time, result, changes, is_mxp=False):
 def is_nearly_equal(new_result, old_result, thres):
     # 屏蔽错误字段（RUNTIME_ERROR或TIMEOUT等）
     try:
-        float(new_result)
-        float(old_result)
-    except (ValueError, TypeError):
+        # 使用decimal替换float来检查输入值，避免精度损失
+        decimal.getcontext().traps[decimal.Inexact] = False  # 允许不精确转换
+        decimal.getcontext().traps[decimal.InvalidOperation] = True  # 捕获无效操作
+        
+        # 将输入值转换为字符串再转为Decimal，确保精确表示
+        decimal.Decimal(str(new_result))
+        decimal.Decimal(str(old_result))
+        # 也转换阈值为Decimal类型
+        decimal_thres = decimal.Decimal(str(thres))
+    except (decimal.InvalidOperation, ValueError, TypeError):
         return False
-    return get_rel_err(new_result, old_result) <= float(thres)
+    
+    # 调用修改后的get_rel_err函数计算相对误差
+    rel_err = get_rel_err(new_result, old_result)
+    
+    # 如果相对误差是inf，直接返回False
+    if rel_err == float('inf'):
+        return False
+    
+    # 使用Decimal进行比较，确保精度
+    try:
+        return decimal.Decimal(str(rel_err)) <= decimal_thres
+    except (decimal.InvalidOperation, ValueError):
+        # 如果转换失败，退回到浮点数比较
+        return rel_err <= float(thres)
 
 
 # use relative error to compare
 def get_rel_err(new_result, old_result):    
     if new_result == "RUNTIME-ERROR" or old_result == "RUNTIME-ERROR":
         return float('inf')
-    n = float(new_result)
-    o = float(old_result)
-    # if old_result is 0, then use absolute error to compare
-    if o == 0:
-        return abs(n)
-    # if old_result is not 0, then use relative error to compare
-    relative_error = abs((n - o) / o)
-    return relative_error
+    try:
+        # 将输入转换为字符串，以便分析其精度需求
+        new_str = str(new_result)
+        old_str = str(old_result)
+        
+        # 计算需要的精度基于输入值的最大位数
+        precision = 10  # 默认精度
+        
+        if '.' in new_str:
+            # 小数点后位数 + 整数部分位数
+            new_precision = len(new_str.split('.')[0]) + len(new_str.split('.')[1])
+            precision = max(precision, new_precision)
+        else:
+            # 整数的位数
+            precision = max(precision, len(new_str))
+        
+        if '.' in old_str:
+            old_precision = len(old_str.split('.')[0]) + len(old_str.split('.')[1])
+            precision = max(precision, old_precision)
+        else:
+            precision = max(precision, len(old_str))
+        
+        # 设置decimal上下文的精度
+        decimal.getcontext().prec = precision
+        
+        # 转换为Decimal类型
+        n = decimal.Decimal(new_str)
+        o = decimal.Decimal(old_str)
+        
+        # 计算相对误差
+        if o == 0:
+            return float(abs(n))
+        
+        relative_error = abs((n - o) / o)
+        return float(relative_error)
+    except (decimal.InvalidOperation, ValueError, TypeError):
+        # 处理无法转换为decimal的情况
+        return float('inf')

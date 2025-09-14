@@ -22,7 +22,7 @@ def parse_arguments():
         '-link-libs': [],
         '-link-dirs': [],
         '-rpath': [],
-        '-optimize-level': 'O2',
+        '-cflags': [],
     }
     
     for arg in sys.argv[1:]:
@@ -32,8 +32,6 @@ def parse_arguments():
             params['-link-dirs'].append(arg)
         elif arg.startswith('-Wl,-rpath'):
             params['-rpath'].append(arg)
-        elif arg.startswith('-O'):
-            params['-optimize-level'] = arg
         elif '=' in arg:
             key, value = arg.split('=', 1)
             if key in params:
@@ -54,6 +52,8 @@ def parse_arguments():
                     params[key] = value.lower() in ('true', '1', 'yes')
                 else:
                     params[key] = value
+        elif arg.startswith('-'):
+            params['-cflags'].append(arg)
         
     return params
 
@@ -144,7 +144,7 @@ def main():
     transform.LINK_LIBS = args['-link-libs']
     transform.LINK_DIRS = args['-link-dirs']
     transform.RUNTIME_LIB_DIRS = args['-rpath']
-    transform.OPTIMIZE_LEVEL = args['-optimize-level']
+    transform.CFLAGS = args['-cflags']
     algorithm_utils.is_mxp = args['-mxp']
 
     start_time = time.perf_counter()
@@ -169,7 +169,7 @@ def main():
     print(f"  Link libs: {args['-link-libs']}")
     print(f"  Link dirs: {args['-link-dirs']}")
     print(f"  Runtime lib dirs: {args['-rpath']}")
-    print(f"  Optimize level: {args['-optimize-level']}")
+    print(f"  CFlags: {args['-cflags']}")
     print(f"  MXP: {args['-mxp']}")
 
     # get the original time and original result for compare
