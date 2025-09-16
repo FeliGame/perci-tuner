@@ -20,10 +20,11 @@ global original_conf
 runned_change_set = set()
 global bitcode_name
 
-# update the best IR and config file
+# update the best IR, exec and config file
 def update_opt(opt_config):
     global OPT_PREFIX, bitcode_name
     shutil.copyfile(transform.TEMP_BC_PATH, OPT_PREFIX + bitcode_name)
+    shutil.copyfile('temp_output', OPT_PREFIX + 'output')
     config_utils.print_config(opt_config, OPT_PREFIX + "config.json")
 
 def compare_json(original, current, diff, prefix=""):

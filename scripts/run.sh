@@ -35,7 +35,7 @@ TIMEOUT=60.0
 HISTORY_FLAG=false
 SHUFFLED_FLAG=false
 
-# optional fp128->double double pass
+# convert fp128 to double-double
 DD_FLAG=false
 
 # change mode option
@@ -108,11 +108,6 @@ do
         RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-fp128todd"; then
         DD_FLAG=true
-        MXP_FLAG=true
-        CHECK_RESULT_FLAG=true
-        LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/dd_real -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -ldd_real -lcheck_result -lautop -static -lm"
-        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     elif test "$arg" = "-fpe"; then
         FPE_FLAG=true
         MXP_FLAG=true
@@ -151,7 +146,7 @@ do
         echo "  -shuffled                   (search-optimize) Shuffle searched variables (default false)"
         echo "  -history                    (search-optimize) Keep search history (default false)"
         echo "  -check-result               (all modes) Print relative error in exec"
-        echo "  -fp128todd                  (search-optimize) fp128 regarded as double-double, will auto enable -mxp & -check-result"
+        echo "  -fp128todd                  (search-optimize) fp128 regarded as double-double"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables, will auto enable -check-result"
         echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp & -check-result"
         echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
@@ -250,7 +245,6 @@ fi
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
     python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS
-    clang $CFLAGS -o optimized_output optimized_output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 

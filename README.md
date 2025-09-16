@@ -48,19 +48,9 @@ From Pass: print_config.
 Only enabled when --mxp=true. If set true, print result_var as hex format, or print relative error between result_var and env var: PERCI_TUNER_ORIGINAL_RESULT.
 From Pass: record_result.
 
-### --print-dd(bool)
-
-Print double-double, must be enabled when --fp128-to-dd enabled. Pay attention that libdd_real.a/so & libcheck_result.a/.so should be installed if you want to run optimized exec, these libraries can be generated under lib/dd_real & lib/check_result.
-From Pass: record_result.
-
 ### --variable-config
 
 Customize target precision input filename.
-From Pass: change_variable_decl.
-
-### --fp128-to-dd(bool)
-
-Change fp128(long double) to dd(double-double), pay attention that libdd_real.a/so & libcheck_result.a/.so should be installed if you want to run optimized exec, these libraries can be generated under lib/dd_real & lib/check_result.
 From Pass: change_variable_decl.
 
 ### --function-config

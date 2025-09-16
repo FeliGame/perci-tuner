@@ -13,7 +13,7 @@ import re
 
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
 PASSES = "change_variable_decl,change_function_call,ir_timing"
-FP128_TO_DD = False
+# FP128_TO_DD = False
 TEMP_BC_PATH = "temp_output.bc"
 TEMP_CONFIG_FILE = "temp_config.json"
 TIME_FILE_PATH = "ir_timing.txt"
@@ -67,8 +67,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                "-S", 
                # record_result加在ir_timing后面防止被记入用时, remove_pragma必须在record_result之后
                "-passes=" + PASSES + ",record_result,remove_pragma",
-               "--print-dd=" + str(FP128_TO_DD),
-               "--fp128-to-dd=" + str(FP128_TO_DD),
+            #    "--print-dd=" + str(FP128_TO_DD),
+            #    "--fp128-to-dd=" + str(FP128_TO_DD),
                "--variable-config=" + TEMP_CONFIG_FILE , 
                "--function-config=" + TEMP_CONFIG_FILE, 
                "--is-original=false", 
@@ -88,6 +88,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     
     # generate executable
     command = ['clang', '-o', 'temp_output', 'temp_output.bc'] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
+    if FP128_TO_DD:
+        command += ['-mllvm', '-fp128todd', '/home/guocheng2/MxPPE/MxPLib/libdd/libautop.a', '-lm']
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     if retval != 0:
         return -1

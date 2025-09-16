@@ -371,3 +371,6 @@
 ### 15
 * remove: -O2 option, which cause unexpected result.
 * update: data_utils.py use decimal to get more accurate relative error.
+
+### 16
+* update: -fp128todd call clang & libdd rather than ChangeVariableDecl.
