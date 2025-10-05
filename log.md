@@ -374,3 +374,8 @@
 
 ### 16
 * update: -fp128todd call clang & libdd rather than ChangeVariableDecl.
+
+## Oct, 2025
+
+### 5
+* add: -jN option to accelerate dd-algorithm.

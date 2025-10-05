@@ -23,6 +23,7 @@ def parse_arguments():
         '-link-dirs': [],
         '-rpath': [],
         '-cflags': [],
+        '-threads': 1,
     }
     
     for arg in sys.argv[1:]:
@@ -50,6 +51,8 @@ def parse_arguments():
                     params[key] = value.lower() in ('true', '1', 'yes')
                 elif key == '-fp128todd':
                     params[key] = value.lower() in ('true', '1', 'yes')
+                elif key == '-threads':
+                    params[key] = int(value)
                 else:
                     params[key] = value
         elif arg.startswith('-'):
@@ -165,6 +168,7 @@ def main():
     print(f"  Algorithm: {args['-algorithm']}")
     print(f"  Timeout seconds: {args['-timeout']}")
     print(f"  Shuffled: {args['-shuffled']}")
+    print(f"  Threads: {args['-threads']}")
     print(f"  FP128 to DD: {args['-fp128todd']}")
     print(f"  Link libs: {args['-link-libs']}")
     print(f"  Link dirs: {args['-link-dirs']}")
@@ -183,7 +187,7 @@ def main():
     algorithm_utils.min_time = data_utils.ORIGINAL_TIME
     algorithm_utils.bitcode_name = os.path.basename(bitcode)
     if algorithm.lower() == 'dd':
-        new_conf = dd_algorithm.run(bitcode, change_set)
+        new_conf = dd_algorithm.run(bitcode, change_set, args['-threads'])
     elif algorithm.lower() == 'exhaust':
         new_conf = exhaust_algorithm.run(bitcode, change_set)
     elif algorithm.lower() == 'hidd':

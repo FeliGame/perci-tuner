@@ -34,6 +34,7 @@ REPEAT_TIMES=1
 TIMEOUT=60.0
 HISTORY_FLAG=false
 SHUFFLED_FLAG=false
+THREADS=1
 
 # convert fp128 to double-double
 DD_FLAG=false
@@ -53,7 +54,7 @@ LINK_LIBS=""
 LINK_DIRS=""
 RUNTIME_LIB_DIRS=""
 INCLUDE_DIRS=""
-CFLAGS="-fno-builtin" # -fno-builtin 防止不同优化等级导致的结果差异
+CFLAGS="" # -fno-builtin 防止不同优化等级导致的结果差异
 
 # 遍历目录获取 .c 和 .cpp 文件
 get_source_files_from_dir() {
@@ -83,14 +84,18 @@ do
         INCLUDE_DIRS="$INCLUDE_DIRS $arg"
     elif test "${arg#-O}" != "$arg"; then
         CFLAGS="$arg"
+    elif test "${arg#-j}" != "$arg"; then
+        # 提取-j后的数字部分
+        THREADS="${arg#-j}"
+        # 验证是否为正整数（非空且为大于0的数字）
+        if test -z "$THREADS" || ! test "$THREADS" -gt 0 2>/dev/null; then
+            echo "Error: -j requires a positive integer argument, got '$THREADS'" >&2
+            exit 1
+        fi
     elif test "$arg" = "generate-config" -o "$arg" = "search-optimize" -o "$arg" = "change-by-config" -o "$arg" = "multi-version"; then
         MODE_FLAG="$arg"
-    elif test "$arg" = "-algorithm=exhaust"; then
-        RUN_ALGORITHM=exhaust
-    elif test "$arg" = "-algorithm=dd"; then
-        RUN_ALGORITHM=dd
-    elif test "$arg" = "-algorithm=hidd"; then
-        RUN_ALGORITHM=hidd
+    elif test "${arg#-algorithm=}" != "$arg"; then
+        RUN_ALGORITHM="${arg#-algorithm=}"
     elif test "$arg" = "-shuffled"; then
         SHUFFLED_FLAG=true
     elif test "$arg" = "-history"; then
@@ -244,7 +249,7 @@ fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
-    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS
+    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 

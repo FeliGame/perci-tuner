@@ -4,12 +4,14 @@
 
 import sys, json, shutil
 import config_utils, data_utils, transform
+import threading
 
 
 # the optimized bitcode & config file prefix
 OPT_PREFIX = "optimized_"
 global run_times
 run_times = 0
+run_times_lock = threading.Lock()  # lock for run_times
 global min_time
 min_time = float('inf')
 global algorithm
@@ -20,11 +22,17 @@ global original_conf
 runned_change_set = set()
 global bitcode_name
 
+def atomic_increment_run_times():
+    global run_times
+    with run_times_lock:  # 确保同一时间只有一个线程修改run_times
+        run_times += 1
+        return run_times
+
 # update the best IR, exec and config file
 def update_opt(opt_config):
     global OPT_PREFIX, bitcode_name
-    shutil.copyfile(transform.TEMP_BC_PATH, OPT_PREFIX + bitcode_name)
-    shutil.copyfile('temp_output', OPT_PREFIX + 'output')
+    shutil.copyfile(f"{run_times}.bc", OPT_PREFIX + bitcode_name)
+    shutil.copyfile(f"{run_times}", OPT_PREFIX + 'output')
     config_utils.print_config(opt_config, OPT_PREFIX + "config.json")
 
 def compare_json(original, current, diff, prefix=""):
@@ -74,7 +82,7 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     # Compare current_config with original_conf and store differences in diff
     compare_json(original_conf, current_config, diff)
 
-    result = transform.transform(run_times, bitcode, current_config, diff, is_mxp)
+    result = transform.transform(atomic_increment_run_times(), bitcode, current_config, diff, is_mxp)
     satisfy_thres = True
     if result == 0:  # result not satisfy threshold
         satisfy_thres = False
@@ -99,8 +107,7 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
         filename = f"{run_times}_{algorithm}_VALID.json"
     else:
         filename = f"{run_times}_{algorithm}_INVALID.json"
-    shutil.copyfile("temp_config.json", filename)
+    shutil.copyfile(f"{run_times}.json", filename)
     print(f">>> Perci-Tuner(Py): Current config saved as {filename}")
-    run_times += 1
 
     return satisfy_thres

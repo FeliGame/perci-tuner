@@ -4,6 +4,7 @@
 
 import math
 import config_utils, data_utils, transform, algorithm_utils
+import concurrent.futures  # 新增：并行处理库
 
 # the initial divide number for delta debugging change set
 INITIAL_DIV_NUM = 1
@@ -60,7 +61,7 @@ def get_unchangable_set(change_set):
 
 
 # using delta debugging algorithm to find the minimal change set
-def search_minimal_change_set(bitcode, change_set, current_config, div_num):
+def search_minimal_change_set(bitcode, change_set, current_config, div_num, threads):
     delta_change_set = []
     complement_delta_change_set = []
     # calculate the size of each part
@@ -83,33 +84,46 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
     have_better_set = False
     print(f'delta size: {len(delta_change_set)}, complement delta size: {len(complement_delta_change_set)}')
 
-    for i in range(len(delta_change_set)):
+    # 并行处理delta搜索的辅助函数
+    def process_delta(i):
         delta_change = delta_change_set[i]
         complement_delta_change = complement_delta_change_set[i]
+        local_better = False
+        local_new_change = []
+        local_min_time = algorithm_utils.min_time
 
-        # if len(delta_change) > 0:
+        # 测试delta变化集
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(delta_change)
         new_config = config_utils.rebuild(change_set, current_config)
-        if algorithm_utils.run_config(bitcode, new_config, change_set) and transform.current_run_time < algorithm_utils.min_time:
-            algorithm_utils.min_time = transform.current_run_time
-            new_change_set = delta_change
-            new_div_num = INITIAL_DIV_NUM
-            have_better_set = True
-            print('delta better')
-            algorithm_utils.update_opt(new_config)
-        
-        # if len(complement_delta_change) > 0:
+        if algorithm_utils.run_config(bitcode, new_config, change_set) and transform.current_run_time < local_min_time:
+            local_better = True
+            local_new_change = delta_change.copy()
+            local_min_time = transform.current_run_time
+
+        # 测试补集变化集
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(complement_delta_change)
         new_config = config_utils.rebuild(change_set, current_config)
-        if algorithm_utils.run_config(bitcode, new_config, change_set) and transform.current_run_time < algorithm_utils.min_time:
-            algorithm_utils.min_time = transform.current_run_time
-            new_change_set = complement_delta_change
-            new_div_num = div_num - 1  # to optimize performance
-            have_better_set = True
-            print('comp_delta better')
-            algorithm_utils.update_opt(new_config)
+        if algorithm_utils.run_config(bitcode, new_config, change_set) and transform.current_run_time < local_min_time:
+            local_better = True
+            local_new_change = complement_delta_change.copy()
+            local_min_time = transform.current_run_time
+            
+        return (local_better, local_new_change, local_min_time)
+
+    # 并行执行
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        results = list(executor.map(process_delta, range(len(delta_change_set))))
+    
+    # 处理并行结果
+    for better, new_change, min_time in results:
+        if better:
+            if not have_better_set or len(new_change) < len(new_change_set) or (len(new_change) == len(new_change_set) and min_time < algorithm_utils.min_time):
+                have_better_set = True
+                new_change_set = new_change
+                algorithm_utils.min_time = min_time
+                algorithm_utils.update_opt(config_utils.rebuild(change_set, current_config))
 
     if have_better_set:
         change_to_2nd_highest_precision(change_set)
@@ -125,14 +139,14 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num):
             return
         else:
             div_num *= 2
-    search_minimal_change_set(bitcode, change_set, current_config, div_num)
+    search_minimal_change_set(bitcode, change_set, current_config, div_num, threads)
 
-def run(bitcode, change_set):
+def run(bitcode, change_set, threads):
     new_conf= algorithm_utils.original_conf
     # searching until every search types is empty
     while not is_type_empty(change_set):
         # search which need highest precision & try to lower others' precision
-        search_minimal_change_set(bitcode, change_set, new_conf, INITIAL_DIV_NUM)
+        search_minimal_change_set(bitcode, change_set, new_conf, INITIAL_DIV_NUM, threads)
         # rebuild the new config from new change set
         new_conf = config_utils.rebuild(get_unchangable_set(change_set), new_conf)
         # remove highest precision
