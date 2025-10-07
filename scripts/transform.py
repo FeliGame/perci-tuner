@@ -13,7 +13,7 @@ import re
 
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
 PASSES = "change_variable_decl,change_function_call,ir_timing"
-# FP128_TO_DD = False
+FP128_TO_DD = False
 TIME_FILE_PATH = "ir_timing.txt"
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
@@ -69,7 +69,6 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                # record_result加在ir_timing后面防止被记入用时, remove_pragma必须在record_result之后
                "-passes=" + PASSES + ",record_result,remove_pragma",
             #    "--print-dd=" + str(FP128_TO_DD),
-            #    "--fp128-to-dd=" + str(FP128_TO_DD),
                "--variable-config=" + CURRENT_CONFIG_NAME , 
                "--function-config=" + CURRENT_CONFIG_NAME, 
                "--is-original=false", 

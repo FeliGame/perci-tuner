@@ -379,3 +379,6 @@
 
 ### 5
 * add: -jN option to accelerate dd-algorithm.
+
+### 7
+* remove: FP128ToDDFlag in ChangeVariableDecl Pass.

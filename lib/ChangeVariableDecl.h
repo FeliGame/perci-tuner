@@ -71,11 +71,6 @@ private:
 
     void removeRedundantReplacements();
 
-    std::string getDDBinOpCallName(BinaryOperator *bo);
-    template <typename T>
-    Instruction* changeToDDCall(T *I, const std::string &FunctionName, const std::vector<Value *> &Args, Type *ReturnType);
-    void handleFP128ToDD(Instruction &I);
-
     DIType* createDIType(Type* type, DIScope* scope, DIBuilder* DIB);
 
     DenseSet<StringRef> includedFunctions;
