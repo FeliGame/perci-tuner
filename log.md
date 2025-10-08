@@ -156,11 +156,11 @@
 
 ## Mar, 2025
 
-# 3
+### 3
 
 * Add Pass: MergeMultiVersion.
 
-# 4
+### 4
 
 * ChangeVariableDecl: Repair bug that const floating declarations won't be changed.
 * Add Pass: ChangeFunctionCall(Unfinished).
@@ -168,7 +168,7 @@
 * ChangeVariableDecl: only depend to config.json, exclude searched_functions.txt.
 * Accelerate Passes by using DenseSet rather than std::set.
 
-# 5
+### 5
 
 * CreateVariableDecl: Safely search static Global vars to avoid invalid operand count. Add 'isParam' key into config.json.
 * Make benchmarks runnable: FPBench, GSL. Pay attention that run GSL should add option: `-load /usr/local/lib/libgsl.so` in lli command (should install GSL).
@@ -177,7 +177,7 @@
 * ParseDITypeName supports dwarf::DW_TAG_typedef (such as gsl/root.c: const gsl_root_fsolver_type*).
 * search.py: Ignore pointer-type & non-floating-type to reduce change-set size (accelerate searching).
 
-# 6
+### 6
 
 * ChangeFunctionCall: Repair bugs.
 * Redesigned SearchFunctionCall: Iterate CallInst rather than visit recursively (Accelerate pass).
@@ -185,7 +185,7 @@
 * search.py, config_utils.py: Support change function CallInst.
 * Remove passes' options about config.json.
 
-# 7
+### 7
 
 * Accelerate search.py: Keep current run's result & time rather than IO in run_config.json.
 * Users can set the last arg in search.py to disable run_history.csv.
@@ -194,53 +194,53 @@
 * Rename passes.
 * SearchVariableDecl: Search struct members' decl.
 
-# 8
+### 8
 
 * ChangeVariableDecl: Repair crash when convert to 'long double'. Support change struct members' decl (in changeStructDeclarations(Module& module)).
 
-# 9
+### 9
 
 * ChangeVariableDecl: Support static/global struct initializers.
 * transform.py: Ignore run-time failed IR. This cause gsl/diff.c can be searched over.
 * All python scripts are 4-space indented.
 
-# 11
+### 11
 
 * Support search __fp16.
 * search.py show accelerate rate before & after search.
 
-# 14
+### 14
 
 * __fp16's arithmetic inst is casted, so cancel such support.
 * ChangeVariableDecl: Solve incorrect store inst & struct alignment while change struct member's precision, no more fail in gsl/roots.c.
 * transform.py: Record fail config into run_history.csv.
 
-# 16
+### 16
 
 * Native __fp16 arithmetic inst support. Search is also available.
 * ChangeVariableDecl: Remove repairFMulAdd(), because LLVM handle it automatically.
 
-# 17
+### 17
 
 * ChangeVariableDecl: Use new AllocaInst to change type, rather than use the old one, add repairUserType() to GEP, CallInst, PHINode (Maybe LLVM handle them automatically, I don't know).
 
-# 20
+### 20
 
 * ChangeVariableDecl: Merge repairLoadUsers() into repairUserType().
 
-# 21
+### 21
 
 * Call repairUserType() unified recursively.
 
-# 24
+### 24
 
 * ChangeVariableDecl: Decouple repairUserType().
 
-# 24
+### 24
 
 * ChangeVariableDecl: repair Alloca & StoreInst in changeStructDeclarations().
 
-# 30
+### 30
 
 * ChangeVariableDecl: Repair Alloca's users after all allocas changed. Remove redundant repairCasts() branch.
 * ChangeVaraibleDecl: CRUCIAL!!! Remove redundant BinOp, FCmpInsts. I realize it by replacing inst like a chain, and delete insts without users after all allocas & their users changed.
@@ -248,88 +248,88 @@
 
 ## Apr, 2025
 
-# 1
+### 1
 
 * CRUCIAL: Run executable rather than lli, use clang -O2 option.
 * Update benchmarks.
 
-# 3
+### 3
 
 * add: SearchByPragma Pass (need specified clang&LLVM version).
 * update: correct acc rate & INITIAL_DIV_NUM (2 -> 1), generate valid config during search.
 
-# 4
+### 4
 
 * add: Support __autofp, search-all-vars option in SearchVariableDecl.
 * remove: SearchByPragma (merged into SearchVariableDecl), excluded_functions in SearchFunctionCall.
 
-# 5
+### 5
 
 * add: exhaustive search algorithm.
 * update: cmd arg naming style of search.py.
 
-# 7
+### 7
 
 * update: Throw error if no output while search. Repair bugs of #pragma & __autofp.
 * CRUCIAL update SearchVariableDecl: Function Parameters are no more searched, which might cause inconsistent alignment during assignment.
 * add: mxpcc.sh, the driver of entire toolchain.
 
-# 10
+### 10
 
 * add: More tests, -fpe mode.
 * update: mxpcc.sh run as clang without -mode option.
 
-# 12
+### 12
 
 * update: Repair project1/cs-5.
 * CRUCIAL add: ChangeVariableDecl: Handle float-integer casts during BinOp & FCmp, which cause not consistent with changed precision in manual version.
 * CRUCIAL update: search.py: opt IR is consistent with opt config now.
 
-# 15
+### 15
 
 * add: project2 cs-1 tests.
 * update: repair crash in repairCasts, repairFCmp, repairBinOp.
 
-# 16
+### 16
 * update: rename mxpcc.sh -mode, SearchFunctionCall + SearchVariableDecl -> PrintConfig.
 * add: baseline test with same var precisions (long double, double, float, __fp16).
 
-# 18
+### 18
 * update: PrintConfig: won't print size_t and __intptr_t.
 
-# 23
+### 23
 * add: all config info will be saved into json & into run_history.csv.
 
-# 24
+### 24
 * repair bug: inconsistent struct member type while changing.
 
-# 29
+### 29
 * repair bug: baseline_test don't cover funcs, use midval instead of mean run time.
 * add: run time timeout threshold (seconds).
 
-# 30
+### 30
 * add: -shuffled option, shuffle variables' order before search.
 
 ## May, 2025
 
-# 4
+### 4
 * add: HiFPTuner search, decouple algorithms.
 
-# 6
+### 6
 * repair bug: min_time wrong result.
 
-# 8
+### 8
 * update: skip running IR not satisfy rel_err threshold.
 * BETA add: RecordResult & RemovePragma pass, which customize result var by llvm.precision.error pragma in -mxp mode.
 
-# 15
+### 15
 * BETA repair bug: mxpcc not generate json, wrong rel_err in run_history.
 * BETA: build.sh will build check_result lib.
 
-# 24
+### 24
 * add: -l option in mxpcc & search.py (link libraries).
 
-# 27
+### 27
 * update: mxpcc help info, -fpe option.
 
 ## Jun, 2025
@@ -382,3 +382,4 @@
 
 ### 7
 * remove: FP128ToDDFlag in ChangeVariableDecl Pass.
+* add: changable func args (sync with automxprec).

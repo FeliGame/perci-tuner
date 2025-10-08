@@ -64,7 +64,6 @@ void PrintConfig::findLocalVariables(Function &F) {
                     if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
                         varName = DV->getName();
                         typeName = parseDITypeName(DV->getType());
-                        if (DV->isParameter()) continue;  // 函数参数不应该被调整，会有对齐等问题
                         if (varName == "this") continue;
                         DL = DDI->getDebugLoc();
                         isStatic = false;

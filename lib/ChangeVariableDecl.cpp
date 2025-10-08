@@ -391,7 +391,7 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
         newBinOp->takeName(binOp);
         if (auto *newBinOpInst = dyn_cast<Instruction>(newBinOp)) {
             newBinOpInst->setDebugLoc(binOp->getDebugLoc());
-            updateMultiOpReplacement(binOp, newBinOpInst);
+            replaceMultiOperandInst(binOp, newBinOpInst);
         }
 
         return dyn_cast<Instruction>(newBinOp);
@@ -435,7 +435,7 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
         newFcmp->takeName(fcmp);
         if (auto *newFcmpInst = dyn_cast<Instruction>(newFcmp)) {
             newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
-            updateMultiOpReplacement(fcmp, newFcmpInst);
+            replaceMultiOperandInst(fcmp, newFcmpInst);
         }
 
         return dyn_cast<Instruction>(newFcmp);
@@ -687,6 +687,16 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                                 pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
                                 newAllocas.insert(alloca);
                             } else {
+                                if (configEntry["isParam"]) {
+                                    unsigned argIndex = 0;
+                                    for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                                        if (argIt->getName() == varName) {
+                                            errs() << "change arg: " << argIt->getName() << "'s type to " << *targetType << '\n';
+                                            funcArgNewTypeMap[&F][argIndex] = targetType;
+                                            break;
+                                        }
+                                    }
+                                }
                                 changeAllocaInst(DDI, targetType);
                             }
 
@@ -866,8 +876,78 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
     }
 }
 
-// Select available multi-operand Inst (such as BinOp, FCmpInst) and remove other replacements
-void ChangeVariableDecl::updateMultiOpReplacement(Instruction* oldInst, Instruction* newInst) {
+
+Function* ChangeVariableDecl::changeFunctionArgTypes(Function &F, DenseMap<unsigned, Type*> argNewTypeMap) {
+    if (argNewTypeMap.empty()) return &F;
+
+    FunctionType *oldFuncType = F.getFunctionType();
+    SmallVector<Type*, 8> newArgTypes;
+    for (unsigned i = 0; i < oldFuncType->getNumParams(); ++i) {
+        if (argNewTypeMap.count(i)) {
+            newArgTypes.push_back(argNewTypeMap.lookup(i));
+        } else {
+            newArgTypes.push_back(oldFuncType->getParamType(i));
+        }
+    }
+
+    FunctionType *newFuncType = FunctionType::get(
+        oldFuncType->getReturnType(),
+        newArgTypes,
+        oldFuncType->isVarArg()
+    );
+
+    // 创建一个新的函数，其类型为新的函数类型
+    Function *newFunc = Function::Create(
+        newFuncType,
+        F.getLinkage(),
+        F.getName(),
+        F.getParent()
+    );
+
+    // 复制原函数的属性到新函数
+    newFunc->copyAttributesFrom(&F);
+
+    // 把原函数的基本块转移到新函数
+    while (!F.empty()) {
+        BasicBlock *BB = &F.front();
+        BB->removeFromParent();
+        BB->insertInto(newFunc);
+    }
+
+    // 用新函数的参数替换原函数参数的所有使用
+    for (auto &oldArg : F.args()) {
+        auto &newArg = *(newFunc->arg_begin() + oldArg.getArgNo());
+        oldArg.replaceAllUsesWith(&newArg);
+    }
+
+    return newFunc;
+}
+
+void ChangeVariableDecl::updateCallersArgTypes(Function &oldFunc, Function &newFunc, DenseMap<unsigned, Type*>& argNewTypeMap) {
+    // 遍历所有调用点
+    for (User *U : oldFunc.users()) {
+        if (CallInst *call = dyn_cast<CallInst>(U)) {
+            for (const auto& argEntry : argNewTypeMap) {
+                unsigned argIndex = argEntry.first;
+                Type* targetType = argEntry.second;
+                Value *oldArg = call->getArgOperand(argIndex);
+                if (oldArg->getType() != targetType) {
+                    if (Value *castedArg = insertCast(oldArg, targetType, call)) {
+                        call->setArgOperand(argIndex, castedArg);
+                    }
+                }
+            }
+            // 替换调用的函数为新函数
+            call->setCalledFunction(&newFunc);
+        }
+    }
+
+    oldFunc.replaceAllUsesWith(&newFunc);
+    oldFunc.eraseFromParent();
+}
+
+// Replace multi-operand Inst safely (such as BinOp, FCmpInst)
+void ChangeVariableDecl::replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst) {
     if (instReplaceMap.count(oldInst))  // has other replacement, replace uses & remove before
     {
         auto *beforeInst = instReplaceMap[oldInst];
@@ -950,6 +1030,25 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         }
     }
 
+    // 遍历整个funcArgNewTypeMap，将其中的函数替换
+    DenseMap<Function*, Function*> replaceMap;
+    for (auto &funcEntry : funcArgNewTypeMap) {
+        auto *functionPtr = funcEntry.first;
+        auto &argNewTypeMap = funcEntry.second;
+        auto newFunc = changeFunctionArgTypes(*functionPtr, argNewTypeMap);
+        replaceMap[functionPtr] = newFunc;
+    }
+
+    for (auto &funcEntry : replaceMap) {
+        auto *oldFunc = funcEntry.first;
+        auto *newFunc = funcEntry.second;
+        updateCallersArgTypes(*oldFunc, *newFunc, funcArgNewTypeMap[oldFunc]);
+    }
+
+    for (auto &F : module) repairCasts(F);
+    for (auto *inst : instToErase) inst->eraseFromParent();
+    instToErase.clear();
+    
     if (verifyModule(module, &errs()))
     {
         errs() << "Module verify failed, IR as below:\n";

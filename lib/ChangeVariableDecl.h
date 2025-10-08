@@ -66,8 +66,12 @@ private:
     Type* translateValidTypeName(std::string typeName, LLVMContext& context);
 
     void changeStructDeclarations(Module &module);
+    
+    Function* changeFunctionArgTypes(Function &F, DenseMap<unsigned, Type*> argNewTypeMap);
 
-    void updateMultiOpReplacement(Instruction* oldInst, Instruction* newInst);
+    void updateCallersArgTypes(Function &oldFunc, Function &newFunc, DenseMap<unsigned, Type*>& argNewTypeMap);
+
+    void replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst);
 
     void removeRedundantReplacements();
 
@@ -82,6 +86,8 @@ private:
     DenseMap<Instruction*, Instruction*> instReplaceMap;    // MultiOperandInst replacement
 
     DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
+
+    DenseMap<Function*, DenseMap<unsigned, Type*>> funcArgNewTypeMap;
     
     nlohmann::json config;
 
