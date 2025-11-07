@@ -228,7 +228,12 @@ llvm-link $BCS -o output.bc
 
 if test $MODE_FLAG = "change-by-config"; then
     # 根据config修改源程序
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='change_function_call,change_variable_decl' --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
+    PASSES="change_function_call,change_variable_decl"
+    if $DD_FLAG; then
+        PASSES="$PASSES,fp128_to_dd"
+        LINK_LIBS="$LINK_LIBS $PERCI_TUNER/lib/dd_real/libautop.a"
+    fi
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
     clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 else

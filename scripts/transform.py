@@ -66,18 +66,11 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     command = ['opt', 
                '-load-pass-plugin', PERCI_TUNER_PATH, 
                "-S", 
-               # record_result加在ir_timing后面防止被记入用时, remove_pragma必须在record_result之后
-               "-passes=" + PASSES + ",record_result,remove_pragma",
+               "-passes=" + PASSES + 
+               (",record_result" if is_mxp else "") + ",remove_pragma" + 
+               (",fp128_to_dd" if FP128_TO_DD else ""),
             #    "--print-dd=" + str(FP128_TO_DD),
-               "--variable-config=" + CURRENT_CONFIG_NAME , 
-               "--function-config=" + CURRENT_CONFIG_NAME, 
-               "--is-original=false", 
-               bitcode_file, "-o", CURRENT_BC_NAME] if is_mxp else \
-            ['opt', 
-               '-load-pass-plugin', PERCI_TUNER_PATH, 
-               "-S", 
-               "-passes=" + PASSES + ",remove_pragma", 
-               "--variable-config=" + CURRENT_CONFIG_NAME , 
+               "--variable-config=" + CURRENT_CONFIG_NAME, 
                "--function-config=" + CURRENT_CONFIG_NAME, 
                bitcode_file, "-o", CURRENT_BC_NAME] 
                
@@ -89,7 +82,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     # generate executable
     command = ['clang', '-o', CURRENT_EXEC_NAME, CURRENT_BC_NAME] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
     if FP128_TO_DD:
-        command += ['-mllvm', '-fp128todd', '/home/guocheng2/MxPPE/MxPLib/libdd/libautop.a', '-lm']
+        command += [os.path.join(os.getenv("PERCI_TUNER"), "lib/dd_real/libautop.a"), '-lm']
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     if retval != 0:
         return -1
@@ -129,6 +122,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             RUNNING_FAIL_TIMES += 1
             if show_history:
                 data_utils.store_data(run_id, float("inf"), "TIMEOUT", diff)
+            return -2
         except subprocess.CalledProcessError as e:
             print(e.output.decode())
             print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")

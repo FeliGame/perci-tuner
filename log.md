@@ -383,3 +383,8 @@
 ### 7
 * remove: FP128ToDDFlag in ChangeVariableDecl Pass.
 * add: changable func args (sync with automxprec).
+
+## Nov, 2025
+
+### 7
+* add: independent FP128ToDD pass, which means this option no more need MxPCC compiler.

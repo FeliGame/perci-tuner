@@ -32,6 +32,7 @@ add_llvm_pass_plugin(PerciTuner
     lib/MergeMultiVersion.cpp
     lib/RecordResult.cpp
     lib/RemovePragma.cpp
+    lib/FP128ToDD.cpp
 )
 
 # Link against LLVM libraries

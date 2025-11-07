@@ -6,8 +6,6 @@ ir_timing.txt
 *.ll
 *.json
 *.o
-*.a
-*.so
 benchmarks/*.bc
 output
 temp_output

@@ -17,6 +17,7 @@
 #include "MergeMultiVersion.h"
 #include "RecordResult.h"
 #include "RemovePragma.h"
+#include "FP128ToDD.h"
 
 using namespace llvm;
 
@@ -74,6 +75,11 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 						if (Name == "remove_pragma")
 						{
 							PM.addPass(RemovePragma());
+							return true;
+						}
+						if (Name == "fp128_to_dd")
+						{
+							PM.addPass(FP128ToDD());
 							return true;
 						}
 						return false;
