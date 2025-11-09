@@ -167,7 +167,7 @@ GlobalVariable *getUnderlyingGlobalString(Value *V) {
 
 bool FP128ToDD::runOnModule(Module &M) {
   // 获取源操作数本身的lambda表达式（返回Value*）
-  auto getDoubleSrcOperand = [&](Value* operand) -> Value* {
+  auto getDoubleSrcOperand = [](Value* operand) -> Value* {
       // 处理CastInst：转换指令的源操作数是其第一个操作数（被转换的值）
       if (auto* castInst = dyn_cast<CastInst>(operand)) {
           if (castInst->getSrcTy()->isDoubleTy()) {
@@ -760,10 +760,7 @@ Constant *convertConstant(Constant *C) {
 }
 
 PreservedAnalyses FP128ToDD::run(Module &M, ModuleAnalysisManager &) {
-#ifdef DEBUG
-  // errs() << ">>> Perci-Tuner: Running FP128ToDD Pass...\n";
-#endif
-
+    errs() << ">>> Perci-Tuner: Running FP128ToDD Pass...\n";
     /* 1. 先处理全局变量初始化器 */
     for (GlobalVariable &GV : M.globals())
       if (GV.hasInitializer())

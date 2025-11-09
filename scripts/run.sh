@@ -152,7 +152,7 @@ do
         echo "  -j<threads>                 (search-optimize) Set threads count for dd-algorithm(default 1)"
         echo "  -history                    (search-optimize) Keep search history (default false)"
         echo "  -check-result               (all modes) Print relative error in exec"
-        echo "  -fp128todd                  (search-optimize) fp128 regarded as double-double"
+        echo "  -fp128todd                  (all modes) fp128 regarded as double-double"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables, will auto enable -check-result"
         echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp & -check-result"
         echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
@@ -231,10 +231,10 @@ if test $MODE_FLAG = "change-by-config"; then
     PASSES="change_function_call,change_variable_decl"
     if $DD_FLAG; then
         PASSES="$PASSES,fp128_to_dd"
-        LINK_LIBS="$LINK_LIBS $PERCI_TUNER/lib/dd_real/libautop.a"
+        DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
     fi
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
-    clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS
+    clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 else
     # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
@@ -248,9 +248,14 @@ else
         export PERCI_TUNER_ORIGINAL_RESULT="$LAST_LINE"
         echo "Set PERCI_TUNER_ORIGINAL_RESULT=$PERCI_TUNER_ORIGINAL_RESULT"
     fi
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='print_config,remove_pragma' --mxp=$MXP_FLAG output.bc -o original.bc
-    clang $CFLAGS -o output original.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
-    echo "[Original] Config: config.json, IR: original.bc, Executable: output"
+    PASSES="print_config,remove_pragma"
+    if $DD_FLAG; then
+        PASSES="$PASSES,fp128_to_dd"
+        DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
+    fi
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --mxp=$MXP_FLAG output.bc -o output.bc
+    clang $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
+    echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi
 
 if test $MODE_FLAG = "search-optimize"; then

@@ -24,6 +24,17 @@ using namespace llvm;
 cl::opt<string> FunctionConfigName("function-config", cl::value_desc("filename"), cl::desc("Function's Type Config"), cl::init("config.json"));
 
 bool ChangeFunctionCall::runOnFunction(Function &F) {
+    auto getSrcOperand = [](Value* operand) -> Value* {
+        // 处理CastInst：用转换指令的源操作数替换所有使用
+        auto* srcOp = operand;
+        if (auto* castInst = dyn_cast<CastInst>(operand)) {
+            srcOp = castInst->getOperand(0);
+            operand->replaceAllUsesWith(srcOp);
+            castInst->eraseFromParent();
+        }
+        return srcOp;
+    };
+
     bool modified = false;
     auto &Context = F.getContext();
     auto funcName = demangle(F.getName());
@@ -87,14 +98,23 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
                             false
                         );
                         
-                        // Insert cast for paras
+                        // Insert cast for paras if needed
                         IRBuilder<> Builder(call);
                         SmallVector<Value*, 2> castedArgs;
                         
                         for (auto &arg : call->args()) {
-                            castedArgs.push_back(
-                                Builder.CreateFPCast(arg, paramType, "arg_cast")
-                            );
+                            auto* srcOp = getSrcOperand(arg);
+                            auto* srcTy = srcOp->getType();
+                            if (srcTy == paramType) 
+                                castedArgs.push_back(srcOp);
+                            else if (srcTy->isIntegerTy())
+                                castedArgs.push_back(
+                                    Builder.CreateSIToFP(srcOp, paramType, "arg_cast")
+                                );
+                            else
+                                castedArgs.push_back(
+                                    Builder.CreateFPCast(srcOp, paramType, "arg_cast")
+                                );
                         }
                         
                         auto newFunc = F.getParent()->getOrInsertFunction(

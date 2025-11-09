@@ -388,3 +388,6 @@
 
 ### 7
 * add: independent FP128ToDD pass, which means this option no more need MxPCC compiler.
+
+### 8
+* update ChangeFunctionCall: prevent nesting cast of para-type.
