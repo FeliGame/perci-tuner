@@ -391,3 +391,7 @@
 
 ### 8
 * update ChangeFunctionCall: prevent nesting cast of para-type.
+
+### 10
+* add: hex-result error calc.
+* repair: search-optimize unable when -fp128todd.

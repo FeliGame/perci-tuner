@@ -4,10 +4,14 @@
 # @Author: LinLanfeng, Guocheng —— NUDT
 
 import os, csv, decimal
+from decimal import Decimal, getcontext
+
+# 高精度计算相对误差（避免内部运算误差）
+getcontext().prec = 50
 
 RUN_HISTORY = "run_history.csv"
 ORIGINAL_TIME = float('inf')  # running time of original program
-ORIGINAL_RESULT = -1.0        # running result of original program
+ORIGINAL_RESULT = ""          # running result of original program
 
 # delete run_history.csv
 def delete_data():
@@ -58,21 +62,7 @@ def store_data(run_id, time, result, changes, is_mxp=False):
 
 
 # check the current result is nearly equal to old result
-def is_nearly_equal(new_result, old_result, thres):
-    # 屏蔽错误字段（RUNTIME_ERROR或TIMEOUT等）
-    try:
-        # 使用decimal替换float来检查输入值，避免精度损失
-        decimal.getcontext().traps[decimal.Inexact] = False  # 允许不精确转换
-        decimal.getcontext().traps[decimal.InvalidOperation] = True  # 捕获无效操作
-        
-        # 将输入值转换为字符串再转为Decimal，确保精确表示
-        decimal.Decimal(str(new_result))
-        decimal.Decimal(str(old_result))
-        # 也转换阈值为Decimal类型
-        decimal_thres = decimal.Decimal(str(thres))
-    except (decimal.InvalidOperation, ValueError, TypeError):
-        return False
-    
+def is_nearly_equal(new_result, old_result, thres):    
     # 调用修改后的get_rel_err函数计算相对误差
     rel_err = get_rel_err(new_result, old_result)
     
@@ -82,10 +72,10 @@ def is_nearly_equal(new_result, old_result, thres):
     
     # 使用Decimal进行比较，确保精度
     try:
-        return decimal.Decimal(str(rel_err)) <= decimal_thres
-    except (decimal.InvalidOperation, ValueError):
-        # 如果转换失败，退回到浮点数比较
-        return rel_err <= float(thres)
+        return decimal.Decimal(str(rel_err)) <= decimal.Decimal(thres)
+    except (ValueError, TypeError):
+        # 阈值无法转换为浮点数时，视为不匹配
+        return False
 
 
 # use relative error to compare
@@ -93,40 +83,118 @@ def get_rel_err(new_result, old_result):
     if new_result == "RUNTIME-ERROR" or old_result == "RUNTIME-ERROR":
         return float('inf')
     try:
-        # 将输入转换为字符串，以便分析其精度需求
-        new_str = str(new_result)
-        old_str = str(old_result)
+        # 转换为字符串并去除首尾空格，便于格式判断
+        new_str = str(new_result).strip()
+        old_str = str(old_result).strip()
         
-        # 计算需要的精度基于输入值的最大位数
-        precision = 10  # 默认精度
+        # 判断是否为十六进制格式（支持正负号：0x或-0x开头）
+        is_hex_new = new_str.startswith(('0x', '-0x'))
+        is_hex_old = old_str.startswith(('0x', '-0x'))
         
-        if '.' in new_str:
-            # 小数点后位数 + 整数部分位数
-            new_precision = len(new_str.split('.')[0]) + len(new_str.split('.')[1])
-            precision = max(precision, new_precision)
+        if is_hex_new and is_hex_old:
+            # 两者均为十六进制，使用十六进制相对误差计算逻辑
+            old_components = parse_hex_components(old_str)
+            new_components = parse_hex_components(new_str)
+            rel_err = compute_relative_error_hex(old_components, new_components)
+            return float(rel_err)
+        elif is_hex_new or is_hex_old:
+            # 仅一方为十六进制，格式不匹配，返回无穷大误差
+            return float('inf')
         else:
-            # 整数的位数
-            precision = max(precision, len(new_str))
-        
-        if '.' in old_str:
-            old_precision = len(old_str.split('.')[0]) + len(old_str.split('.')[1])
-            precision = max(precision, old_precision)
-        else:
-            precision = max(precision, len(old_str))
-        
-        # 设置decimal上下文的精度
-        decimal.getcontext().prec = precision
-        
-        # 转换为Decimal类型
-        n = decimal.Decimal(new_str)
-        o = decimal.Decimal(old_str)
-        
-        # 计算相对误差
-        if o == 0:
-            return float(abs(n))
-        
-        relative_error = abs((n - o) / o)
-        return float(relative_error)
+            # 十进制处理逻辑（沿用原有逻辑）
+            # 计算需要的精度基于输入值的最大位数
+            precision = 10  # 默认精度
+            
+            if '.' in new_str:
+                # 小数点后位数 + 整数部分位数
+                new_precision = len(new_str.split('.')[0]) + len(new_str.split('.')[1])
+                precision = max(precision, new_precision)
+            else:
+                # 整数的位数
+                precision = max(precision, len(new_str))
+            
+            if '.' in old_str:
+                old_precision = len(old_str.split('.')[0]) + len(old_str.split('.')[1])
+                precision = max(precision, old_precision)
+            else:
+                precision = max(precision, len(old_str))
+            
+            # 转换为Decimal类型
+            n = decimal.Decimal(new_str)
+            o = decimal.Decimal(old_str)
+            
+            # 计算相对误差
+            if o == 0:
+                return float(abs(n))
+            
+            relative_error = abs((n - o) / o)
+            return float(relative_error)
     except (decimal.InvalidOperation, ValueError, TypeError):
-        # 处理无法转换为decimal的情况
+        # 处理所有解析/计算错误（包括十六进制格式错误）
         return float('inf')
+
+
+def parse_hex_components(hex_str):
+    """
+    复用核心解析逻辑：将十六进制浮点字符串拆解为原生组件
+    返回：(符号, 尾数整数, 二进制指数, 小数位数)
+    支持格式：0x1.xxxxp±n 或 -0x1.xxxxp±n
+    """
+    sign = 1
+    # 处理负号
+    if hex_str.startswith('-'):
+        sign = -1
+        hex_str = hex_str[1:]
+    # 校验前缀
+    if not hex_str.startswith('0x'):
+        raise ValueError(f"无效格式：{hex_str}，需以0x或-0x开头")
+    # 校验指数部分
+    if 'p' not in hex_str:
+        raise ValueError(f"无效格式：{hex_str}，缺少指数标记'p'（如p+5、p-3）")
+    
+    # 拆分尾数和指数
+    mantissa_part, exp_str = hex_str.split('p', 1)
+    exponent = int(exp_str)  # 二进制指数（2^exponent）
+    
+    # 拆分尾数的整数和小数部分（移除0x前缀）
+    mantissa_part = mantissa_part[2:]
+    if '.' in mantissa_part:
+        int_hex, frac_hex = mantissa_part.split('.', 1)
+        frac_digits = len(frac_hex)
+        mantissa_hex = int_hex + frac_hex  # 合并为完整十六进制尾数（整数形式）
+    else:
+        int_hex = mantissa_part
+        frac_hex = ''
+        frac_digits = 0
+        mantissa_hex = int_hex
+    
+    # 校验尾数整数部分（IEEE 754十六进制浮点整数部分必须为1）
+    if int_hex != '1':
+        raise ValueError(f"无效尾数：{int_hex}，整数部分必须为1（格式应为0x1.xxxxp±n）")
+    # 转换尾数为十进制整数
+    mantissa = int(mantissa_hex, 16) if mantissa_hex else 0
+    
+    return sign, mantissa, exponent, frac_digits
+
+
+def compute_relative_error_hex(base_components, current_components):
+    """
+    复用核心误差计算逻辑：基于原生组件运算，无十进制转换
+    相对误差公式：|(current - base) / base|
+    """
+    # 解析基础值（x）和对比值（y）的组件
+    b_sign, b_mantissa, b_exp, b_frac = base_components
+    c_sign, c_mantissa, c_exp, c_frac = current_components
+    
+    # 1. 计算符号比值（仅±1，同号为1，异号为-1）
+    sign_ratio = c_sign * b_sign
+    # 2. 计算指数差（用于2的幂次运算）
+    delta_e = (c_exp - 4 * c_frac) - (b_exp - 4 * b_frac)
+    # 3. 高精度尾数比值（十六进制整数直接转Decimal，无舍入）
+    m_ratio = Decimal(c_mantissa) / Decimal(b_mantissa)
+    # 4. 高精度指数项（2^delta_e）
+    exp_term = Decimal(2) ** delta_e
+    # 5. 计算y/x的比值
+    ratio = sign_ratio * m_ratio * exp_term
+    # 6. 相对误差 = |(y/x) - 1|
+    return abs(ratio - Decimal(1))

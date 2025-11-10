@@ -178,7 +178,7 @@ bool FP128ToDD::runOnModule(Module &M) {
       // 处理CallInst：转换函数的源操作数是其第一个参数
       else if (auto* callInst = dyn_cast<CallInst>(operand)) {
           auto* calledFunc = callInst->getCalledFunction();
-          if (calledFunc->getName().str()=="FP64ToDD") {
+          if (calledFunc && calledFunc->getName().str()=="FP64ToDD") {
               operand = callInst->getArgOperand(0);
           }
       }

@@ -249,7 +249,7 @@ else
         echo "Set PERCI_TUNER_ORIGINAL_RESULT=$PERCI_TUNER_ORIGINAL_RESULT"
     fi
     PASSES="print_config,remove_pragma"
-    if $DD_FLAG; then
+    if [ "$DD_FLAG" = "true" ] && [ "$MODE_FLAG" = "generate-config" ]; then
         PASSES="$PASSES,fp128_to_dd"
         DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
     fi

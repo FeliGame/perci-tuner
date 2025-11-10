@@ -25,7 +25,7 @@ CFLAGS = []
 
 # time & result in current run
 current_run_time = float("inf")
-current_run_result = float("inf")
+current_run_result = ""
 show_history = False
 
 
@@ -41,13 +41,16 @@ def read_main_running_time():
 
 # read runned program's output
 def read_result(text):
-    # 只匹配字符串末尾的浮点数或科学计数法，并去掉空白字符
-    pattern = r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*$"
-    match = re.search(pattern, text.strip())
+    # 匹配字符串末尾的浮点数（十进制/十六进制）、科学计数法，去掉空白字符
+    # 十六进制格式支持：±0x[0-9a-fA-F]+.[0-9a-fA-F]+p±\d+（如0x1.23p+4、-0x1.a5p-3）
+    # 十进制格式支持：±\d+.?\d+(e±\d+)?（如123.45、-6.7e+8）
+    pattern = r"([-+]?0x[0-9a-fA-F]+\.?[0-9a-fA-F]*(?:[pP][-+]?\d+)?|[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*$"
+    match = re.search(pattern, text.strip(), re.IGNORECASE)  # 忽略大小写（处理0X、P等）
     if match:
-        float_number = match.group(1)
-        return float_number
-    elif "nan" or "inf" in text:
+        return match.group(1)  # 返回原始字符串（供后续判断十六进制格式）
+    # 处理nan/inf（忽略大小写）
+    lower_text = text.strip().lower()
+    if "nan" in lower_text or "inf" in lower_text:
         return sys.maxsize
     else:
         return None
