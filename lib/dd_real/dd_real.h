@@ -1,8 +1,15 @@
 #ifndef DD_REAL_H
 #define DD_REAL_H
 #include "dd_inline.h"
+#ifndef DD_REAL
+#define DD_REAL
+typedef struct {
+  double x[2];
+} dd_real;
+#endif
 
-#define DP(s, t) //printf("In %s, %lf, %lf\n", s, t.dd.x[0], t.dd.x[1])
+
+#define DP(s, t) printf("In %s, %le, %le\n", s, t.dd.x[0], t.dd.x[1])
 //OUT
 
 dd_real dd_init(const double cx);

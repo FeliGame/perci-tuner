@@ -4,8 +4,8 @@
 #include "dd_real.h"
 #include "inline.h"
 
-#define funprefix extern
-//#define funprefix 
+//#define funprefix extern
+#define funprefix 
 
 /*********** Basic Functions ************/
 /* Computes fl(a+b) and err(a+b).  Assumes |a| >= |b|. */
@@ -766,6 +766,7 @@ funprefix inline dd_real nroot_dd_i(const dd_real a, int n) {
 /* Computes sin(a) using Taylor series.
    Assumes |a| <= pi/32.                           */
 static dd_real sin_taylor(const dd_real a) {
+	//printf("%lf %lf\n", a.x[0], a.x[1]);
 	const double thresh = 0.5 * fabs(a.x[0]) * DD_EPS;
 	dd_real r, s, t, x;
   
@@ -774,12 +775,18 @@ static dd_real sin_taylor(const dd_real a) {
 	}
   
 	int i = 0;
+	//printf("1111\n");
 	x = neg_dd(sqr_dd(a));
 	s = a;
 	r = a;
 	do { 
+		//printf("2222\n");
+		//printf("r = %lf %lf\n", r.x[0], r.x[1]);
+		//printf("x = %lf %lf\n", x.x[0], x.x[1]);
 		r = mul_dd_dd(r, x);
+		//printf("3333\n");
 		t = mul_dd_dd(r, dd_init2(inv_fact[i][0], inv_fact[i][1]));
+		//printf("4444\n");
 		s = add_dd_dd(s, t);
 		i += 2;
 	} while (i < n_inv_fact && fabs(t.x[0]) > thresh);

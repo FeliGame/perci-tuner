@@ -136,41 +136,45 @@ def get_rel_err(new_result, old_result):
 
 def parse_hex_components(hex_str):
     """
-    复用核心解析逻辑：将十六进制浮点字符串拆解为原生组件
+    适配x86_fp80（如0xe.7b51dp+2）和IEEE 754 fp128的十六进制浮点解析
     返回：(符号, 尾数整数, 二进制指数, 小数位数)
-    支持格式：0x1.xxxxp±n 或 -0x1.xxxxp±n
+    支持格式：±0x[0-f].[0-f]p±n（x86_fp80）、±0x1.[0-f]p±n（IEEE 754 fp128）
     """
     sign = 1
     # 处理负号
     if hex_str.startswith('-'):
         sign = -1
         hex_str = hex_str[1:]
-    # 校验前缀
-    if not hex_str.startswith('0x'):
+    # 校验前缀（支持0x/0X）
+    if not hex_str.lower().startswith('0x'):
         raise ValueError(f"无效格式：{hex_str}，需以0x或-0x开头")
-    # 校验指数部分
-    if 'p' not in hex_str:
+    # 移除可能的L后缀（x86_fp80长双精度标记，如0xe.7b51dp+2L）
+    hex_str = hex_str.rstrip('L').rstrip('l')
+    # 校验指数部分（必须包含p/P）
+    if 'p' not in hex_str.lower():
         raise ValueError(f"无效格式：{hex_str}，缺少指数标记'p'（如p+5、p-3）")
     
-    # 拆分尾数和指数
-    mantissa_part, exp_str = hex_str.split('p', 1)
-    exponent = int(exp_str)  # 二进制指数（2^exponent）
+    # 拆分尾数和指数（忽略p的大小写）
+    mantissa_part, exp_str = hex_str.split('p', 1) if 'p' in hex_str else hex_str.split('P', 1)
+    exponent = int(exp_str.strip())  # 二进制指数（2^exponent，x86_fp80无额外偏移）
     
     # 拆分尾数的整数和小数部分（移除0x前缀）
-    mantissa_part = mantissa_part[2:]
+    mantissa_part = mantissa_part[2:].strip()
     if '.' in mantissa_part:
         int_hex, frac_hex = mantissa_part.split('.', 1)
+        frac_hex = frac_hex.strip()
         frac_digits = len(frac_hex)
         mantissa_hex = int_hex + frac_hex  # 合并为完整十六进制尾数（整数形式）
     else:
-        int_hex = mantissa_part
+        int_hex = mantissa_part.strip()
         frac_hex = ''
         frac_digits = 0
         mantissa_hex = int_hex
     
-    # 校验尾数整数部分（IEEE 754十六进制浮点整数部分必须为1）
-    if int_hex != '1':
-        raise ValueError(f"无效尾数：{int_hex}，整数部分必须为1（格式应为0x1.xxxxp±n）")
+    # 移除「尾数整数部分必须为1」的强校验（适配x86_fp80非归一化形式）
+    # 仅校验整数部分为合法十六进制字符
+    if not int_hex or not all(c in '0123456789abcdefABCDEF' for c in int_hex):
+        raise ValueError(f"无效尾数整数部分：{int_hex}，需为十六进制字符")
     # 转换尾数为十进制整数
     mantissa = int(mantissa_hex, 16) if mantissa_hex else 0
     
