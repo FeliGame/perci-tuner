@@ -70,10 +70,6 @@ is_x86_64() {
     [ "$(uname -m)" = "x86_64" ]
 }
 
-if is_x86_64; then
-    LINK_LIBS="$LINK_LIBS -lquadmath"
-fi
-
 for arg in "$@"
 do
     # 检查参数是否包含斜杠，若包含则视为目录
@@ -210,6 +206,11 @@ if test -z "$MODE_FLAG"; then
     echo "call clang..."
     clang "$@"
     exit $?
+fi
+
+if is_x86_64 && [ "$DD_FLAG" = "true" ]; then
+    LINK_LIBS="$LINK_LIBS -lquadmath"
+    echo "Link quadmath for x86_64 double-double support"
 fi
 
 clang --version
