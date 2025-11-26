@@ -395,3 +395,6 @@
 ### 10
 * add: hex-result error calc.
 * repair: search-optimize unable when -fp128todd.
+
+### 26
+* add: support -fp128todd on x86_64.

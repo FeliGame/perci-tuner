@@ -32,7 +32,7 @@ RUN_ALGORITHM=dd
 THRESHOLD=1e-6
 REPEAT_TIMES=1
 TIMEOUT=60.0
-HISTORY_FLAG=false
+HISTORY_FLAG=true
 SHUFFLED_FLAG=false
 THREADS=1
 
@@ -65,6 +65,14 @@ get_source_files_from_dir() {
         rm /tmp/source_files.txt
     fi
 }
+
+is_x86_64() {
+    [ "$(uname -m)" = "x86_64" ]
+}
+
+if is_x86_64; then
+    LINK_LIBS="$LINK_LIBS -lquadmath"
+fi
 
 for arg in "$@"
 do
@@ -152,7 +160,7 @@ do
         echo "  -j<threads>                 (search-optimize) Set threads count for dd-algorithm(default 1)"
         echo "  -history                    (search-optimize) Keep search history (default false)"
         echo "  -check-result               (all modes) Print relative error in exec"
-        echo "  -fp128todd                  (all modes) fp128 regarded as double-double"
+        echo "  -fp128todd                  (all modes) fp128 regarded as double-double. On x86_64, must use printf("%Qa", result)!"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables, will auto enable -check-result"
         echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp & -check-result"
         echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
@@ -213,12 +221,16 @@ for src_file in $SOURCE_FILES; do
         echo "Error: File not found: $src_file"
         exit 1
     fi
+    if is_x86_64; then
+        FP128_SUPPORT="-mlong-double-128"
+        echo "Enable float128 support for x86_64"
+    fi
     if $FPE_FLAG; then
         # FPE模式预处理
-        clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" $INCLUDE_DIRS -fno-discard-value-names -o "$src_file.bc"
+        clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
     else
         # 其他模式正常处理
-        clang -g -emit-llvm -c "$src_file" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
+        clang -g -emit-llvm -c "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
     fi
     
     BCS="$BCS $src_file.bc"
@@ -231,7 +243,11 @@ if test $MODE_FLAG = "change-by-config"; then
     PASSES="change_function_call,change_variable_decl"
     if $DD_FLAG; then
         PASSES="$PASSES,fp128_to_dd"
-        DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
+        if is_x86_64; then
+            DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop-x86.a"
+        else
+            DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
+        fi
     fi
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
     clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
@@ -251,7 +267,11 @@ else
     PASSES="print_config,remove_pragma"
     if [ "$DD_FLAG" = "true" ] && [ "$MODE_FLAG" = "generate-config" ]; then
         PASSES="$PASSES,fp128_to_dd"
-        DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
+        if is_x86_64; then
+            DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop-x86.a"
+        else
+            DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
+        fi
     fi
     opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --mxp=$MXP_FLAG output.bc -o output.bc
     clang $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
