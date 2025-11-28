@@ -222,7 +222,7 @@ for src_file in $SOURCE_FILES; do
         echo "Error: File not found: $src_file"
         exit 1
     fi
-    if is_x86_64; then
+    if is_x86_64 && [ "$DD_FLAG" = "true" ]; then
         FP128_SUPPORT="-mlong-double-128"
         echo "Enable float128 support for x86_64"
     fi
