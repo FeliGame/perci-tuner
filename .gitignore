@@ -1,6 +1,7 @@
 build/
 scripts/__pycache__/
 ir_timing.txt
+.DS_Store
 *.csv
 *.bc
 *.ll

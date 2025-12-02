@@ -44,7 +44,7 @@ def store_data(run_id, time, result, changes, is_mxp=False):
     new_line= {
         "run_id": run_id,
         "acc_rate": f"{((ORIGINAL_TIME - time) / time):.6%}",
-        "cycles": f"{time:.2e}",
+        "seconds": f"{time:.4e}",
         "rel_err": result if is_mxp else f"{get_rel_err(result, ORIGINAL_RESULT):e}",
         "result": None if is_mxp else result,
         "changes": changes

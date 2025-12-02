@@ -398,3 +398,8 @@
 
 ### 26
 * add: support -fp128todd on x86_64.
+
+## Dec, 2025
+
+### 2
+* update: perf_counter to count running cycles.

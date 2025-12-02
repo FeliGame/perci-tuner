@@ -5,6 +5,7 @@
 
 import sys
 import os
+import time
 import data_utils
 import subprocess
 import config_utils
@@ -13,9 +14,8 @@ import platform
 
 
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
-PASSES = "change_variable_decl,change_function_call,ir_timing"
+PASSES = "change_variable_decl,change_function_call"
 FP128_TO_DD = False
-TIME_FILE_PATH = "ir_timing.txt"
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
 TIMEOUT_THRESHOLD = 60.0  # 超时阈值（秒）
@@ -28,16 +28,6 @@ CFLAGS = []
 current_run_time = float("inf")
 current_run_result = ""
 show_history = False
-
-
-# read the main function running time from the file 
-# printed by ir_timing pass
-def read_main_running_time():
-    with open(TIME_FILE_PATH, 'r') as file:
-        for line in file:
-            if line.startswith('main:'):
-                return int(line.split(':')[1])
-    return None
 
 
 # read runned program's output
@@ -101,7 +91,12 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     for i in range(RUNNING_TIMES):
         command = ['./' + CURRENT_EXEC_NAME]
         try:
+            # 使用perf_counter统计执行时间
+            start_time = time.perf_counter()
             output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD)
+            end_time = time.perf_counter()
+            execution_time = (end_time - start_time) * 1000000  # 转换为微秒
+            
             if not output.strip():
                 print(">>> Perci-Tuner(Py) Error: Program has no output, search failed!")
                 sys.exit(1)
@@ -135,11 +130,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                 data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff)
             return -2
         
-        current_time = read_main_running_time()
-        if current_time == None:
-            return -3
-        
-        time_list.append(current_time)
+        time_list.append(execution_time)
         
         if i == RUNNING_TIMES - 1:
             output_text = output.decode()
