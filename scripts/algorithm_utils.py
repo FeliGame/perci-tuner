@@ -107,7 +107,6 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
         filename = f"{run_times}_{algorithm}_VALID.json"
     else:
         filename = f"{run_times}_{algorithm}_INVALID.json"
-    shutil.copyfile(f"{run_times}.json", filename)
     print(f">>> Perci-Tuner(Py): Current config saved as {filename}")
 
     return satisfy_thres
