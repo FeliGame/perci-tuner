@@ -446,27 +446,42 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
 
 Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
     auto *callee = call->getCalledFunction();
-    if (callee && !callee->isVarArg()) {  // Ignore variadic args' call 
-        bool modified = false;
-        // Check if any argument type mismatch with the function parameter type
-        for (unsigned i = 0; i < callee->getFunctionType()->getNumParams(); ++i) {
-            Value *arg = call->getArgOperand(i);
-            Type *paramType = callee->getFunctionType()->getParamType(i);
+    if (!callee) return nullptr;
+    bool modified = false;
+    unsigned numFixedArgs = callee->getFunctionType()->getNumParams();
 
-            if (arg->getType() != paramType) {
-                if (auto *castValue = insertCast(arg, paramType, call)) {
-                    call->setArgOperand(i, castValue);
-                    modified = true;
-                } else {
-                    errs() << "Failed to cast argument " << i;
-                }
+    // 遍历调用的所有参数
+    for (unsigned i = 0; i < call->arg_size(); ++i) {
+        Value *arg = call->getArgOperand(i);
+        Type *targetType = nullptr;
+
+        // 情况 A: 固定参数部分 (根据函数声明确定目标类型)
+        if (i < numFixedArgs) {
+            targetType = callee->getFunctionType()->getParamType(i);
+        } 
+        // 情况 B: 变长参数部分 (执行默认参数提升规则)
+        else if (callee->isVarArg()) {
+            // 规则：float 必须提升为 double
+            if (arg->getType()->isFloatTy()) {
+                targetType = Type::getDoubleTy(call->getContext());
+            }
+            // 注意：这里也可以添加整数提升 (char/short -> int)，视需求而定
+        }
+
+        // 如果确定了目标类型，且与当前类型不符，则插入转换
+        if (targetType && arg->getType() != targetType) {
+            if (auto *castValue = insertCast(arg, targetType, call)) {
+                call->setArgOperand(i, castValue); // 替换参数
+                modified = true;
+            } else {
+                errs() << "Failed to cast argument " << i << "\n";
             }
         }
+    }
 
-        if (modified) {
-            errs() << "Repaired call instruction with cast: " << *call << "\n";
-            return call;
-        }
+    if (modified) {
+        errs() << "Repaired call instruction with cast: " << *call << "\n";
+        return call;
     }
 
     return nullptr;

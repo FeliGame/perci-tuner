@@ -403,3 +403,6 @@
 
 ### 2
 * update: perf_counter to count running cycles.
+
+### 4
+* add: variadic args cast in ChangeVariableDecl, accelarate cmake.
