@@ -462,7 +462,7 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
         // 情况 B: 变长参数部分 (执行默认参数提升规则)
         else if (callee->isVarArg()) {
             // 规则：float 必须提升为 double
-            if (arg->getType()->isFloatTy()) {
+            if (arg->getType()->isFloatTy() || arg->getType()->isHalfTy()) {
                 targetType = Type::getDoubleTy(call->getContext());
             }
             // 注意：这里也可以添加整数提升 (char/short -> int)，视需求而定
