@@ -31,7 +31,7 @@ PreservedAnalyses RemovePragma::run(Module &M, ModuleAnalysisManager &) {
             for (auto &I : BB) {
                 if (auto *CI = dyn_cast<CallInst>(&I)) {
                     if (Function *Callee = CI->getCalledFunction()) {
-                        if (Callee->getName().startswith("llvm.precision")) {
+                        if (Callee->getName().starts_with("llvm.precision")) {
                             instToErase.push_back(CI);
                         }
                     }
@@ -48,7 +48,7 @@ PreservedAnalyses RemovePragma::run(Module &M, ModuleAnalysisManager &) {
     auto &funcList = M.getFunctionList();
     auto it = funcList.begin();
     while (it != funcList.end()) {
-        if (it->getName().startswith("llvm.precision")) {
+        if (it->getName().starts_with("llvm.precision")) {
             it = funcList.erase(it);
             removedDecl = true;
         } else {

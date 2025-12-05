@@ -19,6 +19,7 @@
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APSInt.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/Config/llvm-config.h>
 
 #include <fstream>
 
@@ -196,13 +197,14 @@ Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction 
     if (val->getType() == targetType) {
         return val; 
     }
-
+#if LLVM_VERSION_MAJOR < 19
     if (auto *constantVal = dyn_cast<Constant>(val)) {
         if (targetType->isFloatingPointTy()) {
             return ConstantExpr::getFPCast(constantVal, targetType);
         }
         return nullptr;
     }
+#endif
 
     IRBuilder<> builder(insertBefore);
 
@@ -750,7 +752,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
     // Iterate all struct decls in the module
     for (auto *sty : module.getIdentifiedStructTypes()) {
         StringRef rawName = sty->getName();
-        StringRef structName = rawName.startswith("struct.") ? rawName.substr(7) : rawName;
+        StringRef structName = rawName.starts_with("struct.") ? rawName.substr(7) : rawName;
         if (structInfos.contains(structName.str())) {
             auto members = structInfos[structName.str()];
             SmallVector<Type*, 4> newElements;

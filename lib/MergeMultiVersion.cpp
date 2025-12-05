@@ -85,7 +85,7 @@ bool MergeMultiVersion::runOnModule(Module &module)
     for (auto &F : module)
     {
         // Skip cloned function itself
-        if (F.isDeclaration() || F.getName() == "mvselect" || F.getName().startswith(MultiVersionFunction))
+        if (F.isDeclaration() || F.getName() == "mvselect" || F.getName().starts_with(MultiVersionFunction))
         {
             continue;
         }

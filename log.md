@@ -406,3 +406,6 @@
 
 ### 4
 * add: variadic args cast in ChangeVariableDecl, accelarate cmake.
+
+### 5
+* add: compatible for LLVM 19.
