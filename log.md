@@ -412,3 +412,4 @@
 
 ### 10
 * repair transform.py: run changeFunc pass before changeVar pass.
+* CRUCIAL repair ChangeVariableDecl: inst-replace during BinOp & FCmp.

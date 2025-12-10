@@ -958,16 +958,14 @@ void ChangeVariableDecl::updateCallersArgTypes(Function &oldFunc, Function &newF
 // Replace multi-operand Inst safely (such as BinOp, FCmpInst)
 void ChangeVariableDecl::replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst) {
     if (instReplaceMap.count(oldInst))  // has other replacement, replace uses & remove before
-    {
         auto *beforeInst = instReplaceMap[oldInst];
         beforeInst->replaceAllUsesWith(newInst);
         instToErase.insert(beforeInst);
-        instReplaceMap.erase(beforeInst);
     } else {  // no replacement, just replace uses
         oldInst->replaceAllUsesWith(newInst);
-        instReplaceMap[oldInst] = dyn_cast<Instruction>(newInst);
         instToErase.insert(oldInst);
     }
+    instReplaceMap[oldInst] = newInst;
 }
 
 // Remove insts without users, they are from MultiOperandInsts (BinOp, FCmpInst)
