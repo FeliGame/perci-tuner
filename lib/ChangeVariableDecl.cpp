@@ -65,6 +65,7 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newT
     instToErase.insert(alloca);
     alloca->replaceAllUsesWith(newAlloca);
 
+    errs() << "[change alloca] " << *alloca << "->" << *newAlloca << '\n';
     // 更新调试信息
     auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable());
     if (!DV) {
@@ -160,7 +161,7 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
             // Handle llvm.memcpy calls(it generated while alloc array size)
             if (auto *callee = call->getCalledFunction()) {
                 if (callee->getName() == "llvm.memcpy.p0.p0.i64") {
-                    errs() << "Changing llvm.memcpy call: " << *call << "\n";
+                    errs() << "[repair memcpy] " << *call << "->";
 
                     auto *dest = call->getArgOperand(0);
                     auto *src = call->getArgOperand(1);
@@ -181,11 +182,10 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
 
                     // Replace the old call with the new one
                     call->replaceAllUsesWith(newCall);
+                    errs() << *newCall << '\n';
                     instToErase.insert(call);    // erase later to avoid broken iterator
                     for (auto *user : newCall->users())
                         repairUserType(user);
-
-                    errs() << "New llvm.memcpy call: " << *newCall << "\n";
                 }
             }
         }
@@ -209,20 +209,19 @@ Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction 
     IRBuilder<> builder(insertBefore);
 
     if (val->getType()->isFloatingPointTy() && targetType->isFloatingPointTy()) {
-        errs() << "Insert FP cast: " << *val->getType() << "->" << *targetType << "\n";
+        errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
         return builder.CreateFPCast(val, targetType, "fp_cast");
     }
     if (val->getType()->isIntegerTy() && targetType->isFloatingPointTy()) {
-        errs() << "Insert IntToFP cast: " << *val->getType() << "->" << *targetType << "\n";
+        errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
         return builder.CreateSIToFP(val, targetType, "int_to_fp");
     }
     if (val->getType()->isFloatingPointTy() && targetType->isIntegerTy()) {
-        errs() << "Insert FPToInt cast: " << *val->getType() << "->" << *targetType << "\n";
+        errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
         return builder.CreateFPToSI(val, targetType, "fp_to_int");
     }
     
-    errs() << "InsertCast(): Unsupported non-floating point type cast: " 
-           << *val->getType() << " -> " << *targetType << "\n";
+    errs() << "[unsupported cast] " << *val->getType() << "->" << *targetType << "\n";
     return nullptr;
 }
 
@@ -336,10 +335,11 @@ Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store) {
     auto *ptrOperand = store->getPointerOperand();
     if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
         auto *storeType = allocaInst->getAllocatedType();
-        errs() << "New store type: " << *storeType << "\n";
         if (oldValue->getType() != storeType) {
+            errs() << "[repair store] " << *store << "->";
             if (auto *castValue = insertCast(oldValue, storeType, store)) {
                 store->setOperand(0, castValue);
+                errs() << *store << '\n';
                 return dyn_cast<Instruction>(store);
             }
         }
@@ -350,7 +350,7 @@ Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store) {
 Instruction* ChangeVariableDecl::repairUnaryOp(UnaryOperator* unaOp) {
     auto *operand = unaOp->getOperand(0);
     if (operand->getType() != unaOp->getType()) {
-        errs() << "RepairUser: Unary operand type mismatch\n";
+        errs() << "[insert cast for unary op] " << *unaOp << '\n';
         if (auto *newOperand = insertCast(operand, unaOp->getType(), unaOp)) {
             unaOp->setOperand(0, newOperand);
             return dyn_cast<Instruction>(unaOp);
@@ -373,8 +373,6 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
         }
         // type of src operands not match
         if (operand->getType() != highestType) {
-            errs() << "RepairUser: Binary operand " << i << " of type " << *operand->getType() 
-                   << " != target type " << *highestType<< ", casting...\n";
             if (auto *newOperand = insertCast(operand, highestType, binOp)) {
                 newOperands.push_back(newOperand);
                 operandsModified = true;
@@ -385,7 +383,6 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
     }
 
     if (operandsModified || binOp->getType() != highestType) {
-        errs() << "RepairUser: binOp type mismatch\n";            
         IRBuilder<> builder(binOp);
         auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
                                              newOperands[0], 
@@ -395,6 +392,7 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
             newBinOpInst->setDebugLoc(binOp->getDebugLoc());
             replaceMultiOperandInst(binOp, newBinOpInst);
         }
+        errs() << "[repair binop] " << *binOp << "->" << *newBinOp << '\n';
 
         return dyn_cast<Instruction>(newBinOp);
     }
@@ -415,8 +413,6 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
             operandsModified = true;
         }
         if (operand->getType() != highestType) {
-            errs() << "RepairUser: FCmp operand " << i << " of type " << *operand->getType() 
-                << " != target type " << *highestType << ", casting...\n";
             if (auto *newOperand = insertCast(operand, highestType, fcmp)) {
                 newOperands.push_back(newOperand);
                 operandsModified = true;
@@ -429,7 +425,6 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
     }
 
     if (operandsModified || fcmp->getType() != Type::getInt1Ty(fcmp->getContext())) {
-        errs() << "RepairUser: FCmp type mismatch\n";
         IRBuilder<> builder(fcmp);
         auto *newFcmp = builder.CreateFCmp(fcmp->getPredicate(), 
                                             newOperands[0], 
@@ -439,6 +434,7 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
             newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
             replaceMultiOperandInst(fcmp, newFcmpInst);
         }
+        errs() << "[repair FCmp] " << *fcmp << "->" << *newFcmp << '\n';
 
         return dyn_cast<Instruction>(newFcmp);
     }
@@ -451,7 +447,7 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
     if (!callee) return nullptr;
     bool modified = false;
     unsigned numFixedArgs = callee->getFunctionType()->getNumParams();
-
+    errs() << "[repair call] " << *call << "->";
     // 遍历调用的所有参数
     for (unsigned i = 0; i < call->arg_size(); ++i) {
         Value *arg = call->getArgOperand(i);
@@ -476,16 +472,16 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
                 call->setArgOperand(i, castValue); // 替换参数
                 modified = true;
             } else {
-                errs() << "Failed to cast argument " << i << "\n";
+                errs() << "[repair call] Failed to cast arg" << i << " to type " << *targetType << '\n';
             }
         }
     }
 
     if (modified) {
-        errs() << "Repaired call instruction with cast: " << *call << "\n";
+        errs() << *call << '\n';
         return call;
     }
-
+    errs() << '\n';
     return nullptr;
 }
 
@@ -510,8 +506,6 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
             auto *newVal = oldVal;
             // pay attention: insertCast shouldn't at 'phi', will cause 'Instruction does not dominate all uses!'
             if (oldVal->getType() != highestType) {
-                errs() << "RepairUser: PHI operand " << i << " of type " << *oldVal->getType()
-                    << "!= target type " << *highestType << ", casting...\n";
                 auto *incomingBlock = phi->getIncomingBlock(i);
                 auto *insertBefore = incomingBlock->getTerminator();
                 newVal = insertCast(oldVal, highestType, insertBefore);
@@ -521,6 +515,7 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
         }
         phi->replaceAllUsesWith(newPhi);
         instToErase.insert(phi);
+        errs() << "[repair phi] " << *phi << "->" << *newPhi << '\n';
         return dyn_cast<Instruction>(newPhi);
     }
 
@@ -530,18 +525,18 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
 // Make inst operands type consistent
 void ChangeVariableDecl::repairUserType(User *user) {
     if (!isa<Instruction>(user)) {
-        errs() << "RepairUser: User is not an inst.\n";
+        errs() << "[skipping unuser]\n";
         return;
     }
 
     auto *inst = cast<Instruction>(user);
     Instruction *newInst = nullptr;
     if (isa<FPExtInst>(inst) || isa<FPTruncInst>(inst)) {
-        errs() << "RepairUser: skip cast inst: " << *inst << "\n";
+        errs() << "[skipping check cast] " << *inst << '\n';
         return;
     }
 
-    errs() << "RepairUser: " << *inst << "\n";
+    errs() << "[checking user] " << *inst << "\n";
 
     if (auto ret = dyn_cast<ReturnInst>(inst))
         newInst = repairReturnInst(ret);
@@ -576,13 +571,13 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
         for (auto &I : BB) {
             if (auto *castInst = dyn_cast<CastInst>(&I)) {
                 if (castInst->use_empty()) {
-                    errs() << "Remove unused cast: " << *castInst << "\n";
+                    errs() << "[remove unused cast] " << *castInst << '\n';
                     instToErase.insert(castInst);
                     continue;
                 }
 
                 if (castInst->getSrcTy() == castInst->getDestTy()) {
-                    errs() << "Remove redundant cast: " << *castInst << "\n";
+                    errs() << "[remove redundant cast] " << *castInst << '\n';
                     castInst->replaceAllUsesWith(castInst->getOperand(0));
                     instToErase.insert(castInst);
                     continue;
@@ -691,13 +686,11 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     for (auto &configEntry : functionConfig) {
                         if (configEntry["name"] == varName && configEntry["line"] == std::to_string(lineNo)) {
                             auto typeName = configEntry["type"].get<string>();
-
-                            if (typeName == parseDITypeName(DV->getType())) continue;
+                            auto srcTypeName = parseDITypeName(DV->getType());
+                            if (typeName == srcTypeName) continue;
                             auto *targetType = translateValidTypeName(typeName, context);
 
                             if (targetType == nullptr) continue;
-
-                            errs() << F.getName() << ": " << varName.str() << " at line " << lineNo << typeName << '\n';
                             
                             if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
                                 auto *alloca = dyn_cast<AllocaInst>(DDI->getAddress());
@@ -708,7 +701,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                                     unsigned argIndex = 0;
                                     for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
                                         if (argIt->getName() == varName) {
-                                            errs() << "change arg: " << argIt->getName() << "'s type to " << *targetType << '\n';
+                                            errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
                                             funcArgNewTypeMap[&F][argIndex] = targetType;
                                             break;
                                         }
@@ -729,7 +722,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
         repairAllocaUsers(newAlloca);
     newAllocas.clear();
 
-    removeRedundantReplacements();
+    removeUnusedReplacements();
 
     for (auto *inst : instToErase) {
         inst->eraseFromParent();
@@ -766,7 +759,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                 auto *targetType = translateValidTypeName(typeStr, context);
 
                 if (targetType && targetType != newType) {
-                    errs() << "Change struct member type: " << *newType << " -> " << *targetType << "\n";
+                    errs() << "[change struct member] " << structName << " member " << i << ": " << *newType << "->" << *targetType << '\n';
                     newType = targetType;
                     needsUpdate = true;
                 }
@@ -782,7 +775,6 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                     if (!global.hasInitializer()) continue;
                     if (auto init = dyn_cast<ConstantStruct>(global.getInitializer())) {
                         if (init->getType() == sty) {
-                            errs() << "Repair global/static struct initializers: " << *init << " -> " << *sty << "\n";
                             SmallVector<Constant*, 4> newElements;
                             for (unsigned i = 0; i < init->getNumOperands(); i++) {
                                 auto *targetType = sty->getElementType(i);
@@ -979,11 +971,11 @@ void ChangeVariableDecl::replaceMultiOperandInst(Instruction* oldInst, Instructi
 }
 
 // Remove insts without users, they are from MultiOperandInsts (BinOp, FCmpInst)
-void ChangeVariableDecl::removeRedundantReplacements() {
+void ChangeVariableDecl::removeUnusedReplacements() {
     for (auto &pair : instReplaceMap) {
         auto *candidate = pair.second;
         if (candidate->use_empty()) {
-            errs() << "Remove redundant inst: " << *candidate << "\n";
+            errs() << "[remove unused inst in multi-op] " << *candidate << '\n';
             instToErase.insert(candidate);
         }
     }

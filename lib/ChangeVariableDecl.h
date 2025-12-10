@@ -73,7 +73,7 @@ private:
 
     void replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst);
 
-    void removeRedundantReplacements();
+    void removeUnusedReplacements();
 
     DIType* createDIType(Type* type, DIScope* scope, DIBuilder* DIB);
 
