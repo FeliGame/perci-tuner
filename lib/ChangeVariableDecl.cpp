@@ -457,13 +457,19 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
         if (i < numFixedArgs) {
             targetType = callee->getFunctionType()->getParamType(i);
         } 
-        // 情况 B: 变长参数部分 (执行默认参数提升规则)
+        // 情况 B: 变长参数部分 (根据原始类型恢复)
         else if (callee->isVarArg()) {
-            // 规则：float 必须提升为 double
-            if (arg->getType()->isFloatTy() || arg->getType()->isHalfTy()) {
-                targetType = Type::getDoubleTy(call->getContext());
+            auto it = varargCallOriginalTypes.find(call);
+            if (it != varargCallOriginalTypes.end()) {
+                // 使用原始IR中的类型作为目标类型
+                targetType = it->second[i];
+            } else {
+                // 规则：float 必须提升为 double
+                if (arg->getType()->isFloatTy() || arg->getType()->isHalfTy()) {
+                    targetType = Type::getDoubleTy(call->getContext());
+                }
+                // 注意：这里也可以添加整数提升 (char/short -> int)，视需求而定
             }
-            // 注意：这里也可以添加整数提升 (char/short -> int)，视需求而定
         }
 
         // 如果确定了目标类型，且与当前类型不符，则插入转换
@@ -1028,12 +1034,31 @@ DIType* ChangeVariableDecl::createDIType(Type* type, DIScope* scope, DIBuilder* 
 
 bool ChangeVariableDecl::runOnModule(Module &module) {
     parseConfig();
+
+    // 记录所有可变参数调用的原始参数类型
+    for(auto &f : module) {
+        for(auto &bb : f) {
+            for(auto &i : bb) {
+                if(auto *call = dyn_cast<CallInst>(&i)) {
+                    unsigned numFixedArgs = call->getCalledFunction()->getFunctionType()->getNumParams();
+                    // 跳过固定参数调用
+                    if(numFixedArgs == call->arg_size()) continue;
+                    // 否则，记录所有参数类型
+                    for (unsigned i = 0; i < call->arg_size(); ++i) {
+                        varargCallOriginalTypes[call].push_back(call->getArgOperand(i)->getType());
+                        errs() << "[record vararg call's original type] " << i << ' ' << *call << '\n';
+                    }
+                }
+            }
+        }
+    }
+
     DIB = new DIBuilder(module);
     changeStructDeclarations(module);
-    for(auto f = module.begin(), fe = module.end(); f != fe; f++) {
-        string name = f->getName().str();
-        if(!f->isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
-            runOnFunction(*f);
+    for(auto &f : module) {
+        string name = f.getName().str();
+        if(!f.isDeclaration() && includedFunctions.find(name) != includedFunctions.end()) {
+            runOnFunction(f);
         }
     }
 

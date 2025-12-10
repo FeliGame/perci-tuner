@@ -88,6 +88,8 @@ private:
     DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
 
     DenseMap<Function*, DenseMap<unsigned, Type*>> funcArgNewTypeMap;
+
+    DenseMap<CallInst*, std::vector<Type*>> varargCallOriginalTypes;  // printf等可变参数
     
     nlohmann::json config;
 
