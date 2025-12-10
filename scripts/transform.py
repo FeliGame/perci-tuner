@@ -62,7 +62,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                "-S", 
                "-passes=" + PASSES + 
                (",record_result" if is_mxp else "") + ",remove_pragma" + 
-               (",fp128_to_dd" if FP128_TO_DD else ""),
+               (",fp128_to_dd" if (run_id > 1 and FP128_TO_DD) else ""),
             #    "--print-dd=" + str(FP128_TO_DD),
                "--variable-config=" + CURRENT_CONFIG_NAME, 
                "--function-config=" + CURRENT_CONFIG_NAME, 
@@ -75,7 +75,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     
     # generate executable
     command = ['clang', '-o', CURRENT_EXEC_NAME, CURRENT_BC_NAME] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
-    if FP128_TO_DD:
+    if run_id > 1 and FP128_TO_DD:
         command += [os.path.join(os.getenv("PERCI_TUNER"), "lib/dd_real/libautop-x86.a" if platform.machine() == "x86_64" else "lib/dd_real/libautop.a"), '-lm']
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     if retval != 0:
@@ -95,7 +95,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             start_time = time.perf_counter()
             output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD)
             end_time = time.perf_counter()
-            execution_time = (end_time - start_time) * 1000000  # 转换为微秒
+            execution_time = end_time - start_time
             
             if not output.strip():
                 print(">>> Perci-Tuner(Py) Error: Program has no output, search failed!")

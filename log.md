@@ -414,3 +414,4 @@
 * repair transform.py: run changeFunc pass before changeVar pass.
 * CRUCIAL repair ChangeVariableDecl: inst-replace during BinOp & FCmp.
 * repair ChangeVariableDecl: keep original args' type in var arg calls such as printf.
+* repair transform.py: run original config without fp128todd pass.
