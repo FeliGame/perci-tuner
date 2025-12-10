@@ -409,3 +409,6 @@
 
 ### 5
 * add: compatible for LLVM 19.
+
+### 10
+* repair transform.py: run changeFunc pass before changeVar pass.

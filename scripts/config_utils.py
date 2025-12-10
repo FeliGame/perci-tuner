@@ -191,6 +191,9 @@ def parse_config(config, shuffled=False):
                     base_name,
                     base_name + 'l'
                 ][:max_level+1]  # Important slice!
+                # 过滤掉f结尾的单精度函数版本（高置信场景）
+                # precision_versions = [v for v in precision_versions if not v.endswith('f')]
+                
                 change_entry['fcall_index'] = i
                 change_entry['caller'] = caller
                 change_entry['search_types'] = precision_versions

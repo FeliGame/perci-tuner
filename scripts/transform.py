@@ -14,7 +14,7 @@ import platform
 
 
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
-PASSES = "change_variable_decl,change_function_call"
+PASSES = "change_function_call,change_variable_decl"
 FP128_TO_DD = False
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
