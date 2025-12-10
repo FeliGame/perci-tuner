@@ -12,7 +12,7 @@ if [ ! -d "build" ]; then
     mkdir build
 fi
 cd build
-cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
+cmake ..
 make -j$(nproc)
 cd $PERCI_TUNER
 
