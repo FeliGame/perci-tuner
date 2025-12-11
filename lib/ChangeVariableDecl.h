@@ -55,9 +55,13 @@ private:
 
     Instruction* repairPHINode(PHINode *phi);
 
+    Instruction* repairGEPInst(GetElementPtrInst* gep, Type* baseType);
+
+    Instruction* repairBitCastInst(BitCastInst* bitCast);
+
     void repairAllocaUsers(AllocaInst* alloca);
 
-    void repairUserType(User *user);
+    void repairUserType(User *user, Type* baseType=nullptr);
 
     void repairCasts(Function &F);
 

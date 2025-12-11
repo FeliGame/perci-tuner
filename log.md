@@ -415,3 +415,7 @@
 * CRUCIAL repair ChangeVariableDecl: inst-replace during BinOp & FCmp.
 * repair ChangeVariableDecl: keep original args' type in var arg calls such as printf.
 * repair transform.py: run original config without fp128todd pass.
+
+### 11
+* add: repairBitCast(), repairGEP().
+* repair ChangeVariableDecl: optimize multi-op inst such as BinOp, FCmp, FMulAdd.

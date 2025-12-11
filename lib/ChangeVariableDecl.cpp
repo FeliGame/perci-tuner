@@ -229,6 +229,8 @@ Type* ChangeVariableDecl::findHighestPrecisionType(BinaryOperator *binOp) {
     Type *highestType = nullptr;
     for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
         auto *operand = binOp->getOperand(i);
+        // 浮点常数不锁定类型
+        if (isa<Constant>(operand) && operand->getType()->isFloatingPointTy()) continue;
         auto *operandType = operand->getType();
         // if op is CastInst, use SrcType
         if (auto *castInst = dyn_cast<CastInst>(operand)) {
@@ -256,6 +258,8 @@ Type* ChangeVariableDecl::findHighestPrecisionType(FCmpInst *fcmp) {
     Type *highestType = nullptr;
     for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
         auto *operand = fcmp->getOperand(i);
+        // 浮点常数不锁定类型
+        if (isa<Constant>(operand) && operand->getType()->isFloatingPointTy()) continue;
         auto *operandType = operand->getType();
         // if op is CastInst, use SrcType
         if (auto *castInst = dyn_cast<CastInst>(operand)) {
@@ -528,8 +532,82 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
     return nullptr;
 }
 
+Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* baseType) {
+    if (!baseType || gep->getSourceElementType() == baseType) {
+        return nullptr; // 类型一致，无需替换
+    }
+
+    // 提取 GEP 指令的索引
+    SmallVector<Value*, 4> indices;
+    for (auto& index : gep->indices()) {
+        indices.push_back(index.get());
+    }
+
+    // 创建新的 GEP 指令，使用传入的 baseType 作为基础类型
+    auto* newGEP = GetElementPtrInst::CreateInBounds(
+        baseType,
+        gep->getPointerOperand(),
+        indices,
+        gep->getName(),
+        gep
+    );
+
+    // 用新的 GEP 指令替换旧的 GEP 指令
+    gep->replaceAllUsesWith(newGEP);
+    instToErase.insert(gep);
+    errs() << "[repair GEP] " << *gep << "->" << *newGEP << '\n';
+
+    return newGEP;
+}
+
+Instruction* ChangeVariableDecl::repairBitCastInst(BitCastInst* bitCast) {
+    Value* srcValue = bitCast->getOperand(0);
+    Type* srcType = srcValue->getType();
+    Type* destType = bitCast->getDestTy();
+
+    // 仅处理源类型为浮点类型的情况
+    if (!srcType->isFloatingPointTy()) {
+        return nullptr;
+    }
+
+    // 确定与目标类型位宽相同的浮点类型
+    LLVMContext& context = bitCast->getContext();
+    Type* targetFloatType;
+    unsigned destBitWidth = destType->getPrimitiveSizeInBits();
+    switch (destBitWidth) {
+        case 16:
+            targetFloatType = Type::getHalfTy(context);
+            break;
+        case 32:
+            targetFloatType = Type::getFloatTy(context);
+            break;
+        case 64:
+            targetFloatType = Type::getDoubleTy(context);
+            break;
+        case 128:
+            targetFloatType = Type::getFP128Ty(context);
+            break;
+        default:
+            errs() << "Unsupported bit width for floating point extension: " << destBitWidth << "\n";
+            return nullptr;
+    }
+
+    Value* newSrcValue = insertCast(srcValue, targetFloatType, bitCast);
+    if (!newSrcValue) {
+        errs() << "Failed to cast source value in BitCastInst: " << *bitCast << "\n";
+        return nullptr;
+    }
+
+    BitCastInst* newBitCast = new BitCastInst(newSrcValue, destType, bitCast->getName(), bitCast);
+    bitCast->replaceAllUsesWith(newBitCast);
+    instToErase.insert(bitCast);
+    errs() << "[repair bitcast] " << *bitCast << "->" << *newBitCast << '\n';
+
+    return newBitCast;
+}
+
 // Make inst operands type consistent
-void ChangeVariableDecl::repairUserType(User *user) {
+void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
     if (!isa<Instruction>(user)) {
         errs() << "[skipping unuser]\n";
         return;
@@ -560,6 +638,8 @@ void ChangeVariableDecl::repairUserType(User *user) {
         newInst = repairCallInst(call);
     else if (auto *phi = dyn_cast<PHINode>(inst))
         newInst = repairPHINode(phi);
+    else if (auto *gep = dyn_cast<GetElementPtrInst>(inst))
+        newInst = repairGEPInst(gep, baseType);
 
     if (newInst) {
         for (auto *user : newInst->users()) {
@@ -579,17 +659,13 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
                 if (castInst->use_empty()) {
                     errs() << "[remove unused cast] " << *castInst << '\n';
                     instToErase.insert(castInst);
-                    continue;
                 }
-
-                if (castInst->getSrcTy() == castInst->getDestTy()) {
+                else if (castInst->getSrcTy() == castInst->getDestTy()) {
                     errs() << "[remove redundant cast] " << *castInst << '\n';
                     castInst->replaceAllUsesWith(castInst->getOperand(0));
                     instToErase.insert(castInst);
-                    continue;
                 }
-
-                if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
+                else if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
                     auto *srcType = castInst->getSrcTy();
                     auto *destType = castInst->getDestTy();
                     
@@ -600,7 +676,6 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
                         auto *newCast = builder.CreateFPTrunc(castInst->getOperand(0), destType);
                         castInst->replaceAllUsesWith(newCast);
                         instToErase.insert(castInst);
-                        continue;
                     }
                     // 如果目标类型精度高于源类型，且当前是FPTrunc，则改为FPExt
                     else if (destType->getPrimitiveSizeInBits() > srcType->getPrimitiveSizeInBits() && 
@@ -609,7 +684,144 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
                         auto *newCast = builder.CreateFPExt(castInst->getOperand(0), destType);
                         castInst->replaceAllUsesWith(newCast);
                         instToErase.insert(castInst);
-                        continue;
+                    }
+                }
+
+                else if (auto *bitCast = dyn_cast<BitCastInst>(&I)) {
+                    repairBitCastInst(bitCast);
+                }
+            }
+            // 若还有多操作指令没有成功修复，取消注释吃醋
+            // else if (auto *binOp = dyn_cast<BinaryOperator>(&I)) {
+            //     auto *highestType = findHighestPrecisionType(binOp);
+            //     if (binOp->getType() != highestType) {
+            //         IRBuilder<> builder(binOp);
+            //         auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
+            //                                             binOp->getOperand(0), 
+            //                                             binOp->getOperand(1));
+            //         newBinOp->takeName(binOp);
+            //         if (auto *newBinOpInst = dyn_cast<Instruction>(newBinOp)) {
+            //             newBinOpInst->setDebugLoc(binOp->getDebugLoc());
+            //             replaceMultiOperandInst(binOp, newBinOpInst);
+            //         }
+            //         errs() << "[repair binop] " << *binOp << "->" << *newBinOp << '\n';
+            //     }
+            // }
+            // else if (auto *fcmp = dyn_cast<FCmpInst>(&I)) {
+            //     if (fcmp->getType() != Type::getInt1Ty(fcmp->getContext())) {
+            //         IRBuilder<> builder(fcmp);
+            //         auto *newFcmp = builder.CreateFCmp(fcmp->getPredicate(), 
+            //                                             fcmp->getOperand(0), 
+            //                                             fcmp->getOperand(1));
+            //         newFcmp->takeName(fcmp);
+            //         if (auto *newFcmpInst = dyn_cast<Instruction>(newFcmp)) {
+            //             newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
+            //             replaceMultiOperandInst(fcmp, newFcmpInst);
+            //         }
+            //         errs() << "[repair FCmp] " << *fcmp << "->" << *newFcmp << '\n';
+            //     }
+            // }
+            else if (auto *call = dyn_cast<CallInst>(&I)) {
+                if (auto *callee = call->getCalledFunction()) {
+                    if (callee->getName().startswith("llvm.fmuladd")) {
+                        // 检查三个操作数，统计从更低精度 cast 过来的数量
+                        unsigned lowPrecisionCastCount = 0;
+                        SmallVector<Value*, 3> originalOperands;
+                        SmallVector<Value*, 3> lowPrecisionOperands;
+
+                        for (unsigned i = 0; i < 3; ++i) {
+                            Value* operand = call->getArgOperand(i);
+                            originalOperands.push_back(operand);
+
+                            auto checkCastSrcOp = [&lowPrecisionCastCount](Value* val, Value*& original, bool needOp) {
+                                if (auto castInst = dyn_cast<CastInst>(val)) {
+                                    if (castInst->getOpcode() == Instruction::FPExt) {
+                                        lowPrecisionCastCount++;
+                                        if(needOp) original = castInst->getOperand(0);
+                                    }
+                                }
+                            };
+
+                            Value* originalPrecisionOperand = operand;
+                            bool needOp = true;  // 是否需要获取原始操作数
+                            // 尝试找到单操作数的源 Cast 操作的原始操作数类型
+                            if (auto unaOp = dyn_cast<UnaryOperator>(operand)) {
+                                operand = unaOp->getOperand(0);
+                                needOp = false;
+                            }
+                            checkCastSrcOp(operand, originalPrecisionOperand, needOp);
+                            lowPrecisionOperands.push_back(originalPrecisionOperand);
+                        }
+
+                        if (lowPrecisionCastCount == 3) {  // TODO: 通用版本全部3个都是低精度，才降，防止精度损失
+                            // 获取原始低精度类型，假设从 FPExt 源类型获取
+                            Type* lowPrecisionType = nullptr;
+                            for (Value* operand : originalOperands) {
+                                if (auto castInst = dyn_cast<CastInst>(operand)) {
+                                    if (castInst->getOpcode() == Instruction::FPExt) {
+                                        lowPrecisionType = castInst->getSrcTy();
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (lowPrecisionType) {
+                                // 构建低精度版本的函数名
+                                std::string newFuncName;
+                                if (lowPrecisionType->isDoubleTy()) {
+                                    newFuncName = "llvm.fmuladd.f64";
+                                } else if (lowPrecisionType->isFloatTy()) {
+                                    newFuncName = "llvm.fmuladd.f32";
+                                } else if (lowPrecisionType->isHalfTy()) {
+                                    newFuncName = "llvm.fmuladd.f16";
+                                } else {
+                                    // 不支持的类型，跳过
+                                    return;
+                                }
+
+                                // 获取低精度版本的函数
+                                Function* newFunc = call->getModule()->getFunction(newFuncName);
+                                if (!newFunc) {
+                                    // 若函数不存在则创建
+                                    FunctionType* newFuncType = FunctionType::get(
+                                        lowPrecisionType, 
+                                        {lowPrecisionType, lowPrecisionType, lowPrecisionType}, 
+                                        false
+                                    );
+                                    newFunc = Function::Create(
+                                        newFuncType, 
+                                        GlobalValue::ExternalLinkage, 
+                                        newFuncName, 
+                                        call->getModule()
+                                    );
+                                }
+
+                                // 确保所有操作数为低精度类型
+                                for (unsigned i = 0; i < 3; ++i) {
+                                    Value* operand = lowPrecisionOperands[i];
+                                    if (operand->getType() != lowPrecisionType) {
+                                        // 调用 insertCast 转换操作数类型
+                                        if (Value* castedOperand = insertCast(operand, lowPrecisionType, call)) {
+                                            lowPrecisionOperands[i] = castedOperand;
+                                        } else {
+                                            errs() << "Failed to cast operand " << i << " to low precision type in llvm.fmuladd call.\n";
+                                            return;
+                                        }
+                                    }
+                                }
+
+                                // 创建新的 call 指令
+                                CallInst* newCall = CallInst::Create(newFunc, lowPrecisionOperands, "", call);
+                                newCall->setDebugLoc(call->getDebugLoc());
+                                call->replaceAllUsesWith(newCall);
+                                instToErase.insert(call);
+                                errs() << "[repair fmuladd] " << *call << "->" << *newCall << '\n';
+
+                                for (auto* user : newCall->users()) {
+                                    repairUserType(user);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -729,13 +941,6 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
     newAllocas.clear();
 
     removeUnusedReplacements();
-
-    for (auto *inst : instToErase) {
-        inst->eraseFromParent();
-    }
-    instToErase.clear();
-
-    repairCasts(F);
 
     for (auto *inst : instToErase) {
         inst->eraseFromParent();
