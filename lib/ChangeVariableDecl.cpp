@@ -449,6 +449,98 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
 Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
     auto *callee = call->getCalledFunction();
     if (!callee) return nullptr;
+    
+    // 处理llvm.fmuladd函数调用
+    if (callee->getName().startswith("llvm.fmuladd")) {
+        // 获取当前fmuladd指令的类型
+        Type* currentType = call->getType();
+        Type* highestType = nullptr;
+        SmallVector<Value*, 3> operandSources;
+
+        // 分析每个操作数的原始类型
+        for (unsigned i = 0; i < 3; ++i) {
+            Value* operand = call->getArgOperand(i);
+            Value* sourceOperand = operand;
+            Type* sourceType = operand->getType();
+            
+            // 检查是否为Cast指令，获取原始类型
+            if (auto castInst = dyn_cast<CastInst>(operand)) {
+                sourceType = castInst->getSrcTy();
+                sourceOperand = castInst->getOperand(0);
+            }
+            
+            operandSources.push_back(sourceOperand);
+            
+            // 更新最高精度类型
+            if (sourceType->isFloatingPointTy()) {
+                if (!highestType || sourceType->getPrimitiveSizeInBits() > highestType->getPrimitiveSizeInBits()) {
+                    highestType = sourceType;
+                }
+            }
+        }
+
+        // 如果找到最高精度类型且与当前类型不同，则修改fmuladd指令
+        if (highestType && highestType != currentType) {
+            // 构建新的函数名
+            std::string newFuncName = "llvm.fmuladd.";
+            if (highestType->isHalfTy()) {
+                newFuncName += "f16";
+            } else if (highestType->isFloatTy()) {
+                newFuncName += "f32";
+            } else if (highestType->isDoubleTy()) {
+                newFuncName += "f64";
+            } else if (highestType->isFP128Ty()) {
+                newFuncName += "f128";
+            } else {
+                // 不支持的类型，跳过
+                return nullptr;
+            }
+
+            // 获取或创建新的函数
+            Function* newFunc = call->getModule()->getFunction(newFuncName);
+            if (!newFunc) {
+                FunctionType* newFuncType = FunctionType::get(
+                    highestType, 
+                    {highestType, highestType, highestType}, 
+                    false
+                );
+                newFunc = Function::Create(
+                    newFuncType, 
+                    GlobalValue::ExternalLinkage, 
+                    newFuncName, 
+                    call->getModule()
+                );
+            }
+
+            // 确保所有操作数都是最高精度类型
+            SmallVector<Value*, 3> castedOperands;
+            for (unsigned i = 0; i < 3; ++i) {
+                Value* source = operandSources[i];
+                if (source->getType() != highestType) {
+                    if (Value* casted = insertCast(source, highestType, call)) {
+                        castedOperands.push_back(casted);
+                    } else {
+                        // 转换失败，跳过
+                        return nullptr;
+                    }
+                } else {
+                    castedOperands.push_back(source);
+                }
+            }
+
+            // 创建新的call指令
+            CallInst* newCall = CallInst::Create(newFunc, castedOperands, "", call);
+            newCall->setDebugLoc(call->getDebugLoc());
+            call->replaceAllUsesWith(newCall);
+            instToErase.insert(call);
+            errs() << "[repair fmuladd] " << *call << "->" << *newCall << '\n';
+
+            return newCall;
+        }
+        return nullptr;
+    }
+    
+    // 处理其他函数调用
     bool modified = false;
     unsigned numFixedArgs = callee->getFunctionType()->getNumParams();
     errs() << "[repair call] " << *call << "->";
@@ -656,16 +748,60 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
     for (auto &BB : F) {
         for (auto &I : BB) {
             if (auto *castInst = dyn_cast<CastInst>(&I)) {
+                // 1. 首先处理未使用的cast
                 if (castInst->use_empty()) {
                     errs() << "[remove unused cast] " << *castInst << '\n';
                     instToErase.insert(castInst);
+                    continue;
                 }
-                else if (castInst->getSrcTy() == castInst->getDestTy()) {
+                
+                // 2. 处理相同类型的冗余cast
+                if (castInst->getSrcTy() == castInst->getDestTy()) {
                     errs() << "[remove redundant cast] " << *castInst << '\n';
                     castInst->replaceAllUsesWith(castInst->getOperand(0));
                     instToErase.insert(castInst);
+                    continue;
                 }
-                else if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
+                
+                // 3. 处理连续cast调用链
+                bool hasContinuousCast = false;
+                Value *current = castInst->getOperand(0);
+                std::vector<CastInst*> castChain;
+                
+                // 跟踪cast链，找到最初的源操作数，同时记录链中的所有cast指令
+                while (auto *chainCast = dyn_cast<CastInst>(current)) {
+                    castChain.push_back(chainCast);
+                    current = chainCast->getOperand(0);
+                    hasContinuousCast = true;
+                }
+                
+                if (hasContinuousCast) {
+                    // 使用insertCast函数创建从最初源操作数到最终目标类型的单个cast指令
+                    if (Value *newCast = insertCast(current, castInst->getDestTy(), castInst)) {
+                        // 如果创建了新的cast指令且与原指令不同，则替换原指令的所有使用
+                        if (newCast != castInst) {
+                            castInst->replaceAllUsesWith(newCast);
+                            
+                            // 将原cast指令和链中的所有cast指令添加到删除列表
+                            instToErase.insert(castInst);
+                            for (auto *chainCast : castChain) {
+                                // 只删除那些只有当前cast链使用的中间cast指令
+                                if (chainCast->use_empty() || std::all_of(chainCast->user_begin(), chainCast->user_end(),
+                                    [&](User *U) {
+                                        return dyn_cast<CastInst>(U) && (U == castInst || std::find(castChain.begin(), castChain.end(), U) != castChain.end());
+                                    })) {
+                                    instToErase.insert(chainCast);
+                                }
+                            }
+                            
+                            errs() << "[replace cast chain] " << *castInst << "->" << *newCast << '\n';
+                            continue;
+                        }
+                    }
+                }
+                
+                // 4. 修复错误的fpext/fptrunc指令
+                if (isa<FPExtInst>(castInst) || isa<FPTruncInst>(castInst)) {
                     auto *srcType = castInst->getSrcTy();
                     auto *destType = castInst->getDestTy();
                     
@@ -685,144 +821,13 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
                         castInst->replaceAllUsesWith(newCast);
                         instToErase.insert(castInst);
                     }
+                    continue;
                 }
 
-                else if (auto *bitCast = dyn_cast<BitCastInst>(&I)) {
+                // 5. 处理BitCast指令
+                if (auto *bitCast = dyn_cast<BitCastInst>(&I)) {
                     repairBitCastInst(bitCast);
-                }
-            }
-            // 若还有多操作指令没有成功修复，取消注释吃醋
-            // else if (auto *binOp = dyn_cast<BinaryOperator>(&I)) {
-            //     auto *highestType = findHighestPrecisionType(binOp);
-            //     if (binOp->getType() != highestType) {
-            //         IRBuilder<> builder(binOp);
-            //         auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
-            //                                             binOp->getOperand(0), 
-            //                                             binOp->getOperand(1));
-            //         newBinOp->takeName(binOp);
-            //         if (auto *newBinOpInst = dyn_cast<Instruction>(newBinOp)) {
-            //             newBinOpInst->setDebugLoc(binOp->getDebugLoc());
-            //             replaceMultiOperandInst(binOp, newBinOpInst);
-            //         }
-            //         errs() << "[repair binop] " << *binOp << "->" << *newBinOp << '\n';
-            //     }
-            // }
-            // else if (auto *fcmp = dyn_cast<FCmpInst>(&I)) {
-            //     if (fcmp->getType() != Type::getInt1Ty(fcmp->getContext())) {
-            //         IRBuilder<> builder(fcmp);
-            //         auto *newFcmp = builder.CreateFCmp(fcmp->getPredicate(), 
-            //                                             fcmp->getOperand(0), 
-            //                                             fcmp->getOperand(1));
-            //         newFcmp->takeName(fcmp);
-            //         if (auto *newFcmpInst = dyn_cast<Instruction>(newFcmp)) {
-            //             newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
-            //             replaceMultiOperandInst(fcmp, newFcmpInst);
-            //         }
-            //         errs() << "[repair FCmp] " << *fcmp << "->" << *newFcmp << '\n';
-            //     }
-            // }
-            else if (auto *call = dyn_cast<CallInst>(&I)) {
-                if (auto *callee = call->getCalledFunction()) {
-                    if (callee->getName().startswith("llvm.fmuladd")) {
-                        // 检查三个操作数，统计从更低精度 cast 过来的数量
-                        unsigned lowPrecisionCastCount = 0;
-                        SmallVector<Value*, 3> originalOperands;
-                        SmallVector<Value*, 3> lowPrecisionOperands;
-
-                        for (unsigned i = 0; i < 3; ++i) {
-                            Value* operand = call->getArgOperand(i);
-                            originalOperands.push_back(operand);
-
-                            auto checkCastSrcOp = [&lowPrecisionCastCount](Value* val, Value*& original, bool needOp) {
-                                if (auto castInst = dyn_cast<CastInst>(val)) {
-                                    if (castInst->getOpcode() == Instruction::FPExt) {
-                                        lowPrecisionCastCount++;
-                                        if(needOp) original = castInst->getOperand(0);
-                                    }
-                                }
-                            };
-
-                            Value* originalPrecisionOperand = operand;
-                            bool needOp = true;  // 是否需要获取原始操作数
-                            // 尝试找到单操作数的源 Cast 操作的原始操作数类型
-                            if (auto unaOp = dyn_cast<UnaryOperator>(operand)) {
-                                operand = unaOp->getOperand(0);
-                                needOp = false;
-                            }
-                            checkCastSrcOp(operand, originalPrecisionOperand, needOp);
-                            lowPrecisionOperands.push_back(originalPrecisionOperand);
-                        }
-
-                        if (lowPrecisionCastCount == 3) {  // TODO: 通用版本全部3个都是低精度，才降，防止精度损失
-                            // 获取原始低精度类型，假设从 FPExt 源类型获取
-                            Type* lowPrecisionType = nullptr;
-                            for (Value* operand : originalOperands) {
-                                if (auto castInst = dyn_cast<CastInst>(operand)) {
-                                    if (castInst->getOpcode() == Instruction::FPExt) {
-                                        lowPrecisionType = castInst->getSrcTy();
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (lowPrecisionType) {
-                                // 构建低精度版本的函数名
-                                std::string newFuncName;
-                                if (lowPrecisionType->isDoubleTy()) {
-                                    newFuncName = "llvm.fmuladd.f64";
-                                } else if (lowPrecisionType->isFloatTy()) {
-                                    newFuncName = "llvm.fmuladd.f32";
-                                } else if (lowPrecisionType->isHalfTy()) {
-                                    newFuncName = "llvm.fmuladd.f16";
-                                } else {
-                                    // 不支持的类型，跳过
-                                    return;
-                                }
-
-                                // 获取低精度版本的函数
-                                Function* newFunc = call->getModule()->getFunction(newFuncName);
-                                if (!newFunc) {
-                                    // 若函数不存在则创建
-                                    FunctionType* newFuncType = FunctionType::get(
-                                        lowPrecisionType, 
-                                        {lowPrecisionType, lowPrecisionType, lowPrecisionType}, 
-                                        false
-                                    );
-                                    newFunc = Function::Create(
-                                        newFuncType, 
-                                        GlobalValue::ExternalLinkage, 
-                                        newFuncName, 
-                                        call->getModule()
-                                    );
-                                }
-
-                                // 确保所有操作数为低精度类型
-                                for (unsigned i = 0; i < 3; ++i) {
-                                    Value* operand = lowPrecisionOperands[i];
-                                    if (operand->getType() != lowPrecisionType) {
-                                        // 调用 insertCast 转换操作数类型
-                                        if (Value* castedOperand = insertCast(operand, lowPrecisionType, call)) {
-                                            lowPrecisionOperands[i] = castedOperand;
-                                        } else {
-                                            errs() << "Failed to cast operand " << i << " to low precision type in llvm.fmuladd call.\n";
-                                            return;
-                                        }
-                                    }
-                                }
-
-                                // 创建新的 call 指令
-                                CallInst* newCall = CallInst::Create(newFunc, lowPrecisionOperands, "", call);
-                                newCall->setDebugLoc(call->getDebugLoc());
-                                call->replaceAllUsesWith(newCall);
-                                instToErase.insert(call);
-                                errs() << "[repair fmuladd] " << *call << "->" << *newCall << '\n';
-
-                                for (auto* user : newCall->users()) {
-                                    repairUserType(user);
-                                }
-                            }
-                        }
-                    }
+                    continue;
                 }
             }
         }

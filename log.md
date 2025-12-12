@@ -419,3 +419,6 @@
 ### 11
 * add: repairBitCast(), repairGEP().
 * repair ChangeVariableDecl: optimize multi-op inst such as BinOp, FCmp, FMulAdd.
+
+### 12
+* repair ChangeVariableDecl: repair continuous casts.
