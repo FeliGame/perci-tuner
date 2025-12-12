@@ -5,9 +5,6 @@ Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features 
 
 # User Manual
 
-To keep result accurate, src code must have a single 
-`printf("%Lf", (long double)result);` or `printf("%La", (long double)result);`
-
 First things first, install LLVM (recommended version: 17.0.6) build `-DCMAKE_BUILD_TYPE=Release` option, or Perci-Tuner might crash.
 
 ```sh

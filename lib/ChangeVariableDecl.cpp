@@ -479,8 +479,21 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             }
         }
 
-        // 如果找到最高精度类型且与当前类型不同，则修改fmuladd指令
-        if (highestType && highestType != currentType) {
+        // 检查操作数是否需要转换（无论当前类型是否与最高精度类型相同）
+        bool needsRepair = highestType != currentType;
+        SmallVector<Value*, 3> castedOperands;
+        
+        // 先准备操作数，检查是否需要转换
+        for (unsigned i = 0; i < 3; ++i) {
+            Value* source = operandSources[i];
+            if (source->getType() != highestType) {
+                needsRepair = true;
+                break;
+            }
+        }
+        
+        // 如果需要修复（最高精度类型与当前类型不同，或操作数类型不一致）
+        if (needsRepair) {
             // 构建新的函数名
             std::string newFuncName = "llvm.fmuladd.";
             if (highestType->isHalfTy()) {
@@ -513,7 +526,6 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             }
 
             // 确保所有操作数都是最高精度类型
-            SmallVector<Value*, 3> castedOperands;
             for (unsigned i = 0; i < 3; ++i) {
                 Value* source = operandSources[i];
                 if (source->getType() != highestType) {
@@ -531,8 +543,8 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             // 创建新的call指令
             CallInst* newCall = CallInst::Create(newFunc, castedOperands, "", call);
             newCall->setDebugLoc(call->getDebugLoc());
-            call->replaceAllUsesWith(newCall);
-            instToErase.insert(call);
+            newCall->takeName(call);
+            replaceMultiOperandInst(call, newCall);
             errs() << "[repair fmuladd] " << *call << "->" << *newCall << '\n';
 
             return newCall;
@@ -765,17 +777,34 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
                 
                 // 3. 处理连续cast调用链
                 bool hasContinuousCast = false;
+                bool hasIrreversibleCast = false;
                 Value *current = castInst->getOperand(0);
                 std::vector<CastInst*> castChain;
                 
                 // 跟踪cast链，找到最初的源操作数，同时记录链中的所有cast指令
                 while (auto *chainCast = dyn_cast<CastInst>(current)) {
+                    // 非浮点间转换不可作为简化链的一部分
+                    switch (chainCast->getOpcode()) {
+                        case CastInst::FPToSI:
+                        case CastInst::FPToUI:
+                        case CastInst::SIToFP:
+                        case CastInst::UIToFP:
+                        case CastInst::Trunc:
+                        case CastInst::ZExt:
+                        case CastInst::SExt:
+                        case CastInst::IntToPtr:
+                        case CastInst::PtrToInt:
+                            hasIrreversibleCast = true;
+                            break;
+                        default:
+                            break;
+                    }
                     castChain.push_back(chainCast);
                     current = chainCast->getOperand(0);
                     hasContinuousCast = true;
                 }
                 
-                if (hasContinuousCast) {
+                if (hasContinuousCast && !hasIrreversibleCast) {
                     // 使用insertCast函数创建从最初源操作数到最终目标类型的单个cast指令
                     if (Value *newCast = insertCast(current, castInst->getDestTy(), castInst)) {
                         // 如果创建了新的cast指令且与原指令不同，则替换原指令的所有使用
