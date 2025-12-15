@@ -422,3 +422,6 @@
 
 ### 12
 * repair ChangeVariableDecl: repair continuous casts.
+
+### 15
+* update FP128ToDD: implement fmuladd mix-precision.

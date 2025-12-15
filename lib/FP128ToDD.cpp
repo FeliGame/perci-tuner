@@ -265,13 +265,30 @@ bool FP128ToDD::runOnModule(Module &M) {
                 // errs() << "This call (" << I << ") need to deal." << "\n";
 #endif
                 std::string funName = "fp128_muladd";
+                std::string suffix = "";
+                Value* originalOps[3];
                 for (unsigned i = 0; i < FCall->getNumOperands(); ++i) {
-                  if (FCall->getOperand(i)->getType()->isFP128Ty()) {
-                    funName += "2";
-                  } else if (FCall->getOperand(i)->getType()->isDoubleTy()) {
-                    funName += "1";
+                  auto *originalOp = getDoubleSrcOperand(FCall->getOperand(i));
+                  originalOps[i] = originalOp;
+                  if (originalOp->getType()->isFP128Ty()) {
+                    suffix += "2";
+                  } else if (originalOp->getType()->isDoubleTy()) {
+                    suffix += "1";
                   }
                 }
+                // 三个源操作数都是double，则不需要转换，跳过
+                if (suffix == "111") break;
+                // 否则用转换前源操作数替换当前操作数
+                for (unsigned i = 0; i < FCall->getNumOperands(); ++i) {
+                  if (suffix[i] == '1') {
+                    auto* castFromDoubleTy = dyn_cast<Instruction>(FCall->getOperand(i));
+                    if (castFromDoubleTy) {
+                      castFromDoubleTy->replaceAllUsesWith(originalOps[i]);
+                      castFromDoubleTy->eraseFromParent();
+                    }
+                  }
+                }
+                funName += suffix;
                 CF3(FCall, funName);
               } else if (Callee->getName() == "acosl") {
                 CF1(FCall, "fp128_acos");
