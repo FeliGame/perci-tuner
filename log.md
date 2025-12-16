@@ -425,3 +425,6 @@
 
 ### 15
 * update FP128ToDD: implement fmuladd mix-precision.
+
+### 16
+* repair ChangeVariableDecl: repair fmuladd.f80 cast.

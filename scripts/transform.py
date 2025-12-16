@@ -79,7 +79,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         command += [os.path.join(os.getenv("PERCI_TUNER"), "lib/dd_real/libautop-x86.a" if platform.machine() == "x86_64" else "lib/dd_real/libautop.a"), '-lm']
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     if retval != 0:
-        return -1
+        return -2
 
     os.chmod(CURRENT_EXEC_NAME, 0o755)  # 添加读、写、执行权限
 

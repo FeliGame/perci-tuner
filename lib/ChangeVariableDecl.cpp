@@ -502,6 +502,8 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
                 newFuncName += "f32";
             } else if (highestType->isDoubleTy()) {
                 newFuncName += "f64";
+            } else if (highestType->isX86_FP80Ty()) {
+                newFuncName += "f80";
             } else if (highestType->isFP128Ty()) {
                 newFuncName += "f128";
             } else {

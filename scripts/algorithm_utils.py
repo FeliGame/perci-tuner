@@ -34,6 +34,7 @@ def update_opt(opt_config):
     shutil.copyfile(f"{run_times}.bc", OPT_PREFIX + bitcode_name)
     shutil.copyfile(f"{run_times}", OPT_PREFIX + 'output')
     config_utils.print_config(opt_config, OPT_PREFIX + "config.json")
+    os.chmod(OPT_PREFIX + "output", 0o755)
 
 def compare_json(original, current, diff, prefix=""):
     """
@@ -104,9 +105,8 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     filename = ""
     if data_utils.ORIGINAL_RESULT == -1: return True
     if satisfy_thres:
-        filename = f"{run_times}_{algorithm}_VALID.json"
+        print(f">>> Perci-Tuner(Py): VALID config: {filename}")
     else:
-        filename = f"{run_times}_{algorithm}_INVALID.json"
-    print(f">>> Perci-Tuner(Py): Current config saved as {filename}")
+        print(f">>> Perci-Tuner(Py): INVALID config: {filename}")
 
     return satisfy_thres
