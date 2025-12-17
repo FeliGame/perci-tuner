@@ -153,8 +153,8 @@ void PrintConfig::findLocalVariables(Function &F) {
                 nlohmann::json localVar;
                 localVar["name"] = varName;
                 localVar["type"] = typeName;
-                localVar["line"] = std::to_string(lineNo);
-                localVar["column"] = std::to_string(colNo);
+                localVar["line"] = lineNo;
+                localVar["column"] = colNo;
                 localVar["file"] = file->getFilename().str();
                 localVar["isStatic"] = isStatic;
                 localVar["isParam"] = isParam;

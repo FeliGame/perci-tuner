@@ -102,11 +102,10 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
         sys.exit(1)
 
     # save all configs into json
-    filename = ""
     if data_utils.ORIGINAL_RESULT == -1: return True
     if satisfy_thres:
-        print(f">>> Perci-Tuner(Py): VALID config: {filename}")
+        print(f">>> Perci-Tuner(Py): VALID config{run_times}")
     else:
-        print(f">>> Perci-Tuner(Py): INVALID config: {filename}")
+        print(f">>> Perci-Tuner(Py): INVALID config{run_times}")
 
     return satisfy_thres

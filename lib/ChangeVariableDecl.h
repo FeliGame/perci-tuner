@@ -97,6 +97,8 @@ private:
     
     nlohmann::json config;
 
+    std::map<std::string, nlohmann::json> configMap;  // 存储config的map形式，key为file:line:column的拼接字符串
+
     DIBuilder *DIB;
 };
 

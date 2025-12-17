@@ -36,12 +36,21 @@ void ChangeVariableDecl::parseConfig() {
         exit(1);
     }
 
-    std::string configContent((std::istreambuf_iterator<char>(configFile)), std::istreambuf_iterator<char>());
-    configFile.close();
+    configFile >> config;
+    config = config["local"];
     
-    config = nlohmann::json::parse(configContent);
-    for (auto &entry : config["local"].items()) {
-        includedFunctions.insert(entry.key());
+    for (auto &funcEntry : config.items())
+        includedFunctions.insert(funcEntry.key());
+    for (auto &funcEntry : config) {
+        // 处理每个函数的变量配置
+        for (auto &varEntry : funcEntry) {
+            std::string file = varEntry["file"];
+            int line = varEntry["line"];
+            int column = varEntry["column"];
+            
+            std::string key = file + ":" + std::to_string(line) + ":" + std::to_string(column);
+            configMap[key] = varEntry;
+        }
     }
 }
 
@@ -936,39 +945,34 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     auto varName = DV->getName();
                     auto fileName = DV->getFile()->getFilename().str();
                     auto loc = DDI->getDebugLoc();
+                    std::string key = fileName + ":" + std::to_string(loc.getLine()) + ":" + std::to_string(loc.getCol());
+                    
+                    auto it = configMap.find(key);
+                    if (it == configMap.end()) continue;
+                    auto &configEntry = it->second;
+                    auto typeName = configEntry["type"].get<string>();
+                    auto srcTypeName = parseDITypeName(DV->getType());
+                    if (typeName == srcTypeName) continue;
+                    auto *targetType = translateValidTypeName(typeName, context);
 
-                    // TODO: Iterate each var to match, can be more efficient
-                    for (auto &configEntry : functionConfig) {
-                        if (configEntry["file"] == fileName &&
-                            configEntry["line"] == std::to_string(loc.getLine()) && 
-                            configEntry["column"] == std::to_string(loc.getCol())) {
-                            auto typeName = configEntry["type"].get<string>();
-                            auto srcTypeName = parseDITypeName(DV->getType());
-                            if (typeName == srcTypeName) continue;
-                            auto *targetType = translateValidTypeName(typeName, context);
-
-                            if (targetType == nullptr) continue;
-                            
-                            if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
-                                auto *alloca = dyn_cast<AllocaInst>(DDI->getAddress());
-                                pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
-                                newAllocas.insert(alloca);
-                            } else {
-                                if (configEntry["isParam"]) {
-                                    unsigned argIndex = 0;
-                                    for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
-                                        if (argIt->getName() == varName) {
-                                            errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
-                                            funcArgNewTypeMap[&F][argIndex] = targetType;
-                                            break;
-                                        }
-                                    }
+                    if (targetType == nullptr) continue;
+                    
+                    if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
+                        auto *alloca = dyn_cast<AllocaInst>(DDI->getAddress());
+                        pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
+                        newAllocas.insert(alloca);
+                    } else {
+                        if (configEntry["isParam"]) {
+                            unsigned argIndex = 0;
+                            for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                                if (argIt->getName() == varName) {
+                                    errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
+                                    funcArgNewTypeMap[&F][argIndex] = targetType;
+                                    break;
                                 }
-                                changeAllocaInst(DDI, targetType);
                             }
-
-                            break;  // found & changed
                         }
+                        changeAllocaInst(DDI, targetType);
                     }
                 }
             }
