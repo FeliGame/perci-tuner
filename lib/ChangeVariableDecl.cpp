@@ -934,11 +934,14 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
             if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
                 if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
                     auto varName = DV->getName();
-                    auto lineNo = DDI->getDebugLoc().getLine();
+                    auto fileName = DV->getFile()->getFilename().str();
+                    auto loc = DDI->getDebugLoc();
 
                     // TODO: Iterate each var to match, can be more efficient
                     for (auto &configEntry : functionConfig) {
-                        if (configEntry["name"] == varName && configEntry["line"] == std::to_string(lineNo)) {
+                        if (configEntry["file"] == fileName &&
+                            configEntry["line"] == std::to_string(loc.getLine()) && 
+                            configEntry["column"] == std::to_string(loc.getCol())) {
                             auto typeName = configEntry["type"].get<string>();
                             auto srcTypeName = parseDITypeName(DV->getType());
                             if (typeName == srcTypeName) continue;

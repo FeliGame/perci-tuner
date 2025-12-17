@@ -146,6 +146,7 @@ void PrintConfig::findLocalVariables(Function &F) {
             // Save to config
             if (varName != "" && typeName != "") {
                 unsigned lineNo = DL.getLine();
+                unsigned colNo = DL.getCol();
                 auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
                 auto *file = localScope->getNonLexicalBlockFileScope()->getFile();
 
@@ -153,6 +154,7 @@ void PrintConfig::findLocalVariables(Function &F) {
                 localVar["name"] = varName;
                 localVar["type"] = typeName;
                 localVar["line"] = std::to_string(lineNo);
+                localVar["column"] = std::to_string(colNo);
                 localVar["file"] = file->getFilename().str();
                 localVar["isStatic"] = isStatic;
                 localVar["isParam"] = isParam;

@@ -55,8 +55,8 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
 
                 for (auto &entry : funcInfo) {
                     if (entry["file"] == loc->getFilename().str() &&
-                        entry["line"] == loc.getLine() &&
-                        entry["column"] == loc.getCol()) {
+                        entry["line"] == std::to_string(loc.getLine()) &&
+                        entry["column"] == std::to_string(loc.getCol())) {
                         string targetCallee = entry["type"].get<string>();
                         // If target is same as original or non-math, skip
                         if (targetCallee == oldCallee || !mathFunctions.contains(targetCallee)) continue;

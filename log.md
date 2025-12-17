@@ -428,3 +428,6 @@
 
 ### 16
 * repair ChangeVariableDecl: repair fmuladd.f80 cast.
+
+### 17
+* repair config IO: recognize var in config by file+line+column, rather than line+name (mayconflict).
