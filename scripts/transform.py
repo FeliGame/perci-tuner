@@ -13,6 +13,7 @@ import re
 import platform
 
 
+COMPILER = 'clang'
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
 PASSES = "change_function_call,change_variable_decl"
 FP128_TO_DD = False
@@ -74,7 +75,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         return -1
     
     # generate executable
-    command = ['clang', '-o', CURRENT_EXEC_NAME, CURRENT_BC_NAME] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
+    command = [COMPILER, '-o', CURRENT_EXEC_NAME, CURRENT_BC_NAME] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
     if run_id > 1 and FP128_TO_DD:
         command += [os.path.join(os.getenv("PERCI_TUNER"), "lib/dd_real/libautop-x86.a" if platform.machine() == "x86_64" else "lib/dd_real/libautop.a"), '-lm']
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()

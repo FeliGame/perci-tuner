@@ -7,7 +7,7 @@ import config_utils, data_utils, transform, algorithm_utils
 import concurrent.futures  # 新增：并行处理库
 
 # the initial divide number for delta debugging change set
-INITIAL_DIV_NUM = 1
+INITIAL_DIV_NUM = 2
 
 # is every search types empty
 def is_type_empty(change_set):
@@ -45,7 +45,7 @@ def remove_unchangable(change_set):
     new_change_set = []
     for c in change_set:
         t = c["search_types"]
-        if t != [] and c["type"] != t[-1]:
+        if len(t) > 2 and c["type"] != t[-1]:  # 一次搜索迭代至少要有两层精度
             new_change_set.append(c)
     return new_change_set
 
@@ -61,7 +61,7 @@ def get_unchangable_set(change_set):
 
 
 # using delta debugging algorithm to find the minimal change set
-def search_minimal_change_set(bitcode, change_set, current_config, div_num, threads):
+def search_minimal_change_set(bitcode, change_set, div_num, threads):
     delta_change_set = []
     complement_delta_change_set = []
     # calculate the size of each part
@@ -95,7 +95,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num, thre
         # 测试delta变化集
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(delta_change)
-        new_config = config_utils.rebuild(change_set, current_config)
+        new_config = config_utils.rebuild(change_set)
         if algorithm_utils.run_config(bitcode, new_config, change_set) and transform.current_run_time < local_min_time:
             local_better = True
             local_new_change = delta_change.copy()
@@ -104,7 +104,7 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num, thre
         # 测试补集变化集
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(complement_delta_change)
-        new_config = config_utils.rebuild(change_set, current_config)
+        new_config = config_utils.rebuild(change_set)
         if algorithm_utils.run_config(bitcode, new_config, change_set) and transform.current_run_time < local_min_time:
             local_better = True
             local_new_change = complement_delta_change.copy()
@@ -123,34 +123,31 @@ def search_minimal_change_set(bitcode, change_set, current_config, div_num, thre
                 have_better_set = True
                 new_change_set = new_change
                 algorithm_utils.min_time = min_time
-                algorithm_utils.update_opt(config_utils.rebuild(change_set, current_config))
+                algorithm_utils.update_opt(config_utils.rebuild(change_set))
 
     if have_better_set:
+        # 还原最佳配置
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(new_change_set)
-        new_config = config_utils.rebuild(change_set, current_config)
+        config_utils.CURRENT_CONFIG = config_utils.rebuild(change_set)
         div_num = new_div_num
         change_set = new_change_set
         if len(change_set) <= 1: return
+        search_minimal_change_set(bitcode, change_set, div_num, threads)
     else:
         print("none better in current iteration")
-        if div_num >= len(change_set):
-            change_to_highest_precision(change_set)  # to be removed in 'remove_unchangable'
-            return
-        else:
+        change_to_highest_precision(change_set)
+        if div_num < len(change_set):  # 二分细粒度搜索，直到不能细分为止
             div_num *= 2
-    search_minimal_change_set(bitcode, change_set, current_config, div_num, threads)
+            search_minimal_change_set(bitcode, change_set, div_num, threads)
 
 def run(bitcode, change_set, threads):
-    new_conf= algorithm_utils.original_conf
     # searching until every search types is empty
     while not is_type_empty(change_set):
         # search which need highest precision & try to lower others' precision
-        search_minimal_change_set(bitcode, change_set, new_conf, INITIAL_DIV_NUM, threads)
-        # rebuild the new config from new change set
-        new_conf = config_utils.rebuild(get_unchangable_set(change_set), new_conf)
+        search_minimal_change_set(bitcode, change_set, INITIAL_DIV_NUM, threads)
         # remove highest precision
         change_set = remove_unchangable(change_set)
         # remove the highest precision from the search types of the rest
         remove_highest_precision_from_selections(change_set)
-    return new_conf
+    return config_utils.CURRENT_CONFIG

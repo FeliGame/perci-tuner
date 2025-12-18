@@ -432,3 +432,6 @@
 ### 17
 * repair config IO: recognize var in config by file+line+column, rather than line+name (mayconflict).
 * accelerate search config: using configMap. (not compatible with config before)
+
+### 18
+* CRUCIAL repair dd_algorithm: the algorithm impl is wrong before!

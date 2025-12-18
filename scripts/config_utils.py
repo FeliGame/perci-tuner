@@ -6,6 +6,7 @@
 import copy, json, re, random
 
 global thres
+global CURRENT_CONFIG
 
 # valid precision types
 PRECISIONS = ["__fp16", "float", "double", "long double"]
@@ -204,8 +205,8 @@ def parse_config(config, shuffled=False):
 
 
 # rebuild config from change set
-def rebuild(change_set, config):
-    new_config = copy.deepcopy(config)
+def rebuild(change_set):
+    new_config = copy.deepcopy(CURRENT_CONFIG)
     for item in change_set:
         if 'func' in item:
             func = item['func']

@@ -8,6 +8,7 @@ import exhaust_algorithm, dd_algorithm, hidd_algorithm, algorithm_utils
 
 def parse_arguments():
     params = {
+        '-compiler': 'clang',
         '-ir': 'output.bc',
         '-config': 'config.json',
         '-thres': 1e-6,
@@ -36,8 +37,9 @@ def parse_arguments():
         elif '=' in arg:
             key, value = arg.split('=', 1)
             if key in params:
-                # type cast
-                if key == '-thres':
+                if key == '-compiler':
+                    params[key] = value
+                elif key == '-thres':
                     params[key] = float(value)
                 elif key == '-repeat':
                     params[key] = int(value)
@@ -135,6 +137,7 @@ def baseline_test(bitcode, original_conf):
 def main():
     args = parse_arguments()
 
+    transform.COMPILER = args['-compiler']
     bitcode = args['-ir']
     original_conf_file = args['-config']
     config_utils.thres = args['-thres']
@@ -155,11 +158,12 @@ def main():
 
     # load the original config from file
     algorithm_utils.original_conf = json.loads(open(original_conf_file, 'r').read())
+    config_utils.CURRENT_CONFIG = algorithm_utils.original_conf
 
     # change_set keep those need to change precision and available precisions
     change_set = config_utils.parse_config(algorithm_utils.original_conf, shuffled)
-    change_set_len = len(change_set)
 
+    print(f"  Compiler: {args['-compiler']}")
     print(f"  IR file: {args['-ir']}")
     print(f"  Config file: {args['-config']}")
     print(f"  Threshold: {config_utils.thres}")
@@ -201,7 +205,7 @@ def main():
     
     end_time = time.perf_counter()
     print(f">>> Perci-Tuner(Py): Search time: {(end_time - start_time):.2e} s")
-    print(">>> Perci-Tuner(Py): Search finished! Total run times:", algorithm_utils.run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", change_set_len)
+    print(">>> Perci-Tuner(Py): Search finished! Total run times:", algorithm_utils.run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", len(change_set))
     print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", algorithm_utils.OPT_PREFIX + algorithm_utils.bitcode_name, "Optimized_time:", algorithm_utils.min_time, "Original_time:", data_utils.ORIGINAL_TIME, "Acc rate:", 100.0 * (data_utils.ORIGINAL_TIME - algorithm_utils.min_time) / algorithm_utils.min_time, "%")
 
     # baseline_test(bitcode, algorithm_utils.original_conf)
