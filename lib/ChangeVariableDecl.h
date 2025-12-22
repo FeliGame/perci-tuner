@@ -57,7 +57,7 @@ private:
 
     Instruction* repairPHINode(PHINode *phi);
 
-    Instruction* repairGEPInst(GetElementPtrInst* gep, Type* baseType);
+    Instruction* repairGEPInst(GetElementPtrInst* gep, Type* targetType);
 
     Instruction* repairBitCastInst(BitCastInst* bitCast);
 
@@ -65,7 +65,7 @@ private:
 
     void repairAllocaUsers(AllocaInst* alloca);
 
-    void repairUserType(User *user, Type* baseType=nullptr);
+    void repairUserType(User *user, Type* targetType=nullptr);
 
     void repairCasts(Function &F);
 
@@ -104,6 +104,8 @@ private:
     std::map<std::string, nlohmann::json> configMap;  // 存储config的map形式，key为file:line:column的拼接字符串
 
     DIBuilder *DIB;
+
+    const DataLayout *DL;
 };
 
 } // namespace llvm

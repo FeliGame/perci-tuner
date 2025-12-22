@@ -55,23 +55,19 @@ void ChangeVariableDecl::parseConfig() {
 }
 
 Align ChangeVariableDecl::getAlign(Type* targetType) {
-    if (auto *arrayType = dyn_cast<ArrayType>(targetType))
-        return Align(arrayType->getElementType()->getPrimitiveSizeInBits() / 8);
-    return Align(targetType->getPrimitiveSizeInBits() / 8);
+    if (targetType->isPointerTy()) {
+        return DL->getPointerPrefAlignment();
+    } else if (auto *arrayType = dyn_cast<ArrayType>(targetType)) {
+        return getAlign(arrayType->getElementType());
+    } else {
+        return Align(targetType->getPrimitiveSizeInBits() / 8);
+    }
 }
 
 AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newType) {
-    Align align;
-    if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
-        auto *elementType = arrayType->getElementType();
-        align = Align(elementType->getPrimitiveSizeInBits() / 8);
-    } else {
-        align = Align(newType->getPrimitiveSizeInBits() / 8);
-    }
-
     errs() << "[change alloca] " << *alloca << "->";
     alloca->setAllocatedType(newType);
-    alloca->setAlignment(align);
+    alloca->setAlignment(getAlign(newType));
     newAllocas.insert(alloca);
 
     errs() << *alloca << '\n';
@@ -80,27 +76,10 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
 
 void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
     auto newType = alloca->getAllocatedType();
-    Align align;
-
-    if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
-        auto *elementType = arrayType->getElementType();
-        align = Align(elementType->getPrimitiveSizeInBits() / 8);
-    } else if (newType->isPointerTy()) {
-        align = Align(alloca->getModule()->getDataLayout().getPointerPrefAlignment());
-    } else {
-        align = Align(newType->getPrimitiveSizeInBits() / 8);
-    }
-
+    auto align = getAlign(newType);
+    
     for (auto *user : alloca->users()) {
-        if (auto store = dyn_cast<StoreInst>(user)) {
-            // StoreInst has no users, replace its operand directly.
-            auto *oldValue = store->getOperand(0);
-            if (auto *newValue = insertCast(oldValue, newType, store)) {
-                store->setOperand(0, newValue);
-                store->setAlignment(align);
-            }
-        }
-        else if (auto load = dyn_cast<LoadInst>(user)) {
+        if (auto load = dyn_cast<LoadInst>(user)) {
             auto *oldType = load->getType();
 
             if (oldType->isPointerTy()) {  // keep pointee type
@@ -123,57 +102,7 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
             for (auto *user : newLoad->users())
                 repairUserType(user);
         }
-        else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
-            SmallVector<Value*, 4> indices;
-            for (auto &index : gep->indices()) {
-                indices.push_back(index.get());
-            }
-
-            auto *newGEP = GetElementPtrInst::Create(
-                newType,
-                gep->getPointerOperand(),
-                indices,
-                gep->getName(),         // inst name
-                gep                     // inst loc
-            );
-
-            gep->replaceAllUsesWith(newGEP);
-            instToErase.insert(gep);
-            for (auto *user : newGEP->users())
-                repairUserType(user);
-        }
-        else if (auto call = dyn_cast<CallInst>(user)) {
-            // Handle llvm.memcpy calls(it generated while alloc array size)
-            if (auto *callee = call->getCalledFunction()) {
-                if (callee->getName() == "llvm.memcpy.p0.p0.i64") {
-                    errs() << "[repair memcpy] " << *call << "->";
-
-                    auto *dest = call->getArgOperand(0);
-                    auto *src = call->getArgOperand(1);
-                    auto *size = call->getArgOperand(2);
-
-                    uint64_t newSize = 0;
-                    if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
-                        newSize = arrayType->getNumElements() * arrayType->getElementType()->getPrimitiveSizeInBits() / 8;
-                    } else {
-                        newSize = newType->getPrimitiveSizeInBits() / 8;
-                    }
-
-                    // Create a new constant for the new size
-                    auto *newSizeConstant = ConstantInt::get(size->getType(), newSize);
-
-                    // Create a new llvm.memcpy call with the updated parameters
-                    auto *newCall = CallInst::Create(callee, {dest, src, newSizeConstant, call->getArgOperand(3)}, "", call);
-
-                    // Replace the old call with the new one
-                    call->replaceAllUsesWith(newCall);
-                    errs() << *newCall << '\n';
-                    instToErase.insert(call);    // erase later to avoid broken iterator
-                    for (auto *user : newCall->users())
-                        repairUserType(user);
-                }
-            }
-        }
+        else repairUserType(user, newType);
     }
 }
 
@@ -296,7 +225,8 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
     auto *ptrOperand = load->getPointerOperand();
     Type* loadType = targetType;
     if (auto *allocaInst = findOriginalAlloca(ptrOperand))
-        loadType = pointeeTypeMap[allocaInst];
+        if (!loadType)
+            loadType = pointeeTypeMap[allocaInst];
     if (loadType) {
         if (auto *arrayType = dyn_cast<ArrayType>(loadType))
             loadType = arrayType->getElementType();
@@ -317,7 +247,8 @@ Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetT
     auto *ptrOperand = store->getPointerOperand();
     Type* storeType = targetType;
     if (auto *allocaInst = findOriginalAlloca(ptrOperand))
-        storeType = allocaInst->getAllocatedType();
+        if (!storeType)
+            storeType = allocaInst->getAllocatedType();
     if (storeType) {
         if (auto *arrayType = dyn_cast<ArrayType>(storeType))
             storeType = arrayType->getElementType();
@@ -628,8 +559,8 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
     return nullptr;
 }
 
-Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* baseType) {
-    if (!baseType || gep->getSourceElementType() == baseType) {
+Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* targetType) {
+    if (!targetType || gep->getSourceElementType() == targetType) {
         return nullptr; // 类型一致，无需替换
     }
 
@@ -639,9 +570,9 @@ Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* bas
         indices.push_back(index.get());
     }
 
-    // 创建新的 GEP 指令，使用传入的 baseType 作为基础类型
+    // 创建新的 GEP 指令
     auto* newGEP = GetElementPtrInst::CreateInBounds(
-        baseType,
+        targetType,
         gep->getPointerOperand(),
         indices,
         gep->getName(),
@@ -741,7 +672,7 @@ Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {
 }
 
 // Make inst operands type consistent
-void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
+void ChangeVariableDecl::repairUserType(User *user, Type* targetType) {
     if (!isa<Instruction>(user)) {
         errs() << "[skipping unuser]\n";
         return;
@@ -754,9 +685,9 @@ void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
     if (auto ret = dyn_cast<ReturnInst>(inst))
         newInst = repairReturnInst(ret);
     else if (auto load = dyn_cast<LoadInst>(inst))
-        newInst = repairLoadInst(load, baseType);
+        newInst = repairLoadInst(load, targetType);
     else if (auto store = dyn_cast<StoreInst>(inst))
-        newInst = repairStoreInst(store, baseType);
+        newInst = repairStoreInst(store, targetType);
     else if (auto *unaOp = dyn_cast<UnaryOperator>(inst))
         newInst = repairUnaryOp(unaOp);
     else if (auto *binOp = dyn_cast<BinaryOperator>(inst))
@@ -768,7 +699,7 @@ void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
     else if (auto *phi = dyn_cast<PHINode>(inst))
         newInst = repairPHINode(phi);
     else if (auto *gep = dyn_cast<GetElementPtrInst>(inst))
-        newInst = repairGEPInst(gep, baseType);
+        newInst = repairGEPInst(gep, targetType);
     else if (auto *castInst = dyn_cast<SIToFPInst>(inst))
         newInst = repairIntToFP(castInst);
     else if (auto *castInst = dyn_cast<UIToFPInst>(inst))
@@ -779,7 +710,7 @@ void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
 
     if (newInst) {
         for (auto *user : newInst->users()) {
-            repairUserType(user, baseType);
+            repairUserType(user, targetType);
         }
     }
 }
@@ -985,14 +916,6 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                             // 变换本地静态变量声明，形如@expm.tp = internal global [25 x fp128] zeroinitializer, align 16 -> @expm.tp = internal global [25 x double] zeroinitializer, align 8
                             errs() << "[change global] " << *GV << " -> ";
                             
-                            Align newAlign;
-                            if (auto *arrayType = dyn_cast<ArrayType>(targetType)) {
-                                auto *elementType = arrayType->getElementType();
-                                newAlign = Align(elementType->getPrimitiveSizeInBits() / 8);
-                            } else {
-                                newAlign = Align(targetType->getPrimitiveSizeInBits() / 8);
-                            }
-                            
                             // 准备新的初始化器
                             Constant *newInitializer = nullptr;
                             if (GV->hasInitializer()) {
@@ -1015,7 +938,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                             );
                             
                             // 复制原全局变量的属性
-                            newGV->setAlignment(newAlign);
+                            newGV->setAlignment(getAlign(targetType));
                             newGV->copyAttributesFrom(GV);
                             newGV->setThreadLocalMode(GV->getThreadLocalMode());
                             newGV->setExternallyInitialized(GV->isExternallyInitialized());
@@ -1440,6 +1363,7 @@ DIType* ChangeVariableDecl::createDIType(Type* type, DIScope* scope, DIBuilder* 
 }
 
 bool ChangeVariableDecl::runOnModule(Module &module) {
+    DL = &module.getDataLayout();
     parseConfig();
 
     // 记录所有可变参数调用的原始参数类型
