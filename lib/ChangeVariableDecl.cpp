@@ -702,6 +702,44 @@ Instruction* ChangeVariableDecl::repairBitCastInst(BitCastInst* bitCast) {
     return newBitCast;
 }
 
+// 修复SIToFP和UIToFP指令的目标类型
+Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {    
+    Value* sourceOperand = castInst->getOperand(0);
+    Type* targetType = nullptr;
+    
+    // 检查源操作数是否来自转换指令
+    if (auto *srcCast = dyn_cast<CastInst>(sourceOperand)) {
+        bool castFromFP = (srcCast->getOpcode() == CastInst::FPExt || 
+                           srcCast->getOpcode() == CastInst::FPTrunc || 
+                           srcCast->getOpcode() == CastInst::FPToSI || 
+                           srcCast->getOpcode() == CastInst::FPToUI);
+        if (castFromFP)
+            targetType = srcCast->getSrcTy();
+    }
+    
+    // 如果找到合适的目标类型，且与当前类型不同，则修复
+    if (targetType && targetType != castInst->getType()) {
+        errs() << "[repair IntToFP] " << *castInst << "->";
+        
+        // 创建新的转换指令
+        IRBuilder<> builder(castInst);
+        Value* newCast = nullptr;
+        if (castInst->getOpcode() == CastInst::SIToFP)
+            newCast = builder.CreateSIToFP(sourceOperand, targetType, castInst->getName());
+        else
+            newCast = builder.CreateUIToFP(sourceOperand, targetType, castInst->getName());
+        auto *newCastInst = dyn_cast<Instruction>(newCast);
+        newCastInst->setDebugLoc(castInst->getDebugLoc());
+        
+        castInst->replaceAllUsesWith(newCast);
+        instToErase.insert(castInst);
+        errs() << *newCast << '\n';
+        return newCastInst;
+    }
+    
+    return nullptr;
+}
+
 // Make inst operands type consistent
 void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
     if (!isa<Instruction>(user)) {
@@ -731,6 +769,13 @@ void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
         newInst = repairPHINode(phi);
     else if (auto *gep = dyn_cast<GetElementPtrInst>(inst))
         newInst = repairGEPInst(gep, baseType);
+    else if (auto *castInst = dyn_cast<SIToFPInst>(inst))
+        newInst = repairIntToFP(castInst);
+    else if (auto *castInst = dyn_cast<UIToFPInst>(inst))
+        newInst = repairIntToFP(castInst);
+
+    if (isa<FPToSIInst>(inst) || isa<FPToUIInst>(inst))
+        newInst = inst;
 
     if (newInst) {
         for (auto *user : newInst->users()) {

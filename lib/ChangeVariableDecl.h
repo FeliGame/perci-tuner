@@ -61,6 +61,8 @@ private:
 
     Instruction* repairBitCastInst(BitCastInst* bitCast);
 
+    Instruction* repairIntToFP(Instruction* castInst);
+
     void repairAllocaUsers(AllocaInst* alloca);
 
     void repairUserType(User *user, Type* baseType=nullptr);

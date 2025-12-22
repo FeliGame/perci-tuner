@@ -439,3 +439,4 @@
 ### 22
 * repair ChangeVariableDecl: static type & GEP inst, accelerate repair inst.
 * update PrintConfig & ChangeVariableDecl: compatible with fortran decl.
+* update ChangeVariableDecl: add int-to-fp cast.
