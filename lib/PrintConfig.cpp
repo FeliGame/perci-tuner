@@ -33,12 +33,14 @@ void PrintConfig::findLocalVariables(Function &F) {
     bool inRegion = false;
     SmallVector<StringRef> defaultPrecisionRange;
     std::set<std::string> searchableVars; // if EnableMXP=true, only __autofp vars & vars in pragma region searchable
+    string fileName = "";
 
     for (auto &BB : F) {
         for (auto &I : BB) {
             std::string varName = "";
             std::string typeName = "";
             DebugLoc DL;
+            unsigned lineNo = 0, colNo = 0;
             bool isStatic = false, isParam = false;
             // Get pointer safely
             if (auto *SI = dyn_cast<StoreInst>(&I)) {
@@ -109,6 +111,21 @@ void PrintConfig::findLocalVariables(Function &F) {
                     }
                 }
             }
+            else if (auto *AI = dyn_cast<AllocaInst>(&I)) {
+                // 适用flang-new + LLVM19后
+                if (auto *N = AI->getMetadata("dbg")) {
+                    if (auto *Loc = dyn_cast<DILocation>(N)) {
+                        lineNo = Loc->getLine();
+                        colNo = Loc->getColumn();
+                        if (auto *Scope = Loc->getScope()) {
+                            fileName = Scope->getFilename().str();
+                        }
+                    }
+                    // TODO: flang-new无法输出var name?
+                    if (AI->hasName()) varName = AI->getName().str();
+                    typeName = parseTypeName(AI->getAllocatedType());
+                }
+            }
 
             // Collect referenced vars from IR insts
             if (inRegion) {
@@ -144,18 +161,19 @@ void PrintConfig::findLocalVariables(Function &F) {
             if (typeName.find("__intptr_t") != std::string::npos) continue;
                     
             // Save to config
-            if (varName != "" && typeName != "") {
-                unsigned lineNo = DL.getLine();
-                unsigned colNo = DL.getCol();
-                auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
-                auto *file = localScope->getNonLexicalBlockFileScope()->getFile();
-
+            if (typeName != "") {
+                if (DL) {  // clang读取dbg.declare调用；flang-new不支持
+                    lineNo = DL.getLine();
+                    colNo = DL.getCol();
+                    auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
+                    fileName = localScope->getNonLexicalBlockFileScope()->getFile()->getFilename().str();
+                }
                 nlohmann::json localVar;
                 localVar["name"] = varName;
                 localVar["type"] = typeName;
-                localVar["line"] = lineNo;
-                localVar["column"] = colNo;
-                localVar["file"] = file->getFilename().str();
+                if (lineNo) localVar["line"] = lineNo;
+                if (colNo) localVar["column"] = colNo;
+                localVar["file"] = fileName;
                 localVar["isStatic"] = isStatic;
                 localVar["isParam"] = isParam;
                 // Handle __autofp
@@ -210,7 +228,7 @@ void PrintConfig::findGlobalVariables(Module &M) {
                 if (GVDebug) {
                     unsigned lineNo = GVDebug->getLine();
                     DIFile *file = GVDebug->getFile();
-                    globalVar["line"] = std::to_string(lineNo);
+                    globalVar["line"] = lineNo;
                     globalVar["file"] = file->getFilename().str();
                 }
             }

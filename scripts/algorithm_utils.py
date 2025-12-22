@@ -2,7 +2,7 @@
 # 算法共用的辅助函数
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import sys, json, shutil
+import sys, json, shutil, os
 import config_utils, data_utils, transform
 import threading
 

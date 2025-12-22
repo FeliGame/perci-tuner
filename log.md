@@ -435,3 +435,7 @@
 
 ### 18
 * CRUCIAL repair dd_algorithm: the algorithm impl is wrong before!
+
+### 22
+* repair ChangeVariableDecl: static type & GEP inst, accelerate repair inst.
+* update PrintConfig & ChangeVariableDecl: compatible with fortran decl.

@@ -54,10 +54,14 @@ void ChangeVariableDecl::parseConfig() {
     }
 }
 
-AllocaInst* ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newType) {
-    auto *var = DDI->getAddress();
-    Align align;
+Align ChangeVariableDecl::getAlign(Type* targetType) {
+    if (auto *arrayType = dyn_cast<ArrayType>(targetType))
+        return Align(arrayType->getElementType()->getPrimitiveSizeInBits() / 8);
+    return Align(targetType->getPrimitiveSizeInBits() / 8);
+}
 
+AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newType) {
+    Align align;
     if (auto *arrayType = dyn_cast<ArrayType>(newType)) {
         auto *elementType = arrayType->getElementType();
         align = Align(elementType->getPrimitiveSizeInBits() / 8);
@@ -65,45 +69,13 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(DbgDeclareInst *DDI, Type *newT
         align = Align(newType->getPrimitiveSizeInBits() / 8);
     }
 
-    auto alloca = dyn_cast<AllocaInst>(var);
-    IRBuilder<> builder(alloca);
-    auto *newAlloca = builder.CreateAlloca(newType, nullptr, alloca->getName());
-    newAlloca->setAlignment(align);
-    newAlloca->takeName(alloca);
-    newAllocas.insert(newAlloca);
-    instToErase.insert(alloca);
-    alloca->replaceAllUsesWith(newAlloca);
+    errs() << "[change alloca] " << *alloca << "->";
+    alloca->setAllocatedType(newType);
+    alloca->setAlignment(align);
+    newAllocas.insert(alloca);
 
-    errs() << "[change alloca] " << *alloca << "->" << *newAlloca << '\n';
-    // 更新调试信息
-    auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable());
-    if (!DV) {
-        errs() << "Warning: No debug info for variable, skipping debug update\n";
-        return newAlloca;
-    }
-
-    // 创建新的DIType（调试类型）
-    DIScope *scope = DV->getScope();
-    DIType *newDIType = createDIType(newType, scope, DIB);
-    if (!newDIType) {
-        errs() << "Warning: Failed to create new debug type, skipping debug update\n";
-        return newAlloca;
-    }
-
-    // 创建新的DILocalVariable（调试变量描述）
-    auto *newDV = DIB->createAutoVariable(
-        scope,               // 保持原作用域
-        DV->getName(),       // 添加：变量名称
-        DV->getFile(),       // 保持原文件
-        DV->getLine(),       // 保持原行号
-        newDIType,           // 更新为新类型
-        DV->isArtificial(),  // 修改：isAlwaysPreserved -> isArtificial
-        DV->getFlags()       // 保留flags，移除后续不存在的参数
-    );
-
-    DDI->setVariable(newDV);
-
-    return newAlloca;
+    errs() << *alloca << '\n';
+    return alloca;
 }
 
 void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
@@ -131,9 +103,13 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
         else if (auto load = dyn_cast<LoadInst>(user)) {
             auto *oldType = load->getType();
 
-            if (oldType->isPointerTy()) {  // don't replace ptr's LoadInst, directly replace user
+            if (oldType->isPointerTy()) {  // keep pointee type
+                Type* ptrBaseType = nullptr;
+                if (auto* alloca = findOriginalAlloca(load->getPointerOperand())) {
+                    ptrBaseType = pointeeTypeMap[alloca];
+                }
                 for (auto *user : load->users())
-                    repairUserType(user);
+                    repairUserType(user, ptrBaseType);
                 continue;
             }
 
@@ -316,58 +292,61 @@ Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
     return nullptr;  // nothing changed
 }
 
-Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load) {
+Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType) {
     auto *ptrOperand = load->getPointerOperand();
-    if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
-        if (auto *loadType = pointeeTypeMap[allocaInst]) {
-            if (loadType != load->getType()) {
-                Align newAlign;
-                if (auto *arrayType = dyn_cast<ArrayType>(loadType)) {
-                    auto *elementType = arrayType->getElementType();
-                    newAlign = Align(elementType->getPrimitiveSizeInBits() / 8);
-                } else if (loadType->isPointerTy()) {
-                    newAlign = Align(load->getModule()->getDataLayout().getPointerPrefAlignment());
-                } else {
-                    newAlign = Align(loadType->getPrimitiveSizeInBits() / 8);
-                }
-
-                auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load);
-                newLoad->setAlignment(newAlign);
-                load->replaceAllUsesWith(newLoad);
-                instToErase.insert(load);
-
-                return newLoad;
-            }
+    Type* loadType = targetType;
+    if (auto *allocaInst = findOriginalAlloca(ptrOperand))
+        loadType = pointeeTypeMap[allocaInst];
+    if (loadType) {
+        if (auto *arrayType = dyn_cast<ArrayType>(loadType))
+            loadType = arrayType->getElementType();
+        if (loadType != load->getType()) {
+            auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load);
+            newLoad->setAlignment(getAlign(loadType));
+            load->replaceAllUsesWith(newLoad);
+            instToErase.insert(load);
+            errs() << "[repair load] " << *load << "->" << *newLoad << '\n';
+            return newLoad;
         }
     }
     return nullptr;
 }
 
-Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store) {
+Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetType) {
     Value *oldValue = store->getOperand(0);
     auto *ptrOperand = store->getPointerOperand();
-    if (auto *allocaInst = findOriginalAlloca(ptrOperand)) {
-        auto *storeType = allocaInst->getAllocatedType();
+    Type* storeType = targetType;
+    if (auto *allocaInst = findOriginalAlloca(ptrOperand))
+        storeType = allocaInst->getAllocatedType();
+    if (storeType) {
+        if (auto *arrayType = dyn_cast<ArrayType>(storeType))
+            storeType = arrayType->getElementType();
         if (oldValue->getType() != storeType) {
             errs() << "[repair store] " << *store << "->";
             if (auto *castValue = insertCast(oldValue, storeType, store)) {
                 store->setOperand(0, castValue);
-                errs() << *store << '\n';
-                return dyn_cast<Instruction>(store);
+                store->setAlignment(getAlign(storeType));
             }
+            errs() << *store << '\n';
         }
     }
-    return nullptr;
+    return store;
 }
 
 Instruction* ChangeVariableDecl::repairUnaryOp(UnaryOperator* unaOp) {
     auto *operand = unaOp->getOperand(0);
     if (operand->getType() != unaOp->getType()) {
-        errs() << "[insert cast for unary op] " << *unaOp << '\n';
-        if (auto *newOperand = insertCast(operand, unaOp->getType(), unaOp)) {
-            unaOp->setOperand(0, newOperand);
-            return dyn_cast<Instruction>(unaOp);
+        errs() << "[repair unary op] " << *unaOp << "->";
+        IRBuilder<> builder(unaOp);
+        auto *newUnaOp = builder.CreateUnOp(unaOp->getOpcode(), operand);
+        newUnaOp->takeName(unaOp);
+        if (auto *newUnaOpInst = dyn_cast<Instruction>(newUnaOp)) {
+            newUnaOpInst->setDebugLoc(unaOp->getDebugLoc());
         }
+        unaOp->replaceAllUsesWith(newUnaOp);
+        instToErase.insert(unaOp);
+        errs() << *newUnaOp << '\n';
+        return dyn_cast<Instruction>(newUnaOp);
     }
     return nullptr;
 }
@@ -479,6 +458,8 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             }
             
             operandSources.push_back(sourceOperand);
+            // 浮点常数不锁定类型
+            if (isa<Constant>(sourceOperand) && sourceType->isFloatingPointTy()) continue;
             
             // 更新最高精度类型
             if (sourceType->isFloatingPointTy()) {
@@ -730,19 +711,14 @@ void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
 
     auto *inst = cast<Instruction>(user);
     Instruction *newInst = nullptr;
-    if (isa<FPExtInst>(inst) || isa<FPTruncInst>(inst)) {
-        errs() << "[skipping check cast] " << *inst << '\n';
-        return;
-    }
-
     errs() << "[checking user] " << *inst << "\n";
 
     if (auto ret = dyn_cast<ReturnInst>(inst))
         newInst = repairReturnInst(ret);
     else if (auto load = dyn_cast<LoadInst>(inst))
-        newInst = repairLoadInst(load);
+        newInst = repairLoadInst(load, baseType);
     else if (auto store = dyn_cast<StoreInst>(inst))
-        newInst = repairStoreInst(store);
+        newInst = repairStoreInst(store, baseType);
     else if (auto *unaOp = dyn_cast<UnaryOperator>(inst))
         newInst = repairUnaryOp(unaOp);
     else if (auto *binOp = dyn_cast<BinaryOperator>(inst))
@@ -758,7 +734,7 @@ void ChangeVariableDecl::repairUserType(User *user, Type* baseType) {
 
     if (newInst) {
         for (auto *user : newInst->users()) {
-            repairUserType(user);
+            repairUserType(user, baseType);
         }
     }
 }
@@ -940,13 +916,85 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
     // Check if decl inst need to be changed
     for (auto &BB : F) {
         for (auto &I : BB) {
-            if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
+            if (auto *SI = dyn_cast<StoreInst>(&I)) {
+                Value *Addr = SI->getPointerOperand();
+                if (auto *GV = dyn_cast<GlobalVariable>(Addr)) {
+                    // Check local static vars
+                    if (GV->hasInternalLinkage()) {
+                        auto DL = I.getDebugLoc();
+                        if (DL) {
+                            auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
+                            string fileName = localScope->getNonLexicalBlockFileScope()->getFile()->getFilename().str();
+
+                            std::string key = fileName + ":" + std::to_string(DL.getLine()) + ":" + std::to_string(DL.getCol());
+                            auto it = configMap.find(key);
+                            if (it == configMap.end()) continue;
+
+                            auto &configEntry = it->second;
+                            auto typeName = configEntry["type"].get<string>();
+                            auto srcTypeName = parseTypeName(GV->getValueType());
+                            if (typeName == srcTypeName) continue;
+                            auto *targetType = translateValidTypeName(typeName, context);
+                            if (targetType == nullptr) continue;
+
+                            // 变换本地静态变量声明，形如@expm.tp = internal global [25 x fp128] zeroinitializer, align 16 -> @expm.tp = internal global [25 x double] zeroinitializer, align 8
+                            errs() << "[change global] " << *GV << " -> ";
+                            
+                            Align newAlign;
+                            if (auto *arrayType = dyn_cast<ArrayType>(targetType)) {
+                                auto *elementType = arrayType->getElementType();
+                                newAlign = Align(elementType->getPrimitiveSizeInBits() / 8);
+                            } else {
+                                newAlign = Align(targetType->getPrimitiveSizeInBits() / 8);
+                            }
+                            
+                            // 准备新的初始化器
+                            Constant *newInitializer = nullptr;
+                            if (GV->hasInitializer()) {
+                                Constant *initializer = GV->getInitializer();
+                                if (isa<ConstantAggregateZero>(initializer)) {
+                                    // 如果原初始化器是zeroinitializer，创建新类型的zeroinitializer
+                                    newInitializer = ConstantAggregateZero::get(targetType);
+                                }
+                                // TODO: 处理其他类型的初始化器
+                            }
+                            
+                            // 创建新的全局变量
+                            GlobalVariable *newGV = new GlobalVariable(
+                                *GV->getParent(),
+                                targetType,
+                                GV->isConstant(),
+                                GV->getLinkage(),
+                                newInitializer,
+                                GV->getName()
+                            );
+                            
+                            // 复制原全局变量的属性
+                            newGV->setAlignment(newAlign);
+                            newGV->copyAttributesFrom(GV);
+                            newGV->setThreadLocalMode(GV->getThreadLocalMode());
+                            newGV->setExternallyInitialized(GV->isExternallyInitialized());
+                            
+                            GV->replaceAllUsesWith(newGV);
+                            errs() << *newGV << "\n";
+                            
+                            // 修复所有使用该全局变量的users指令
+                            for (User *user : newGV->users()) {
+                                repairUserType(user, targetType);
+                            }
+                            GV->eraseFromParent();
+                        }
+                    }
+                }
+            }
+            // 适用clang情况
+            else if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
                 if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
                     auto varName = DV->getName();
                     auto fileName = DV->getFile()->getFilename().str();
                     auto loc = DDI->getDebugLoc();
+
                     std::string key = fileName + ":" + std::to_string(loc.getLine()) + ":" + std::to_string(loc.getCol());
-                    
                     auto it = configMap.find(key);
                     if (it == configMap.end()) continue;
                     auto &configEntry = it->second;
@@ -954,7 +1002,6 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     auto srcTypeName = parseDITypeName(DV->getType());
                     if (typeName == srcTypeName) continue;
                     auto *targetType = translateValidTypeName(typeName, context);
-
                     if (targetType == nullptr) continue;
                     
                     if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
@@ -972,7 +1019,74 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                                 }
                             }
                         }
-                        changeAllocaInst(DDI, targetType);
+                        changeAllocaInst(dyn_cast<AllocaInst>(DDI->getAddress()), targetType);
+                        
+                        // 更新调试信息
+                        auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable());
+                        if (!DV) {
+                            errs() << "Warning: No debug info for variable, skipping debug update\n";
+                            break;
+                        }
+                        // 创建新的DIType（调试类型）
+                        DIScope *scope = DV->getScope();
+                        DIType *newDIType = createDIType(targetType, scope, DIB);
+                        if (!newDIType) {
+                            errs() << "Warning: Failed to create new debug type, skipping debug update\n";
+                            break;
+                        }
+                        // 创建新的DILocalVariable（调试变量描述）
+                        auto *newDV = DIB->createAutoVariable(
+                            scope,               // 保持原作用域
+                            DV->getName(),       // 添加：变量名称
+                            DV->getFile(),       // 保持原文件
+                            DV->getLine(),       // 保持原行号
+                            newDIType,           // 更新为新类型
+                            DV->isArtificial(),  // 修改：isAlwaysPreserved -> isArtificial
+                            DV->getFlags()       // 保留flags，移除后续不存在的参数
+                        );
+                        DDI->setVariable(newDV);
+                    }
+                }
+            }
+            // 适用flang-new情况 + LLVM19后
+            else if (auto *alloca = dyn_cast<AllocaInst>(&I)) {
+                unsigned lineNo = 0, colNo = 0;
+                string fileName = "", varName = "", srcTypeName = "";
+                if (auto *N = alloca->getMetadata("dbg")) {
+                    if (auto *Loc = dyn_cast<DILocation>(N)) {
+                        lineNo = Loc->getLine();
+                        colNo = Loc->getColumn();
+                        if (auto *Scope = Loc->getScope()) {
+                            fileName = Scope->getFilename().str();
+                        }
+                        if (alloca->hasName()) varName = alloca->getName().str();
+                        srcTypeName = parseTypeName(alloca->getAllocatedType());
+                    }
+                    for (auto &configEntry : functionConfig) {
+                        if (configEntry["line"] == std::to_string(lineNo) && configEntry["column"] == std::to_string(colNo)) {
+                            auto targetTypeName = configEntry["type"].get<string>();
+                            if (targetTypeName == srcTypeName) continue;
+                            auto *targetType = translateValidTypeName(targetTypeName, context);
+                            if (targetType == nullptr) continue;
+                            if (targetTypeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
+                                pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
+                                newAllocas.insert(alloca);
+                            } else {
+                                if (configEntry["isParam"]) {
+                                    unsigned argIndex = 0;
+                                    for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                                        if (argIt->getName() == varName) {
+                                            errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
+                                            funcArgNewTypeMap[&F][argIndex] = targetType;
+                                            break;
+                                        }
+                                    }
+                                }
+                                changeAllocaInst(alloca, targetType);
+                            }
+
+                            break;  // found & changed
+                        }
                     }
                 }
             }

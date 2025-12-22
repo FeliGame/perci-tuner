@@ -29,7 +29,7 @@ public:
 private:
     void parseConfig();
 
-    AllocaInst* changeAllocaInst(DbgDeclareInst *DDI, Type *newType);
+    AllocaInst* changeAllocaInst(AllocaInst *alloca, Type *newType);
 
     Value* insertCast(Value *val, Type *targetType, Instruction *insertBefore);
 
@@ -39,11 +39,13 @@ private:
 
     Type* findHighestPrecisionType(PHINode*);
 
+    Align getAlign(Type* targetType);
+
     Instruction* repairReturnInst(ReturnInst *ret);
 
-    Instruction* repairLoadInst(LoadInst *load);
+    Instruction* repairLoadInst(LoadInst *load, Type* targetType=nullptr);
 
-    Instruction* repairStoreInst(StoreInst *store);
+    Instruction* repairStoreInst(StoreInst *store, Type* targetType=nullptr);
 
     Instruction* repairUnaryOp(UnaryOperator *unaOp);
 
