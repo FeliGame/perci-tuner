@@ -4,7 +4,7 @@
 
 import sys, json, os, time, copy
 import config_utils, data_utils, transform
-import exhaust_algorithm, dd_algorithm, hidd_algorithm, algorithm_utils
+import exhaust_algorithm, dd_algorithm, hidd_algorithm, tedd_algorithm, algorithm_utils
 
 def parse_arguments():
     params = {
@@ -192,6 +192,8 @@ def main():
     algorithm_utils.bitcode_name = os.path.basename(bitcode)
     if algorithm.lower() == 'dd':
         new_conf = dd_algorithm.run(bitcode, change_set, args['-threads'])
+    elif algorithm.lower() == 'tedd':
+        new_conf = tedd_algorithm.run(bitcode, change_set)
     elif algorithm.lower() == 'exhaust':
         new_conf = exhaust_algorithm.run(bitcode, change_set)
     elif algorithm.lower() == 'hidd':

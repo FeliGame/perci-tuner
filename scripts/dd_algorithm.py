@@ -50,16 +50,6 @@ def remove_unchangable(change_set):
     return new_change_set
 
 
-# can only be used in searching period
-def get_unchangable_set(change_set):
-    unchangbale_set = []
-    for c in change_set:
-        t = c["search_types"]
-        if t == [] or c["type"] == t[-1]:
-            unchangbale_set.append(c)
-    return unchangbale_set
-
-
 # using delta debugging algorithm to find the minimal change set
 def search_minimal_change_set(bitcode, change_set, div_num, threads):
     delta_change_set = []

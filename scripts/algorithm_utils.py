@@ -21,6 +21,8 @@ is_mxp = False
 global original_conf
 runned_change_set = set()
 global bitcode_name
+global skip
+skip = False
 
 def atomic_increment_run_times():
     global run_times
@@ -68,13 +70,15 @@ def compare_json(original, current, diff, prefix=""):
 
 # run the current config and get the result if satisfy rel_err threshold
 def run_config(bitcode, current_config, change_set, skip_runned=True):
-    global run_times, original_conf, runned_change_set, is_mxp
+    global run_times, original_conf, runned_change_set, is_mxp, skip
     
     # check if the config has been runned
-    key = json.dumps(change_set, sort_keys=False)
+    key = json.dumps(current_config, sort_keys=False)
     if skip_runned and key in runned_change_set: 
         print('>>> Perci-Tuner(Py): The config has been runned, skipped...')
+        skip = True
         return
+    skip = False
     runned_change_set.add(key)
 
     # Initialize diff as an empty dictionary

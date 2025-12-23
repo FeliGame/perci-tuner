@@ -441,3 +441,6 @@
 * update PrintConfig & ChangeVariableDecl: compatible with fortran decl.
 * update ChangeVariableDecl: add int-to-fp cast.
 * simplify ChangeVariableDecl: getAlign() & repairAllocaUsers().
+
+### 23
+* CRUCIAL add TEDD: Traceback-enhanced delta-debugging algorithm.
