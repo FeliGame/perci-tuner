@@ -172,7 +172,7 @@ def search_minimal_change_set(bitcode, change_set, div_num):
             change_set = [e for e in change_set if any(change_element_equal(e, pc_e) for pc_e in pruned_change_set)]
             print(f'Pruned better set: {change_set}')
         if len(change_set) <= 1: return
-        search_minimal_change_set(bitcode, change_set, div_num)
+        search_minimal_change_set(bitcode, change_set, INITIAL_DIV_NUM)
     elif pruned_change_set:
         # 如果没有找到 better_set 但有需要更新的 change_set，使用更新后的集合并重新搜索
         search_minimal_change_set(bitcode, pruned_change_set, div_num)

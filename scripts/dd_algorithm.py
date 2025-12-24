@@ -122,8 +122,8 @@ def search_minimal_change_set(bitcode, change_set, div_num, threads):
         config_utils.CURRENT_CONFIG = config_utils.rebuild(change_set)
         div_num = new_div_num
         change_set = new_change_set
-        if len(change_set) <= 1: return
-        search_minimal_change_set(bitcode, change_set, div_num, threads)
+        if len(change_set) < 1: return
+        search_minimal_change_set(bitcode, change_set, INITIAL_DIV_NUM, threads)
     else:
         print("none better in current iteration")
         change_to_highest_precision(change_set)
