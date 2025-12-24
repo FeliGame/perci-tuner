@@ -148,7 +148,7 @@ do
         echo "  multi-version     Generate multi-version executable"
         echo ""
         echo "Options for different mode:"
-        echo "  -algorithm=exhaust/dd/tedd  (search-optimize) Select search algorithm (default dd)"
+        echo "  -algorithm=exhaust/dd/pedd  (search-optimize) Select search algorithm (default dd)"
         echo "  -thres=<1e-6>               (search-optimize) Set error threshold (default 1e-6)"
         echo "  -repeat=<1>                 (search-optimize) Set repeat count (default 1)"
         echo "  -timeout=<60.0>             (search-optimize) Set run-time timeout seconds(default 60.0sec)"

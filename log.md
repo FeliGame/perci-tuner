@@ -444,3 +444,7 @@
 
 ### 23
 * CRUCIAL add TEDD: Traceback-enhanced delta-debugging algorithm.
+
+### 24
+* rename TEDD to PEDD: Prune-enhanced delta-debugging algorithm.
+* update PEDD: combine better set(if exists) with pruned change set.

@@ -90,7 +90,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, ha
     # 计算降低后的变量集: change_set - test_set
     reduced_set = remove_from_change_set(change_set, test_set)  # 从change_set中移除test_set的元素
     
-    updated_change_set = None  # 用于标记是否需要更新change_set
+    pruned_change_set = None  # 用于标记是否需要更新change_set
     if not algorithm_utils.skip and not run_passed:
         if current_result in invalid_result_map:
             # 运行结果已出现过，计算交集
@@ -104,7 +104,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, ha
             if len(intersection) == 1:
                 # 将该元素从当前change_set中清除
                 element_to_remove = intersection[0]
-                updated_change_set = remove_from_change_set(change_set, element_to_remove)
+                pruned_change_set = remove_from_change_set(change_set, element_to_remove)
                 print(f'Remove config with {element_to_remove}')
         else:
             print(f'New result encountered: {current_result}')
@@ -118,7 +118,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, ha
         algorithm_utils.min_time = transform.current_run_time
         algorithm_utils.update_opt(new_config)
     
-    return new_change_set, have_better_set, updated_change_set
+    return new_change_set, have_better_set, pruned_change_set
 
 
 # using delta debugging algorithm to find the minimal change set
@@ -128,55 +128,54 @@ def search_minimal_change_set(bitcode, change_set, div_num):
     # calculate the size of each part
     div_size = int(math.ceil(float(len(change_set))/float(div_num)))
     print(f'\nchange set size: {len(change_set)}, div num: {div_num}, div size: {div_size}')
-    # divide change set and type set into div_num parts
-    # and calculate each part's complement part
 
-    # Guo's version
     for i in range(0, len(change_set), div_size):
         start = i
         end = i + div_size
         delta_change_set.append(change_set[start:end])
         complement_delta_change_set.append(change_set[:start] + change_set[end:])
 
-    # iterate each delta change and its complement delta change 
-    # to find the current minimal change set
     new_change_set = []
-    new_div_num = div_num
     have_better_set = False
     print(f'delta size: {len(delta_change_set)}, complement delta size: {len(complement_delta_change_set)}')
 
     # 串行处理delta搜索
-    updated_change_set = None
+    pruned_change_set = None
     for i in range(len(delta_change_set)):
         delta_change = delta_change_set[i]
         complement_delta_change = complement_delta_change_set[i]
 
         # 测试delta变化集
-        new_change_set, have_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, delta_change, new_change_set, have_better_set, div_num)
+        new_change_set, is_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, delta_change, new_change_set, have_better_set, div_num)
+        have_better_set |= is_better_set
         if temp_updated:
-            updated_change_set = temp_updated
+            pruned_change_set = temp_updated
             break
 
         # 测试补集变化集
-        new_change_set, have_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, complement_delta_change, new_change_set, have_better_set, div_num)
+        new_change_set, is_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, complement_delta_change, new_change_set, have_better_set, div_num)
+        have_better_set |= is_better_set
         if temp_updated:
-            updated_change_set = temp_updated
+            pruned_change_set = temp_updated
             break
 
-    # 如果有需要更新的change_set，返回并重新搜索
-    if updated_change_set:
-        search_minimal_change_set(bitcode, updated_change_set, div_num)
-        return
-
+    # 处理找到的 better_set 和 pruned_change_set
     if have_better_set:
         # 还原最佳配置
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(new_change_set)
         config_utils.CURRENT_CONFIG = config_utils.rebuild(change_set)
-        div_num = new_div_num
         change_set = new_change_set
+        # 如果同时存在 pruned_change_set，需要将其与 better_set 结合
+        if pruned_change_set:
+            # 从新的 change_set（即 better_set）中移除导致超阈值的元素
+            change_set = [e for e in change_set if any(change_element_equal(e, pc_e) for pc_e in pruned_change_set)]
+            print(f'Pruned better set: {change_set}')
         if len(change_set) <= 1: return
         search_minimal_change_set(bitcode, change_set, div_num)
+    elif pruned_change_set:
+        # 如果没有找到 better_set 但有需要更新的 change_set，使用更新后的集合并重新搜索
+        search_minimal_change_set(bitcode, pruned_change_set, div_num)
     else:
         print("none better in current iteration")
         change_to_highest_precision(change_set)
