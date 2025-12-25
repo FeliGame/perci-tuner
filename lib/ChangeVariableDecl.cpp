@@ -1269,21 +1269,29 @@ Function* ChangeVariableDecl::changeFunctionArgTypes(Function &F, DenseMap<unsig
 }
 
 void ChangeVariableDecl::updateCallersArgTypes(Function &oldFunc, Function &newFunc, DenseMap<unsigned, Type*>& argNewTypeMap) {
-    // 遍历所有调用点
+    // 首先收集所有需要处理的CallInst，避免遍历过程中修改集合
+    SmallVector<CallInst*, 16> callInsts;
     for (User *U : oldFunc.users()) {
         if (CallInst *call = dyn_cast<CallInst>(U)) {
-            for (const auto& argEntry : argNewTypeMap) {
-                unsigned argIndex = argEntry.first;
-                Type* targetType = argEntry.second;
-                Value *oldArg = call->getArgOperand(argIndex);
-                if (oldArg->getType() != targetType) {
-                    if (Value *castedArg = insertCast(oldArg, targetType, call)) {
-                        call->setArgOperand(argIndex, castedArg);
-                    }
+            callInsts.push_back(call);
+        }
+    }
+    
+    // 处理每个CallInst
+    for (CallInst *call : callInsts) {
+        // 先替换调用的函数为新函数
+        call->setCalledFunction(&newFunc);
+        
+        // 然后为每个需要变更类型的参数添加类型转换
+        for (const auto& argEntry : argNewTypeMap) {
+            unsigned argIndex = argEntry.first;
+            Type* targetType = argEntry.second;
+            Value *oldArg = call->getArgOperand(argIndex);
+            if (oldArg->getType() != targetType) {
+                if (Value *castedArg = insertCast(oldArg, targetType, call)) {
+                    call->setArgOperand(argIndex, castedArg);
                 }
             }
-            // 替换调用的函数为新函数
-            call->setCalledFunction(&newFunc);
         }
     }
 

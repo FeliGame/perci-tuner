@@ -448,3 +448,6 @@
 ### 24
 * rename TEDD to PEDD: Prune-enhanced delta-debugging algorithm.
 * update PEDD: combine better set(if exists) with pruned change set.
+
+### 25
+* repair ChangeVariableDecl: replaced CallInst arg type not match.
