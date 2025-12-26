@@ -386,15 +386,13 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             Value* operand = call->getArgOperand(i);
             Value* sourceOperand = operand;
             Type* sourceType = operand->getType();
-            
-            // 检查是否为Cast指令，获取原始类型
+            // if typecast, use src value
             if (auto castInst = dyn_cast<CastInst>(operand)) {
                 sourceType = castInst->getSrcTy();
                 sourceOperand = castInst->getOperand(0);
                 // 将原始cast指令添加到待删除列表，消除冗余
                 instToErase.insert(castInst);
             }
-            
             operandSources.push_back(sourceOperand);
             // 浮点常数不锁定类型
             if (isa<Constant>(sourceOperand) && sourceType->isFloatingPointTy()) continue;
@@ -1244,7 +1242,6 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
     }
 }
 
-
 Function* ChangeVariableDecl::changeFunctionDecl(Function &F, DenseMap<int, Type*> declTypeMap) {
     if (declTypeMap.empty()) return &F;
     auto retNewType = funcDeclTypeMap[&F].lookup(-1);
@@ -1289,7 +1286,7 @@ Function* ChangeVariableDecl::changeFunctionDecl(Function &F, DenseMap<int, Type
         oldArg.replaceAllUsesWith(&newArg);
     }
 
-    // 如果返回值类型发生变化，修改函数内部的ret指令
+    // 如果返回值类型发生变化，修改函数内部的ret指令，TODO: 如果IR自动创建了retval的alloca，此处不会处理retval类型
     if (retNewType && retNewType != oldFuncType->getReturnType()) {
         IRBuilder<> builder(newFunc->getContext());
         for (auto &BB : *newFunc) {
@@ -1338,6 +1335,12 @@ void ChangeVariableDecl::updateCaller(Function &oldFunc, Function &newFunc, Dens
         // 处理参数类型转换
         for (unsigned i = 0; i < call->arg_size(); ++i) {
             Value *oldArg = call->getArgOperand(i);
+            // 检查是否为Cast指令，获取原始类型和操作数
+            if (auto *castInst = dyn_cast<CastInst>(oldArg)) {
+                oldArg = castInst->getOperand(0);
+                // 将原始cast指令添加到待删除列表，消除冗余
+                instToErase.insert(castInst);
+            }
             Type *targetType = nullptr;
             // 检查该参数是否需要类型转换
             if (declTypeMap.count(i)) {

@@ -454,4 +454,4 @@
 
 ### 26
 * CRUCIAL update PrintConfig/ChangeFunctionDecl: recognize & change function return type.
-* repair ChangeFunctionDecl: remove redundant cast in fmuladd, fcmp, binop.
+* repair ChangeFunctionDecl: remove redundant cast in fmuladd, fcmp, binop, callInst.
