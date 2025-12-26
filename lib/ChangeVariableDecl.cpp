@@ -37,16 +37,17 @@ void ChangeVariableDecl::parseConfig() {
     }
 
     configFile >> config;
-    config = config["local"];
+    nlohmann::json &localConfig = config["local"];
     
-    for (auto &funcEntry : config.items())
+    for (auto &funcEntry : localConfig.items())
         includedFunctions.insert(funcEntry.key());
-    for (auto &funcEntry : config) {
+    for (auto &funcEntry : localConfig) {
         // 处理每个函数的变量配置
         for (auto &varEntry : funcEntry) {
             std::string file = varEntry["file"];
             int line = varEntry["line"];
             int column = varEntry["column"];
+            if (varEntry["name"] == "ret" && !line && !column) continue;
             
             std::string key = file + ":" + std::to_string(line) + ":" + std::to_string(column);
             configMap[key] = varEntry;
@@ -293,6 +294,8 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
         if (auto *castInst = dyn_cast<CastInst>(operand)) {
             operand = castInst->getOperand(0);
             operandsModified = true;
+            // 将原始cast指令添加到待删除列表，消除冗余
+            instToErase.insert(castInst);
         }
         // type of src operands not match
         if (operand->getType() != highestType) {
@@ -334,6 +337,8 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
         if (auto *castInst = dyn_cast<CastInst>(operand)) {
             operand = castInst->getOperand(0);
             operandsModified = true;
+            // 将原始cast指令添加到待删除列表，消除冗余
+            instToErase.insert(castInst);
         }
         if (operand->getType() != highestType) {
             if (auto *newOperand = insertCast(operand, highestType, fcmp)) {
@@ -386,6 +391,8 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             if (auto castInst = dyn_cast<CastInst>(operand)) {
                 sourceType = castInst->getSrcTy();
                 sourceOperand = castInst->getOperand(0);
+                // 将原始cast指令添加到待删除列表，消除冗余
+                instToErase.insert(castInst);
             }
             
             operandSources.push_back(sourceOperand);
@@ -725,7 +732,7 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
             if (auto *castInst = dyn_cast<CastInst>(&I)) {
                 // 1. 首先处理未使用的cast
                 if (castInst->use_empty()) {
-                    errs() << "[remove unused cast] " << *castInst << '\n';
+                    errs() << "[remove unused cast] " << *castInst << " in " << F.getName() << '\n';
                     instToErase.insert(castInst);
                     continue;
                 }
@@ -889,6 +896,22 @@ Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& c
 void ChangeVariableDecl::runOnFunction(Function &F) {
     auto &context = F.getContext();
     auto functionConfig = config["local"][demangle(F.getName())];
+
+    // 检查是否需要修改函数返回值类型
+    for (auto &configEntry : functionConfig) {
+        if (configEntry["name"] == "ret.") {
+            auto srcTypeName = parseTypeName(F.getFunctionType()->getReturnType());
+            auto targetTypeName = configEntry["type"].get<string>();
+            if (targetTypeName == srcTypeName) continue;
+            auto *targetType = translateValidTypeName(targetTypeName, context);
+            if (targetType == nullptr) continue;
+            
+            errs() << "[change return type] " << F.getName() << ": " << srcTypeName << "->" << *targetType << "\n";
+            funcDeclTypeMap[&F][-1] = targetType;
+            break;
+        }
+    }
+
     // Check if decl inst need to be changed
     for (auto &BB : F) {
         for (auto &I : BB) {
@@ -982,7 +1005,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                             for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
                                 if (argIt->getName() == varName) {
                                     errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
-                                    funcArgNewTypeMap[&F][argIndex] = targetType;
+                                    funcDeclTypeMap[&F][argIndex] = targetType;
                                     break;
                                 }
                             }
@@ -1030,31 +1053,31 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                         if (alloca->hasName()) varName = alloca->getName().str();
                         srcTypeName = parseTypeName(alloca->getAllocatedType());
                     }
-                    for (auto &configEntry : functionConfig) {
-                        if (configEntry["line"] == std::to_string(lineNo) && configEntry["column"] == std::to_string(colNo)) {
-                            auto targetTypeName = configEntry["type"].get<string>();
-                            if (targetTypeName == srcTypeName) continue;
-                            auto *targetType = translateValidTypeName(targetTypeName, context);
-                            if (targetType == nullptr) continue;
-                            if (targetTypeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
-                                pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
-                                newAllocas.insert(alloca);
-                            } else {
-                                if (configEntry["isParam"]) {
-                                    unsigned argIndex = 0;
-                                    for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
-                                        if (argIt->getName() == varName) {
-                                            errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
-                                            funcArgNewTypeMap[&F][argIndex] = targetType;
-                                            break;
-                                        }
-                                    }
-                                }
-                                changeAllocaInst(alloca, targetType);
-                            }
 
-                            break;  // found & changed
+                    std::string key = fileName + ":" + std::to_string(lineNo) + ":" + std::to_string(colNo);
+                    auto it = configMap.find(key);
+                    if (it == configMap.end()) continue;
+                    auto &configEntry = it->second;
+                    auto typeName = configEntry["type"].get<string>();
+                    if (typeName == srcTypeName) continue;
+                    auto *targetType = translateValidTypeName(typeName, context);
+                    if (targetType == nullptr) continue;
+
+                    if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
+                        pointeeTypeMap[alloca] = targetType;  // save pointee's basic type
+                        newAllocas.insert(alloca);
+                    } else {
+                        if (configEntry["isParam"]) {
+                            unsigned argIndex = 0;
+                            for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                                if (argIt->getName() == varName) {
+                                    errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
+                                    funcDeclTypeMap[&F][argIndex] = targetType;
+                                    break;
+                                }
+                            }
                         }
+                        changeAllocaInst(alloca, targetType);
                     }
                 }
             }
@@ -1222,21 +1245,22 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
 }
 
 
-Function* ChangeVariableDecl::changeFunctionArgTypes(Function &F, DenseMap<unsigned, Type*> argNewTypeMap) {
-    if (argNewTypeMap.empty()) return &F;
+Function* ChangeVariableDecl::changeFunctionDecl(Function &F, DenseMap<int, Type*> declTypeMap) {
+    if (declTypeMap.empty()) return &F;
+    auto retNewType = funcDeclTypeMap[&F].lookup(-1);
 
     FunctionType *oldFuncType = F.getFunctionType();
     SmallVector<Type*, 8> newArgTypes;
     for (unsigned i = 0; i < oldFuncType->getNumParams(); ++i) {
-        if (argNewTypeMap.count(i)) {
-            newArgTypes.push_back(argNewTypeMap.lookup(i));
+        if (declTypeMap.count(i)) {
+            newArgTypes.push_back(declTypeMap.lookup(i));
         } else {
             newArgTypes.push_back(oldFuncType->getParamType(i));
         }
     }
 
     FunctionType *newFuncType = FunctionType::get(
-        oldFuncType->getReturnType(),
+        retNewType ? retNewType : oldFuncType->getReturnType(),
         newArgTypes,
         oldFuncType->isVarArg()
     );
@@ -1265,10 +1289,40 @@ Function* ChangeVariableDecl::changeFunctionArgTypes(Function &F, DenseMap<unsig
         oldArg.replaceAllUsesWith(&newArg);
     }
 
+    // 如果返回值类型发生变化，修改函数内部的ret指令
+    if (retNewType && retNewType != oldFuncType->getReturnType()) {
+        IRBuilder<> builder(newFunc->getContext());
+        for (auto &BB : *newFunc) {
+            Instruction *term = BB.getTerminator();
+            if (auto *retInst = dyn_cast<ReturnInst>(term)) {
+                // 如果ret指令有操作数（不是void返回），进行类型转换
+                if (retInst->getNumOperands() > 0) {
+                    Value *oldRetVal = retInst->getOperand(0);
+                    // 检查是否需要类型转换
+                    if (oldRetVal->getType() != retNewType) {
+                        builder.SetInsertPoint(retInst);
+                        Value *newRetVal = insertCast(oldRetVal, retNewType, retInst);
+                        if (newRetVal) {
+                            retInst->setOperand(0, newRetVal);
+                        } else {
+                            errs() << "[change func decl] Failed to cast return value to type " << *retNewType << "\n";
+                        }
+                    }
+                } else {
+                    // 如果原函数返回void，但新函数不是void，这是一个错误
+                    if (!retNewType->isVoidTy()) {
+                        errs() << "[change func decl] Error: Function was void returning but new type is " << *retNewType << "\n";
+                    }
+                }
+            }
+        }
+    }
+    errs() << "[change func decl] " << *oldFuncType << "->" << *newFuncType << "\n";
+
     return newFunc;
 }
 
-void ChangeVariableDecl::updateCallersArgTypes(Function &oldFunc, Function &newFunc, DenseMap<unsigned, Type*>& argNewTypeMap) {
+void ChangeVariableDecl::updateCaller(Function &oldFunc, Function &newFunc, DenseMap<int, Type*>& declTypeMap) {
     // 首先收集所有需要处理的CallInst，避免遍历过程中修改集合
     SmallVector<CallInst*, 16> callInsts;
     for (User *U : oldFunc.users()) {
@@ -1279,27 +1333,52 @@ void ChangeVariableDecl::updateCallersArgTypes(Function &oldFunc, Function &newF
     
     // 处理每个CallInst
     for (CallInst *call : callInsts) {
-        // 先替换调用的函数为新函数
-        call->setCalledFunction(&newFunc);
-        
-        // 然后为每个需要变更类型的参数添加类型转换
-        for (const auto& argEntry : argNewTypeMap) {
-            unsigned argIndex = argEntry.first;
-            Type* targetType = argEntry.second;
-            Value *oldArg = call->getArgOperand(argIndex);
-            if (oldArg->getType() != targetType) {
-                if (Value *castedArg = insertCast(oldArg, targetType, call)) {
-                    call->setArgOperand(argIndex, castedArg);
+        // 直接创建新的CallInst，调用newFunc
+        SmallVector<Value*, 16> newArgs;
+        // 处理参数类型转换
+        for (unsigned i = 0; i < call->arg_size(); ++i) {
+            Value *oldArg = call->getArgOperand(i);
+            Type *targetType = nullptr;
+            // 检查该参数是否需要类型转换
+            if (declTypeMap.count(i)) {
+                targetType = declTypeMap[i];
+            } else {
+                // 如果没有明确指定，则使用新函数的参数类型
+                if (i < newFunc.getFunctionType()->getNumParams()) {
+                    targetType = newFunc.getFunctionType()->getParamType(i);
+                } else {
+                    // 变长参数保持原样
+                    targetType = oldArg->getType();
                 }
             }
+            
+            // 如果类型不匹配，添加类型转换
+            if (oldArg->getType() != targetType) {
+                if (Value *castedArg = insertCast(oldArg, targetType, call)) {
+                    newArgs.push_back(castedArg);
+                } else {
+                    // 转换失败，使用原参数
+                    newArgs.push_back(oldArg);
+                }
+            } else {
+                newArgs.push_back(oldArg);
+            }
         }
+        
+        // 创建新的CallInst
+        CallInst *newCall = CallInst::Create(newFunc.getFunctionType(), &newFunc, newArgs, "", call);
+        newCall->setDebugLoc(call->getDebugLoc());
+        newCall->takeName(call);
+        replaceMultiOperandInst(call, newCall);
+        for (auto *user : newCall->users())
+            repairUserType(user);
+        errs() << "[update caller] " << *call << " -> " << *newCall << "\n";
     }
-
-    oldFunc.replaceAllUsesWith(&newFunc);
-    oldFunc.eraseFromParent();
+    
+    funcToErase.insert(&oldFunc);
 }
 
-// Replace multi-operand Inst safely (such as BinOp, FCmpInst)
+// Replace multi-operand Inst safely (such as BinOp, FCmpInst, CallInst)
 void ChangeVariableDecl::replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst) {
     if (instReplaceMap.count(oldInst)) { // has other replacement, replace uses & remove before
         auto *beforeInst = instReplaceMap[oldInst];
@@ -1401,21 +1480,23 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         }
     }
 
-    // 遍历整个funcArgNewTypeMap，将其中的函数替换
+    // 遍历整个funcDeclTypeMap，将其中的函数替换
     DenseMap<Function*, Function*> replaceMap;
-    for (auto &funcEntry : funcArgNewTypeMap) {
+    for (auto &funcEntry : funcDeclTypeMap) {
         auto *functionPtr = funcEntry.first;
-        auto &argNewTypeMap = funcEntry.second;
-        auto newFunc = changeFunctionArgTypes(*functionPtr, argNewTypeMap);
+        auto newFunc = changeFunctionDecl(*functionPtr, funcEntry.second);
         replaceMap[functionPtr] = newFunc;
     }
 
     for (auto &funcEntry : replaceMap) {
         auto *oldFunc = funcEntry.first;
         auto *newFunc = funcEntry.second;
-        updateCallersArgTypes(*oldFunc, *newFunc, funcArgNewTypeMap[oldFunc]);
+        updateCaller(*oldFunc, *newFunc, funcDeclTypeMap[oldFunc]);
     }
-
+    for (auto *F : funcToErase) {
+        errs() << "[erase old function] " << F->getName() << '\n';
+        F->eraseFromParent();
+    }
     for (auto &F : module) repairCasts(F);
     for (auto *inst : instToErase) inst->eraseFromParent();
     instToErase.clear();

@@ -75,9 +75,9 @@ private:
 
     void changeStructDeclarations(Module &module);
     
-    Function* changeFunctionArgTypes(Function &F, DenseMap<unsigned, Type*> argNewTypeMap);
+    Function* changeFunctionDecl(Function &F, DenseMap<int, Type*> declTypeMap);
 
-    void updateCallersArgTypes(Function &oldFunc, Function &newFunc, DenseMap<unsigned, Type*>& argNewTypeMap);
+    void updateCaller(Function &oldFunc, Function &newFunc, DenseMap<int, Type*>& declTypeMap);
 
     void replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst);
 
@@ -89,14 +89,16 @@ private:
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
 
+    DenseSet<Function*> funcToErase;    // Function to be erased later
+
     DenseSet<AllocaInst*> newAllocas;
 
     DenseMap<Instruction*, Instruction*> instReplaceMap;    // MultiOperandInst replacement
 
     DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
 
-    DenseMap<Function*, DenseMap<unsigned, Type*>> funcArgNewTypeMap;
-
+    DenseMap<Function*, DenseMap<int, Type*>> funcDeclTypeMap;  // 函数声明类型原型，-1表示返回值，0...表示参数索引
+    
     DenseMap<CallInst*, std::vector<Type*>> varargCallOriginalTypes;  // printf等可变参数
     
     nlohmann::json config;

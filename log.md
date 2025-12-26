@@ -451,3 +451,7 @@
 
 ### 25
 * repair ChangeVariableDecl: replaced CallInst arg type not match.
+
+### 26
+* CRUCIAL update PrintConfig/ChangeFunctionDecl: recognize & change function return type.
+* repair ChangeFunctionDecl: remove redundant cast in fmuladd, fcmp, binop.

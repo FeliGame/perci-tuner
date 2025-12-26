@@ -34,6 +34,7 @@ void PrintConfig::findLocalVariables(Function &F) {
     SmallVector<StringRef> defaultPrecisionRange;
     std::set<std::string> searchableVars; // if EnableMXP=true, only __autofp vars & vars in pragma region searchable
     string fileName = "";
+    bool retAdded = false;  // 确保每个函数只添加一个返回值配置
 
     for (auto &BB : F) {
         for (auto &I : BB) {
@@ -42,8 +43,21 @@ void PrintConfig::findLocalVariables(Function &F) {
             DebugLoc DL;
             unsigned lineNo = 0, colNo = 0;
             bool isStatic = false, isParam = false;
+            
+            // 处理ret指令以识别返回值
+            if (auto *RI = dyn_cast<ReturnInst>(&I)) {
+                // 如果返回指令有操作数（即返回值）
+                if (RI->getNumOperands() > 0) {
+                    Value *retVal = RI->getOperand(0);
+                    varName = "ret.";
+                    typeName = parseTypeName(retVal->getType());
+                    // 由于返回值没有DebugInfo，保持DL为空
+                    if (!retAdded) retAdded = true;
+                    else typeName = ""; // 已经添加过返回值，跳过    
+                }
+            }
             // Get pointer safely
-            if (auto *SI = dyn_cast<StoreInst>(&I)) {
+            else if (auto *SI = dyn_cast<StoreInst>(&I)) {
                 Value *Addr = SI->getPointerOperand();
                 if (auto *GV = dyn_cast<GlobalVariable>(Addr)) {
                     // Check local static vars
@@ -171,8 +185,8 @@ void PrintConfig::findLocalVariables(Function &F) {
                 nlohmann::json localVar;
                 localVar["name"] = varName;
                 localVar["type"] = typeName;
-                if (lineNo) localVar["line"] = lineNo;
-                if (colNo) localVar["column"] = colNo;
+                localVar["line"] = lineNo;
+                localVar["column"] = colNo;
                 localVar["file"] = fileName;
                 localVar["isStatic"] = isStatic;
                 localVar["isParam"] = isParam;
