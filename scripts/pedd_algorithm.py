@@ -92,17 +92,18 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, ha
     
     pruned_change_set = None  # 用于标记是否需要更新change_set
     if not algorithm_utils.skip and not run_passed:
-        if current_result not in invalid_result_map:
+        if current_result in invalid_result_map:
+            # 运行结果已出现过，计算交集
+            existing_set = invalid_result_map[current_result]
+            current_set = reduced_set
+            intersection = get_change_set_intersection(existing_set, current_set)
+            invalid_result_map[current_result] = intersection
+            print(f'{current_result}\'s Intersection: {intersection}')
+        else:
             print(f'New result encountered: {current_result}')
             # 运行结果第一次出现，记录降低后的变量集
             invalid_result_map[current_result] = reduced_set.copy()
-        # 计算交集
-        existing_set = invalid_result_map[current_result]
-        current_set = reduced_set
-        intersection = get_change_set_intersection(existing_set, current_set)
-        invalid_result_map[current_result] = intersection
-        print(f'{current_result}\'s Intersection: {intersection}')
-        # 检查交集是否只有一个元素
+            intersection = reduced_set
         if len(intersection) == 1:
             # 将该元素从当前change_set中清除
             element_to_remove = intersection[0]
