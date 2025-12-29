@@ -79,6 +79,8 @@ do
     # 只处理.c/.cpp/.h/.hpp后缀的文件
     if test -f "$arg" & (test "${arg##*.}" = "c" || test "${arg##*.}" = "cpp" || test "${arg##*.}" = "h" || test "${arg##*.}" = "hpp"); then
         SOURCE_FILES="$SOURCE_FILES $arg"
+    elif test "${arg#-arg}" != "$arg"; then
+        RUN_ARGS="$RUN_ARGS $arg"
     # 识别以 -l 开头的参数并添加到 LINK_LIBS 中
     elif test "${arg#-l}" != "$arg"; then
         LINK_LIBS="$LINK_LIBS $arg"
@@ -155,6 +157,7 @@ do
         echo "  -shuffled                   (search-optimize) Shuffle searched variables (default false)"
         echo "  -j<threads>                 (search-optimize) Set threads count for dd-algorithm(default 1)"
         echo "  -history                    (search-optimize) Keep search history (default false)"
+        echo "  -arg=<arg>                  (search-optimize) arguments for executable, should be input in order"
         echo "  -check-result               (all modes) Print relative error in exec"
         echo "  -fp128todd                  (all modes) fp128 regarded as double-double. On x86_64, must use printf("%Qa", result)!"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables, will auto enable -check-result"
@@ -281,7 +284,7 @@ fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
-    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS
+    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc -arg=$RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 

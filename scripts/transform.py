@@ -24,6 +24,7 @@ LINK_LIBS = []
 LINK_DIRS = []
 RUNTIME_LIB_DIRS = []
 CFLAGS = []
+RUN_ARGS = []
 
 # time & result in current run
 current_run_time = float("inf")
@@ -63,7 +64,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                "-S", 
                "-passes=" + PASSES + 
                (",record_result" if is_mxp else "") + ",remove_pragma" + 
-               (",fp128_to_dd" if (run_id > 1 and FP128_TO_DD) else ""),
+               (",fp128_to_dd" if (run_id > 1 and FP128_TO_DD) else ""),  # TODO: x86上需要移除run_id > 1条件
             #    "--print-dd=" + str(FP128_TO_DD),
                "--variable-config=" + CURRENT_CONFIG_NAME, 
                "--function-config=" + CURRENT_CONFIG_NAME, 
@@ -76,6 +77,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     
     # generate executable
     command = [COMPILER, '-o', CURRENT_EXEC_NAME, CURRENT_BC_NAME] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
+    # TODO: x86上需要移除run_id > 1条件
     if run_id > 1 and FP128_TO_DD:
         command += [os.path.join(os.getenv("PERCI_TUNER"), "lib/dd_real/libautop-x86.a" if platform.machine() == "x86_64" else "lib/dd_real/libautop.a"), '-lm']
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
@@ -90,7 +92,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
 
     # run modified bitcode
     for i in range(RUNNING_TIMES):
-        command = ['./' + CURRENT_EXEC_NAME]
+        command = ['./' + CURRENT_EXEC_NAME] + RUN_ARGS
         try:
             # 使用perf_counter统计执行时间
             start_time = time.perf_counter()

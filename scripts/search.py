@@ -25,6 +25,7 @@ def parse_arguments():
         '-rpath': [],
         '-cflags': [],
         '-threads': 1,
+	    '-run-args': [],
     }
     
     for arg in sys.argv[1:]:
@@ -34,6 +35,10 @@ def parse_arguments():
             params['-link-dirs'].append(arg)
         elif arg.startswith('-Wl,-rpath'):
             params['-rpath'].append(arg)
+        elif arg.startswith('-arg'):
+            k, v = arg.split('=', 1)
+            if v != '':
+                params['-run-args'].append(v)
         elif '=' in arg:
             key, value = arg.split('=', 1)
             if key in params:
@@ -151,6 +156,7 @@ def main():
     transform.LINK_DIRS = args['-link-dirs']
     transform.RUNTIME_LIB_DIRS = args['-rpath']
     transform.CFLAGS = args['-cflags']
+    transform.RUN_ARGS = args['-run-args']
     algorithm_utils.is_mxp = args['-mxp']
 
     start_time = time.perf_counter()
@@ -178,6 +184,7 @@ def main():
     print(f"  Link dirs: {args['-link-dirs']}")
     print(f"  Runtime lib dirs: {args['-rpath']}")
     print(f"  CFlags: {args['-cflags']}")
+    print(f"  Run args: {args['-run-args']}")
     print(f"  MXP: {args['-mxp']}")
 
     # get the original time and original result for compare

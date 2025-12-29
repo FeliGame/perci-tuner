@@ -456,3 +456,6 @@
 * CRUCIAL update PrintConfig/ChangeFunctionDecl: recognize & change function return type.
 * repair ChangeFunctionDecl: remove redundant cast in fmuladd, fcmp, binop, callInst.
 * update PEDD: prune single-var set whenever is first seen, skip superset of existing reduced set.
+
+### 29
+* update search-optimize mode: support args for executable in search-optimize mode.
