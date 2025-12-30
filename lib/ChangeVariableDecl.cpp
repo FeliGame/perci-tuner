@@ -223,6 +223,7 @@ Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
 }
 
 Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType) {
+    if (load->getType()->isIntegerTy()) return nullptr; // ignore integer load
     auto *ptrOperand = load->getPointerOperand();
     Type* loadType = targetType;
     if (auto *allocaInst = findOriginalAlloca(ptrOperand))
@@ -284,7 +285,6 @@ Instruction* ChangeVariableDecl::repairUnaryOp(UnaryOperator* unaOp) {
 }
 
 Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
-    bool operandsModified = false;
     SmallVector<Value*, 2> newOperands;
     auto *highestType = findHighestPrecisionType(binOp);
 
@@ -293,22 +293,19 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
         // if typecast, use src value
         if (auto *castInst = dyn_cast<CastInst>(operand)) {
             operand = castInst->getOperand(0);
-            operandsModified = true;
             // 将原始cast指令添加到待删除列表，消除冗余
             instToErase.insert(castInst);
         }
         // type of src operands not match
         if (operand->getType() != highestType) {
             if (auto *newOperand = insertCast(operand, highestType, binOp)) {
-                newOperands.push_back(newOperand);
-                operandsModified = true;
+                operand = newOperand;
             }
-        } else {
-            newOperands.push_back(operand);  // keep original operands
         }
+        newOperands.push_back(operand);
     }
 
-    if (operandsModified || binOp->getType() != highestType) {
+    if (binOp->getType() != highestType) {
         IRBuilder<> builder(binOp);
         auto *newBinOp = builder.CreateBinOp(binOp->getOpcode(), 
                                              newOperands[0], 
@@ -318,16 +315,18 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
             newBinOpInst->setDebugLoc(binOp->getDebugLoc());
             replaceMultiOperandInst(binOp, newBinOpInst);
         }
-        errs() << "[repair binop] " << *binOp << "->" << *newBinOp << '\n';
-
-        return dyn_cast<Instruction>(newBinOp);
+        errs() << "[repair binop] " << *binOp << "->";
+        binOp = dyn_cast<BinaryOperator>(newBinOp);
+    } else {
+        for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
+            binOp->setOperand(i, newOperands[i]);
+        }
     }
-
-    return nullptr;
+    errs() << *binOp << '\n';
+    return binOp;
 }
 
 Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
-    bool operandsModified = false;
     SmallVector<Value*, 2> newOperands;
     auto *highestType = findHighestPrecisionType(fcmp);
     
@@ -336,23 +335,18 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
         // if typecast, use src value
         if (auto *castInst = dyn_cast<CastInst>(operand)) {
             operand = castInst->getOperand(0);
-            operandsModified = true;
             // 将原始cast指令添加到待删除列表，消除冗余
             instToErase.insert(castInst);
         }
         if (operand->getType() != highestType) {
             if (auto *newOperand = insertCast(operand, highestType, fcmp)) {
-                newOperands.push_back(newOperand);
-                operandsModified = true;
-            } else {
-                newOperands.push_back(operand);
+                operand = newOperand;
             }
-        } else {
-            newOperands.push_back(operand);
         }
+        newOperands.push_back(operand);
     }
 
-    if (operandsModified || fcmp->getType() != Type::getInt1Ty(fcmp->getContext())) {
+    if (fcmp->getType() != Type::getInt1Ty(fcmp->getContext())) {
         IRBuilder<> builder(fcmp);
         auto *newFcmp = builder.CreateFCmp(fcmp->getPredicate(), 
                                             newOperands[0], 
@@ -362,12 +356,15 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
             newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
             replaceMultiOperandInst(fcmp, newFcmpInst);
         }
-        errs() << "[repair FCmp] " << *fcmp << "->" << *newFcmp << '\n';
-
-        return dyn_cast<Instruction>(newFcmp);
+        errs() << "[repair FCmp] " << *fcmp << "->";
+        fcmp = dyn_cast<FCmpInst>(newFcmp);
+    } else {
+        for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
+            fcmp->setOperand(i, newOperands[i]);
+        }
     }
-
-    return nullptr;
+    errs() << *fcmp << '\n';
+    return fcmp;
 }
 
 Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
@@ -379,9 +376,9 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
         // 获取当前fmuladd指令的类型
         Type* currentType = call->getType();
         Type* highestType = nullptr;
-        SmallVector<Value*, 3> operandSources;
+        SmallVector<Value*, 3> newOperands;
 
-        // 分析每个操作数的原始类型
+        // 分析每个操作数的原始类型以及最高类型
         for (unsigned i = 0; i < 3; ++i) {
             Value* operand = call->getArgOperand(i);
             Value* sourceOperand = operand;
@@ -393,7 +390,7 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
                 // 将原始cast指令添加到待删除列表，消除冗余
                 instToErase.insert(castInst);
             }
-            operandSources.push_back(sourceOperand);
+            newOperands.push_back(sourceOperand);
             // 浮点常数不锁定类型
             if (isa<Constant>(sourceOperand) && sourceType->isFloatingPointTy()) continue;
             
@@ -405,18 +402,19 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             }
         }
 
+        // 更新newOperands并插入必要cast
+        for (unsigned i = 0; i < 3; ++i) {
+            Value* source = newOperands[i];
+            if (source->getType() != highestType) {
+                if (auto* casted = insertCast(source, highestType, call)) {
+                    newOperands[i] = casted;
+                }
+            }
+        }
+
         // 检查操作数是否需要转换（无论当前类型是否与最高精度类型相同）
         bool needsRepair = highestType != currentType;
         SmallVector<Value*, 3> castedOperands;
-        
-        // 先准备操作数，检查是否需要转换
-        for (unsigned i = 0; i < 3; ++i) {
-            Value* source = operandSources[i];
-            if (source->getType() != highestType) {
-                needsRepair = true;
-                break;
-            }
-        }
         
         // 如果需要修复（最高精度类型与当前类型不同，或操作数类型不一致）
         if (needsRepair) {
@@ -455,7 +453,7 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
 
             // 确保所有操作数都是最高精度类型
             for (unsigned i = 0; i < 3; ++i) {
-                Value* source = operandSources[i];
+                Value* source = newOperands[i];
                 if (source->getType() != highestType) {
                     if (Value* casted = insertCast(source, highestType, call)) {
                         castedOperands.push_back(casted);
@@ -473,11 +471,16 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             newCall->setDebugLoc(call->getDebugLoc());
             newCall->takeName(call);
             replaceMultiOperandInst(call, newCall);
-            errs() << "[repair fmuladd] " << *call << "->" << *newCall << '\n';
-
-            return newCall;
+            errs() << "[repair fmuladd] " << *call << "->";
+            call = newCall;
+        } else {
+            // 直接替换操作数类型即可
+            for (unsigned i = 0; i < 3; ++i) {
+                call->setArgOperand(i, newOperands[i]);
+            }
         }
-        return nullptr;
+        errs() << *call << '\n';
+        return call;
     }
     
     // 处理其他函数调用

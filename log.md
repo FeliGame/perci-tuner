@@ -459,3 +459,6 @@
 
 ### 29
 * update search-optimize mode: support args for executable in search-optimize mode.
+
+### 30 
+* repair ChangeVariableDecl: infinite loop while running repairBinOp, reduce new multi-op inst creation (better performance).
