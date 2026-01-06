@@ -462,3 +462,8 @@
 
 ### 30 
 * repair ChangeVariableDecl: infinite loop while running repairBinOp, reduce new multi-op inst creation (better performance).
+
+## Jan, 2025
+
+### 5
+* update PEDD: optimize set operation performance O(n*m) -> O(n + m), optimize break loop timing.

@@ -49,25 +49,39 @@ def remove_unchangable(change_set):
             new_change_set.append(c)
     return new_change_set
 
+# 辅助函数：生成元素的哈希键
+def get_element_hash_key(element):
+    # 根据元素类型生成唯一可哈希的键
+    if 'func' in element:  # 局部变量类型
+        return ('func', element['func'], element['fvar_index'])
+    elif 'caller' in element:  # 函数调用类型
+        return ('caller', element['caller'], element['fcall_index'])
+    elif 'struct' in element:  # 结构体成员类型
+        return ('struct', element['struct'], element['member_index'])
+    # 如果都不属于上述类型，使用整个字典的冻结集作为键
+    return tuple(sorted(element.items()))
+
 # 辅助函数：比较两个 change_set 元素是否相等
 def change_element_equal(e1, e2):    
-    # 检查是否为同一类型的元素
-    if 'func' in e1 and 'func' in e2:  # 局部变量类型
-        return e1['func'] == e2['func'] and e1['fvar_index'] == e2['fvar_index']
-    elif 'caller' in e1 and 'caller' in e2:  # 函数调用类型
-        return e1['caller'] == e2['caller'] and e1['fcall_index'] == e2['fcall_index']
-    elif 'struct' in e1 and 'struct' in e2:  # 结构体成员类型
-        return e1['struct'] == e2['struct'] and e1['member_index'] == e2['member_index']
-    # 如果都不属于上述类型，尝试比较整个字典
-    return e1 == e2
+    # 使用哈希键比较更高效
+    return get_element_hash_key(e1) == get_element_hash_key(e2)
 
 # 辅助函数：计算两个 change_set 的交集
 def get_change_set_intersection(set1, set2):
+    # 选择较小的集合作为基础，减少哈希表大小
+    if len(set1) > len(set2):
+        set1, set2 = set2, set1
+    
+    # 创建哈希键到元素的映射，O(n)时间
+    set1_map = {get_element_hash_key(e): e for e in set1}
     intersection = []
-    for e1 in set1:
-        for e2 in set2:
-            if change_element_equal(e1, e2):
-                intersection.append(e1)
+    
+    # 遍历第二个集合，检查是否在映射中，O(m)时间
+    for e in set2:
+        key = get_element_hash_key(e)
+        if key in set1_map:
+            intersection.append(set1_map[key])
+    
     return intersection
 
 # 辅助函数：从 change_set 中移除指定元素或元素列表
@@ -75,19 +89,20 @@ def remove_from_change_set(change_set, elements):
     # 如果elements不是列表，转换为列表
     if not isinstance(elements, list):
         elements = [elements]
-    return [e for e in change_set if not any(change_element_equal(e, el) for el in elements)]
+    # 将elements转换为哈希键集合，O(m)时间
+    elements_keys = {get_element_hash_key(element) for element in elements}
+    # 过滤change_set中不在elements_keys中的元素，O(n)时间
+    return [e for e in change_set if get_element_hash_key(e) not in elements_keys]
 
 # 辅助函数：判断 set1 是否是 set2 的子集
 def is_subset_of(set1, set2):
     if len(set1) > len(set2):
         return False
+    # 将set2转换为哈希键集合，O(m)时间
+    set2_keys = {get_element_hash_key(element) for element in set2}
+    # 检查set1的每个元素是否都在set2中，O(n)时间
     for element in set1:
-        found = False
-        for el in set2:
-            if change_element_equal(element, el):
-                found = True
-                break
-        if not found:
+        if get_element_hash_key(element) not in set2_keys:
             return False
     return True
 
@@ -161,6 +176,7 @@ def search_minimal_change_set(bitcode, change_set, div_num):
 
     # 串行处理delta搜索
     pruned_change_set = None
+    bottleneck_found = False  # 是否找到瓶颈变量
     for i in range(len(delta_change_set)):
         delta_change = delta_change_set[i]
         complement_delta_change = complement_delta_change_set[i]
@@ -169,14 +185,27 @@ def search_minimal_change_set(bitcode, change_set, div_num):
         new_change_set, is_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, delta_change, new_change_set, div_num)
         have_better_set |= is_better_set
         if temp_updated:
+            bottleneck_found = True
             pruned_change_set = temp_updated
-            break
+            # 先暂存当前 pruned_change_set
 
         # 测试补集变化集
         new_change_set, is_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, complement_delta_change, new_change_set, div_num)
         have_better_set |= is_better_set
         if temp_updated:
-            pruned_change_set = temp_updated
+            bottleneck_found = True
+            if pruned_change_set is not None:
+                # 与上次pruned_change_set取并集
+                # 创建当前pruned_change_set的哈希键集合，O(n)时间
+                existing_keys = {get_element_hash_key(e) for e in pruned_change_set}
+                # 只添加新的元素，O(m)时间
+                for element in temp_updated:
+                    if get_element_hash_key(element) not in existing_keys:
+                        pruned_change_set.append(element)
+            else:
+                pruned_change_set = temp_updated
+        
+        if bottleneck_found:
             break
 
     # 处理找到的 better_set 和 pruned_change_set
