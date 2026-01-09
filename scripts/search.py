@@ -213,9 +213,8 @@ def main():
     config_utils.print_config(new_conf, "optimized_config.json")
     
     end_time = time.perf_counter()
-    print(f">>> Perci-Tuner(Py): Search time: {(end_time - start_time):.2e} s")
-    print(">>> Perci-Tuner(Py): Search finished! Total run times:", algorithm_utils.run_times, "Fail times:", transform.RUNNING_FAIL_TIMES, "Change set len:", len(change_set))
-    print(">>> Perci-Tuner(Py): Config: " + "optimized_config.json", "IR:", algorithm_utils.OPT_PREFIX + algorithm_utils.bitcode_name, "Optimized_time:", algorithm_utils.min_time, "Original_time:", data_utils.ORIGINAL_TIME, "Acc rate:", 100.0 * (data_utils.ORIGINAL_TIME - algorithm_utils.min_time) / algorithm_utils.min_time, "%")
+    print(f">>> Perci-Tuner(Py): Search history recorded in config/ IR/ exec/ Searched config count: {algorithm_utils.run_times} Failed config count: {transform.RUNNING_FAIL_TIMES} Spent time: {(end_time - start_time):.2e}s. Search space size: {len(change_set)}")
+    print(">>> Perci-Tuner(Py): Best: optimized_config.json, optimized_output, optimized_output.bc. Optimized_time:", algorithm_utils.min_time, "Original_time:", data_utils.ORIGINAL_TIME, "Acc rate:", 100.0 * (data_utils.ORIGINAL_TIME - algorithm_utils.min_time) / algorithm_utils.min_time, "%")
 
     # baseline_test(bitcode, algorithm_utils.original_conf)
 

@@ -7,6 +7,9 @@
 ########################
 
 cd $PERCI_TUNER
+rm -rf config
+rm -rf IR
+rm -rf exec
 find . -type f -name "*.json" -exec rm {} \;
 find . -type f -name "*.bc" -exec rm {} \;
 find . -type f -name "*.csv" -exec rm {} \;

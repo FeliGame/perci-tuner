@@ -33,8 +33,8 @@ def atomic_increment_run_times():
 # update the best IR, exec and config file
 def update_opt(opt_config):
     global OPT_PREFIX, bitcode_name
-    shutil.copyfile(f"{run_times}.bc", OPT_PREFIX + bitcode_name)
-    shutil.copyfile(f"{run_times}", OPT_PREFIX + 'output')
+    shutil.copyfile(os.path.join('IR', f'{run_times}.bc'), OPT_PREFIX + bitcode_name)
+    shutil.copyfile(os.path.join('exec', f'{run_times}'), OPT_PREFIX + 'output')
     config_utils.print_config(opt_config, OPT_PREFIX + "config.json")
     os.chmod(OPT_PREFIX + "output", 0o755)
 

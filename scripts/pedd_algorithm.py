@@ -115,7 +115,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, di
     # 计算降低后的变量集: change_set - test_set
     reduced_set = remove_from_change_set(change_set, test_set)
     # print(f'reduced_set: {reduced_set}\n')
-    # 如果reduced_set 是 invalid_result_map 中任意 value 的超集则跳过，因为结果必然是超误差阈值的
+    # 策略二：如果reduced_set 是 invalid_result_map 中任意 value 的超集则跳过，因为结果必然是超误差阈值的
     for existing_reduced_set in invalid_result_map.values():
         # print(f'existing reduced_set:{existing_reduced_set}')
         if is_subset_of(existing_reduced_set, reduced_set):
@@ -126,6 +126,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, di
     run_passed = algorithm_utils.run_config(bitcode, new_config, change_set)
     current_result = transform.current_run_result  # 从change_set中移除test_set的元素
     
+    # 策略一：精度敏感变量剪枝
     pruned_change_set = None  # 用于标记是否需要更新change_set
     intersection = []
     if not algorithm_utils.skip and not run_passed:

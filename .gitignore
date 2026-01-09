@@ -1,5 +1,8 @@
 build/
-scripts/__pycache__/
+config/
+exec/
+IR/
+*/__pycache__/
 ir_timing.txt
 .DS_Store
 *.csv

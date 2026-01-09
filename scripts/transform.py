@@ -52,10 +52,19 @@ def read_result(text):
 # run the current variable config and get the result
 def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     global current_run_time, current_run_result, RUNNING_FAIL_TIMES
+    # 确保目标目录存在
+    target_dirs = {
+        "config": "config",
+        "IR": "IR",
+        "exec": "exec"
+    }
+    for dir_name in target_dirs.values():
+        os.makedirs(dir_name, exist_ok=True)
+    
     # write the config to the temp file 
-    CURRENT_CONFIG_NAME = str(run_id) + ".json"
-    CURRENT_BC_NAME = str(run_id) + ".bc"
-    CURRENT_EXEC_NAME = str(run_id)
+    CURRENT_CONFIG_NAME = os.path.join("config", str(run_id) + ".json")
+    CURRENT_BC_NAME = os.path.join("IR", str(run_id) + ".bc")
+    CURRENT_EXEC_NAME = os.path.join("exec", str(run_id))
 
     config_utils.print_config(var_config, CURRENT_CONFIG_NAME)
     # run LLVM passes
