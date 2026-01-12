@@ -470,3 +470,6 @@
 
 ### 9
 * update search files: searched files saved in config/ exec/ IR/.
+
+### 12
+* repair FP128ToDD: stack dump when encounters scanf family.

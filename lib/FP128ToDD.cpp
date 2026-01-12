@@ -111,8 +111,8 @@ inline StringRef dropPrefixSuffix(StringRef name) {
 
 bool isScanfFamily(StringRef name) {
 	name = dropPrefixSuffix(name);
-	return  name == "scanf" || name == "fscanf" || name == "vscanf" ||
-		name == "wscanf" || name == "fwscanf" || name == "vwscanf";
+	return  name == "scanf" || name == "fscanf" || name == "vscanf" || name == "vfscanf" ||
+		name == "wscanf" || name == "fwscanf" || name == "vwscanf" || name == "vfwscanf";
 }
 
 //Type *getUltimateElementType(Value *V) {
@@ -150,10 +150,28 @@ bool isScanfFamily(StringRef name) {
 //	}
 //}
 
-GlobalVariable *getUnderlyingGlobalString(Value *V) {
+std::string getGlobalStringFromValue(Value *V) {
 	for (;;) {
-		if (auto *GV = dyn_cast<GlobalVariable>(V))
-			return GV->isConstant() ? GV : nullptr;
+		if (auto *GV = dyn_cast<GlobalVariable>(V)) {
+			if (!GV->isConstant()) return "";
+
+			if (auto *C = dyn_cast<ConstantDataSequential>(GV->getInitializer())) {
+				if (C->isString()) {
+					return C->getAsString().str();
+				}
+			} else if (auto *CA = dyn_cast<ConstantArray>(GV->getInitializer())) {
+				std::string str;
+				for (unsigned i = 0; i < CA->getNumOperands(); ++i) {
+					if (auto *CE = dyn_cast<ConstantInt>(CA->getOperand(i))) {
+						char c = static_cast<char>(CE->getZExtValue());
+						if (c == '\0') break;
+						str += c;
+					}
+				}
+				return str;
+			}
+			return "";
+		}
 
 		if (auto *CE = dyn_cast<ConstantExpr>(V)) {
 			if (CE->isCast() || CE->getOpcode() == Instruction::GetElementPtr) {
@@ -161,7 +179,7 @@ GlobalVariable *getUnderlyingGlobalString(Value *V) {
 				continue;
 			}
 		}
-		return nullptr;
+		return "";
 	}
 }
 
@@ -449,10 +467,15 @@ bool FP128ToDD::runOnModule(Module &M) {
 	    } else if (isScanfFamily(Callee->getName())) {
 	      errs() << "scanf : " << *FCall << "\n";
 
-	      Value *FmtOp = FCall->getOperand(0);
+        unsigned startIndex = 1;
+        // 若后缀是fscanf或fwscanf，则更新startIndex
+        if (Callee->getName().endswith("fscanf") || Callee->getName().endswith("fwscanf")) {
+          startIndex = 2;
+        }
+	      Value *FmtOp = FCall->getOperand(startIndex - 1);
 	      errs() << "FmtOp : " << *FmtOp << "\n";
 
-	      BitCastOperator *t = dyn_cast<BitCastOperator>(FmtOp);
+	      if (BitCastOperator *t = dyn_cast<BitCastOperator>(FmtOp)) {
 	      errs() << "FmtOp BitCastOperator : " << t << "\n";
 	      GlobalVariable *GV = dyn_cast<GlobalVariable>(
 			      dyn_cast<BitCastOperator>(FmtOp)
@@ -463,14 +486,34 @@ bool FP128ToDD::runOnModule(Module &M) {
 	      } else {
 	      	errs() << "GV : " << *GV << "\n";
 	      }
+        }
 
-
-	      GlobalVariable *GV2 = getUnderlyingGlobalString(FmtOp);
-	      if (!GV2) {
-	      	errs() << "GV2 is null.\n";
-	      } else {
-	      	errs() << "GV2 : " << *GV2 << "\n";
-	      }
+	      std::string fmtStr = getGlobalStringFromValue(FmtOp);
+        if (fmtStr.empty()) {
+          errs() << "Failed to extract format string.\n";
+        } else {
+          errs() << "Extracted format string: " << fmtStr << "\n";
+          
+          // 解析格式字符串，按空格切分为子格式串
+          SmallVector<StringRef, 16> subFormats;
+          StringRef(fmtStr).split(subFormats, ' ', -1, false);
+          
+          // 处理后续操作数，跳过格式串和可能的文件流参数
+          unsigned argIndex = startIndex; // 从格式串的下一个参数开始
+          for (const StringRef &subFmt : subFormats) {
+            // 只处理非空的子格式串
+            if (subFmt.empty()) continue;
+            
+            // 检查当前子格式串是否以"%L"开头（表示需要处理为DD格式）
+            if (subFmt.startswith("%L")) {
+              // TODO：处理逻辑(FP128ToDD)
+            }
+            else if (subFmt.startswith("%l")) {
+              // TODO：处理逻辑(FP64ToDD)
+            }
+            argIndex++;
+          }
+        }
 
 
               //for (unsigned i = 0; i < FCall->getNumOperands(); ++i) {
