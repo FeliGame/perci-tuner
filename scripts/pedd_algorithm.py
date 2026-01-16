@@ -125,8 +125,9 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, di
     # 执行测试配置，记录结果无论是否符合阈值
     run_passed = algorithm_utils.run_config(bitcode, new_config, change_set)
     current_result = transform.current_run_result  # 从change_set中移除test_set的元素
-    
-    # 策略一：精度敏感变量剪枝
+    if current_result == 'RUNTIME-ERROR':
+        return new_change_set, False, None
+
     pruned_change_set = None  # 用于标记是否需要更新change_set
     intersection = []
     if not algorithm_utils.skip and not run_passed:
@@ -141,6 +142,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, di
             # 运行结果第一次出现，记录降低后的变量集
             invalid_result_map[current_result] = reduced_set.copy()
             intersection = reduced_set
+        # 策略一：精度敏感变量剪枝
         if len(intersection) == 1:
             # 将该元素从当前change_set中清除
             element_to_remove = intersection[0]

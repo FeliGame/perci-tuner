@@ -114,7 +114,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                 sys.exit(1)
             if not logged:  # 同一程序只需登记一次运行结果/误差
                 logged = True
-                output = output.splitlines()[-1]  # 取最后一行
+                # output = output.splitlines()[-1]  # 取最后一行
                 output_text = output.decode()
                 output_val = read_result(output_text)
                 if is_mxp:  # 如果是mxp模式，则output接收到的最后一行是误差值，不是结果值
@@ -138,6 +138,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             print(e.output.decode())
             print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")
             RUNNING_FAIL_TIMES += 1
+            current_run_result = 'RUNTIME-ERROR'
             if show_history:
                 data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff)
             return -2

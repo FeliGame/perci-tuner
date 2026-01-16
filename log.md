@@ -473,3 +473,6 @@
 
 ### 12
 * repair FP128ToDD: stack dump when encounters scanf family.
+
+### 16
+* update pedd_algorithm.py: handle RUNTIME-ERROR correctly.
