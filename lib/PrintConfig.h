@@ -35,7 +35,7 @@ private:
 
     void findGlobalVariables(Module &M);
 
-    void findStructDeclarations(Module &M);
+    void dumpStructDecl(DICompositeType* structType, std::string structName);
 
     void findFunctionCalls(Function &F);
     

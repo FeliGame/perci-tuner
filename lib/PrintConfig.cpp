@@ -84,6 +84,51 @@ void PrintConfig::findLocalVariables(Function &F) {
                         DL = DDI->getDebugLoc();
                         isStatic = false;
                         isParam = DV->isParameter();
+                        
+                        // 处理结构体声明的局部变量 (通过dbg.declare)
+                        std::string structName = "";
+                        DICompositeType *structType = nullptr;
+                        
+                        // 检查是否是typedef定义的结构体
+                        if (auto *derivedType = dyn_cast<DIDerivedType>(DV->getType())) {
+                            // 如果是typedef类型，获取其名称作为结构体名称
+                            if (derivedType->getTag() == dwarf::DW_TAG_typedef) {
+                                structName = derivedType->getName().str();
+                                // 获取typedef的基类型
+                                if (auto *baseType = derivedType->getBaseType()) {
+                                    if (auto *baseComposite = dyn_cast<DICompositeType>(baseType)) {
+                                        if (baseComposite->getTag() == dwarf::DW_TAG_structure_type) {
+                                            structType = baseComposite;
+                                        } else if (auto *baseDerived = dyn_cast<DIDerivedType>(baseType)) {
+                                            // 处理嵌套的typedef情况
+                                            if (auto *nestedComposite = dyn_cast<DICompositeType>(baseDerived->getBaseType())) {
+                                                if (nestedComposite->getTag() == dwarf::DW_TAG_structure_type) {
+                                                    structType = nestedComposite;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if (auto *baseType = dyn_cast<DICompositeType>(derivedType->getBaseType())) {
+                                // 其他派生类型，直接获取基类型
+                                if (baseType->getTag() != dwarf::DW_TAG_structure_type) continue;
+                                structName = baseType->getName().str();
+                                structType = baseType;
+                            }
+                        } else if (auto *compositeType = dyn_cast<DICompositeType>(DV->getType())) {
+                            // 直接获取结构体类型
+                            if (compositeType->getTag() != dwarf::DW_TAG_structure_type) continue;
+                            structName = compositeType->getName().str();
+                            structType = compositeType;
+                        }
+                        if (structName.empty()) {
+                            if (auto *AI = dyn_cast<AllocaInst>(DDI->getAddress())) {
+                                // 从AllocaInst获取分配的类型
+                                if (auto *ST = dyn_cast<StructType>(AI->getAllocatedType()))
+                                    structName = ST->getStructName().str();
+                            }
+                        }
+                        if (structType) dumpStructDecl(structType, structName);
                     }
                 }
                 // Handle __autofp intrinsic
@@ -234,21 +279,31 @@ void PrintConfig::findGlobalVariables(Module &M) {
 
         SmallVector<DIGlobalVariableExpression *, 1> GVs;
         GV.getDebugInfo(GVs);
-        if (!GVs.empty()) {
-            DIGlobalVariableExpression *GVE = GVs[0];
-            if (GVE) {
-                DIGlobalVariable *GVDebug = GVE->getVariable();
-                if (GVDebug) {
-                    unsigned lineNo = GVDebug->getLine();
-                    DIFile *file = GVDebug->getFile();
-                    globalVar["line"] = lineNo;
-                    globalVar["file"] = file->getFilename().str();
-                    auto typeName = parseDITypeName(GVDebug->getType());
-                    if (typeName.empty()) continue;
-                    globalVar["type"] = typeName;
+        if (GVs.empty()) continue;
+        DIGlobalVariableExpression *GVE = GVs[0];
+        if (!GVE) continue;
+        DIGlobalVariable *GVDebug = GVE->getVariable();
+        if (!GVDebug) continue;
+        unsigned lineNo = GVDebug->getLine();
+        DIFile *file = GVDebug->getFile();
+        globalVar["line"] = lineNo;
+        globalVar["file"] = file->getFilename().str();
+        auto typeName = parseDITypeName(GVDebug->getType());
+
+        // 处理结构体声明的全局变量
+        if (auto *compositeType = dyn_cast<DICompositeType>(GVDebug->getType())) {
+            if (compositeType->getTag() != dwarf::DW_TAG_structure_type) continue;
+            typeName = compositeType->getName().str();
+            // 如果typeName为空，尝试从global initializer获取信息
+            if (typeName.empty()) {
+                if (auto *ST = dyn_cast<StructType>(GV.getValueType())) {
+                    typeName = ST->getStructName().str();
                 }
             }
+            dumpStructDecl(compositeType, typeName);
         }
+
+        globalVar["type"] = typeName;
 
         // handle __autofp
         if (MDNode *MD = GV.getMetadata("precision_range")) {
@@ -268,25 +323,22 @@ void PrintConfig::findGlobalVariables(Module &M) {
     config["global"] = globalVars;
 }
 
-void PrintConfig::findStructDeclarations(Module &module) {
-    nlohmann::json structDecls;
-
-    for (auto *sty : module.getIdentifiedStructTypes()) {
-        if (!sty || sty->getName().empty()) continue;
-        nlohmann::json structDecl;
-        unsigned i = 0;
-        for (auto member : sty->elements()) {
+void PrintConfig::dumpStructDecl(DICompositeType* structType, std::string structName) {
+    nlohmann::json structDecl;
+    unsigned i = 0;
+    for (auto *element : structType->getElements()) {
+        if (auto *memberType = dyn_cast<DIDerivedType>(element)) {
+            if (memberType->getTag() != dwarf::DW_TAG_member) continue;
             nlohmann::json memberInfo;
-            auto typeName = parseTypeName(member);
             memberInfo["member_index"] = i++;
-            memberInfo["type"] = typeName;  // We didn't need to skip integer here
+            memberInfo["type"] = parseDITypeName(memberType->getBaseType());
             structDecl.push_back(memberInfo);
         }
-        // Remove 'struct.' prefix
-        structDecls[sty->getName().substr(7)] = structDecl;
     }
-
-    config["structs"] = structDecls;
+    // 若structName有"struct."前缀，则将其去掉
+    if (structName.find("struct.") != std::string::npos)
+        structName = structName.substr(7);
+    config["structs"][structName] = structDecl;
 }
 
 void PrintConfig::findFunctionCalls(Function &F) {
@@ -336,7 +388,6 @@ bool PrintConfig::runOnFunction(Function &F) {
 
 bool PrintConfig::runOnModule(Module &module) {
     findGlobalVariables(module);
-    findStructDeclarations(module);
 
     for(Module::iterator f = module.begin(), fe = module.end(); f != fe; f++) {
         string name = f->getName().str();
