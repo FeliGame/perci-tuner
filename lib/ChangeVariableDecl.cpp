@@ -1106,68 +1106,102 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
     for (auto *sty : module.getIdentifiedStructTypes()) {
         StringRef rawName = sty->getName();
         StringRef structName = rawName.starts_with("struct.") ? rawName.substr(7) : rawName;
-        if (structInfos.contains(structName.str())) {
-            auto members = structInfos[structName.str()];
-            SmallVector<Type*, 4> newElements;
-            bool needsUpdate = false;
+        if (!structInfos.contains(structName.str())) continue;
+        auto members = structInfos[structName.str()];
+        SmallVector<Type*, 4> newElements;
+        bool needsUpdate = false;
 
-            // Iterate original struct members
-            for (unsigned i = 0; i < sty->getNumElements(); ++i) {
-                auto *oldType = sty->getElementType(i);
-            
-                string typeStr = members[i]["type"].get<string>();
-                auto *targetType = translateValidTypeName(typeStr, context);
+        // Iterate original struct members
+        for (unsigned i = 0; i < sty->getNumElements(); ++i) {
+            auto *oldType = sty->getElementType(i);
+        
+            string typeStr = members[i]["type"].get<string>();
+            auto *targetType = translateValidTypeName(typeStr, context);
 
-                if (targetType && targetType != oldType) {
-                    errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
-                    needsUpdate = true;
-                }
-            
-                newElements.push_back(targetType);
+            if (targetType && targetType != oldType) {
+                errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
+                oldType = targetType;
+                needsUpdate = true;
             }
+        
+            newElements.push_back(oldType);
+        }
+        if (!needsUpdate) continue;
+        
+        sty->setBody(newElements, sty->isPacked());
 
-            if (needsUpdate) {
-                sty->setBody(newElements, sty->isPacked());
+        // TODO：尚不支持强制对齐方式#pragma pack(n)
+        unsigned maxAlign = 0;
+        SmallVector<unsigned, 4> maxAlignTillNow;  // 后续Load/Store指令使用的对齐长度遵循“此前最长”这一规则
+        const auto &DL = module.getDataLayout();
+        for (unsigned i = 0; i < sty->getNumElements(); ++i) {
+            auto *elemType = sty->getElementType(i);
+            unsigned align = DL.getABITypeAlign(elemType).value();
+            if (align > maxAlign) {
+                maxAlign = align;
+            }
+            maxAlignTillNow.push_back(maxAlign);
+        }
+        maxAlignTillNow[0] = maxAlign;  // IMPORTANT: load/store对于第一个成员使用最大对齐
 
-                // TODO：尚不支持强制对齐方式#pragma pack(n)
-                unsigned maxAlign = 0;
-                SmallVector<unsigned, 4> maxAlignTillNow;  // 后续Load/Store指令使用的对齐长度遵循“此前最长”这一规则
-                const auto &DL = module.getDataLayout();
-                for (unsigned i = 0; i < sty->getNumElements(); ++i) {
-                    auto *elemType = sty->getElementType(i);
-                    unsigned align = DL.getABITypeAlign(elemType).value();
-                    if (align > maxAlign) {
-                        maxAlign = align;
+        // Replace global/static initializers
+        for (auto &global : module.globals()) {
+            if (!global.hasInitializer() || global.getValueType() != sty) continue;
+            global.setAlignment(Align(maxAlign));
+            if (global.hasInternalLinkage())
+                errs() << "[set static align] ";
+            else
+                errs() << "[set global align] ";
+            errs() << global.getName() << "'s align:" << maxAlign << '\n';
+            
+            // 结构体全局变量的user替换
+            for (auto *user : global.users()) {
+                errs() << global.getName() << "'s user: " << *user << '\n';
+                // 若为storeInst/loadInst，说明读写的是第一个成员，将newElements[0]的类型作为替换目标
+                if (isa<Instruction>(user)) {
+                    repairUserType(user, newElements[0], maxAlign);
+                } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {  // 读写的是后续成员
+                    unsigned memberIndex = cast<ConstantInt>(constant->getOperand(constant->getNumOperands() - 1))->getZExtValue();
+                    errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
+                    for (auto *user : constant->users()) {
+                        repairUserType(user, newElements[memberIndex], maxAlignTillNow[memberIndex]);
                     }
-                    maxAlignTillNow.push_back(maxAlign);
+                } else {
+                    errs() << "[TODO] unhandled user: " << *user << '\n';
                 }
-                maxAlignTillNow[0] = maxAlign;  // IMPORTANT: load/store对于第一个成员使用最大对齐
+            }
+        }
 
-                // Replace global/static initializers
-                for (auto &global : module.globals()) {
-                    if (!global.hasInitializer() || global.getValueType() != sty) continue;
-                    global.setAlignment(Align(maxAlign));
-                    if (global.hasInternalLinkage())
-                        errs() << "[set static align] ";
-                    else
-                        errs() << "[set global align] ";
-                    errs() << global.getName() << "'s align:" << maxAlign << '\n';
-                    
-                    // 遍历结构体变量的所有users
-                    for (auto *user : global.users()) {
-                        errs() << global.getName() << "'s user: " << *user << '\n';
-                        // 若为storeInst/loadInst，说明读写的是第一个成员，将newElements[0]的类型作为替换目标
-                        if (isa<Instruction>(user)) {
-                            repairUserType(user, newElements[0], maxAlign);
-                        } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {  // 读写的是后续成员
-                            errs() << "constant expr: " << *constant << '\n';
-
-                            unsigned memberIndex = cast<ConstantInt>(constant->getOperand(constant->getNumOperands() - 1))->getZExtValue();
-                            errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
-                            for (auto *user : constant->users()) {
-                                repairUserType(user, newElements[memberIndex], maxAlignTillNow[memberIndex]);
-                            }
+        // 结构体局部变量的user替换
+        for (auto &F : module) {
+            for (auto &BB : F) {
+                for (auto &I : BB) {
+                    if (auto *gep = dyn_cast<GetElementPtrInst>(&I)) {
+                        if (gep->getSourceElementType() != sty) continue;  // 此处逻辑与repairGEPInst不同
+                        // 更新GEP类型
+                        SmallVector<Value*, 4> indices;
+                        for (auto &idx : gep->indices()) {
+                            indices.push_back(idx.get());
                         }
+                        auto *newGEP = GetElementPtrInst::CreateInBounds(
+                            sty,
+                            gep->getPointerOperand(),
+                            indices,
+                            gep->getName(),
+                            gep
+                        );
+                        gep->replaceAllUsesWith(newGEP);
+                        instToErase.insert(gep);
+
+                        if (auto *originalAlloca = findOriginalAlloca(gep->getPointerOperand())) 
+                            originalAlloca->setAlignment(Align(maxAlign));
+
+                        // 获取成员在结构体中的索引及其类型
+                        auto *lastIndex = gep->idx_end() - 1;
+                        unsigned elementIndex = cast<ConstantInt>(lastIndex->get())->getZExtValue();
+                        auto *elementType = sty->getElementType(elementIndex);
+                        for (auto *user : newGEP->users())
+                            repairUserType(user, elementType, maxAlignTillNow[elementIndex]);
                     }
                 }
             }
