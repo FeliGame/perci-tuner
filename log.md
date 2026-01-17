@@ -476,3 +476,7 @@
 
 ### 16
 * update pedd_algorithm.py: handle RUNTIME-ERROR correctly.
+
+### 17
+* repair ChangeVariableDecl: struct member users type.
+* update PrintConfig: structs decl won't shown in global.

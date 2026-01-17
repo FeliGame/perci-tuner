@@ -43,9 +43,9 @@ private:
 
     Instruction* repairReturnInst(ReturnInst *ret);
 
-    Instruction* repairLoadInst(LoadInst *load, Type* targetType=nullptr);
+    Instruction* repairLoadInst(LoadInst *load, Type* targetType=nullptr, unsigned align=0);
 
-    Instruction* repairStoreInst(StoreInst *store, Type* targetType=nullptr);
+    Instruction* repairStoreInst(StoreInst *store, Type* targetType=nullptr, unsigned align=0);
 
     Instruction* repairUnaryOp(UnaryOperator *unaOp);
 
@@ -65,7 +65,7 @@ private:
 
     void repairAllocaUsers(AllocaInst* alloca);
 
-    void repairUserType(User *user, Type* targetType=nullptr);
+    void repairUserType(User *user, Type* targetType=nullptr, unsigned align=0);
 
     void repairCasts(Function &F);
 

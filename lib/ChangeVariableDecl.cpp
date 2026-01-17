@@ -222,7 +222,7 @@ Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
     return nullptr;  // nothing changed
 }
 
-Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType) {
+Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType, unsigned align) {
     if (load->getType()->isIntegerTy()) return nullptr; // ignore integer load
     auto *ptrOperand = load->getPointerOperand();
     Type* loadType = targetType;
@@ -234,7 +234,7 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
             loadType = arrayType->getElementType();
         if (loadType != load->getType()) {
             auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load);
-            newLoad->setAlignment(getAlign(loadType));
+            newLoad->setAlignment(align ? Align(align) : getAlign(loadType));
             load->replaceAllUsesWith(newLoad);
             instToErase.insert(load);
             errs() << "[repair load] " << *load << "->" << *newLoad << '\n';
@@ -244,7 +244,7 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
     return nullptr;
 }
 
-Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetType) {
+Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetType, unsigned align) {
     Value *oldValue = store->getOperand(0);
     auto *ptrOperand = store->getPointerOperand();
     Type* storeType = targetType;
@@ -258,7 +258,7 @@ Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetT
             errs() << "[repair store] " << *store << "->";
             if (auto *castValue = insertCast(oldValue, storeType, store)) {
                 store->setOperand(0, castValue);
-                store->setAlignment(getAlign(storeType));
+                store->setAlignment(align ? Align(align) : getAlign(storeType));
             }
             errs() << *store << '\n';
         }
@@ -680,9 +680,9 @@ Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {
 }
 
 // Make inst operands type consistent
-void ChangeVariableDecl::repairUserType(User *user, Type* targetType) {
+void ChangeVariableDecl::repairUserType(User *user, Type* targetType, unsigned align) {
     if (!isa<Instruction>(user)) {
-        errs() << "[skipping unuser]\n";
+        errs() << "[not an instruction]\n";
         return;
     }
 
@@ -693,9 +693,9 @@ void ChangeVariableDecl::repairUserType(User *user, Type* targetType) {
     if (auto ret = dyn_cast<ReturnInst>(inst))
         newInst = repairReturnInst(ret);
     else if (auto load = dyn_cast<LoadInst>(inst))
-        newInst = repairLoadInst(load, targetType);
+        newInst = repairLoadInst(load, targetType, align);
     else if (auto store = dyn_cast<StoreInst>(inst))
-        newInst = repairStoreInst(store, targetType);
+        newInst = repairStoreInst(store, targetType, align);
     else if (auto *unaOp = dyn_cast<UnaryOperator>(inst))
         newInst = repairUnaryOp(unaOp);
     else if (auto *binOp = dyn_cast<BinaryOperator>(inst))
@@ -1113,56 +1113,25 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
 
             // Iterate original struct members
             for (unsigned i = 0; i < sty->getNumElements(); ++i) {
-                auto *newType = sty->getElementType(i);  // now is old type
+                auto *oldType = sty->getElementType(i);
             
                 string typeStr = members[i]["type"].get<string>();
                 auto *targetType = translateValidTypeName(typeStr, context);
 
-                if (targetType && targetType != newType) {
-                    errs() << "[change struct member] " << structName << " member " << i << ": " << *newType << "->" << *targetType << '\n';
-                    newType = targetType;
+                if (targetType && targetType != oldType) {
+                    errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
                     needsUpdate = true;
                 }
             
-                newElements.push_back(newType);
+                newElements.push_back(targetType);
             }
 
             if (needsUpdate) {
                 sty->setBody(newElements, sty->isPacked());
-                
-                // Replace global/static initializers
-                for (auto &global : module.globals()) {
-                    if (!global.hasInitializer()) continue;
-                    if (auto init = dyn_cast<ConstantStruct>(global.getInitializer())) {
-                        if (init->getType() == sty) {
-                            SmallVector<Constant*, 4> newElements;
-                            for (unsigned i = 0; i < init->getNumOperands(); i++) {
-                                auto *targetType = sty->getElementType(i);
-                                auto *elem = init->getOperand(i);
-                                
-                                // Floating-type conversion
-                                if (auto *fp = dyn_cast<ConstantFP>(elem)) {
-                                    auto val = fp->getValueAPF();
-                                    bool losesInfo;
-                                    val.convert(sty->getElementType(i)->getFltSemantics(),
-                                               APFloat::rmNearestTiesToEven,
-                                               &losesInfo);  // Add lost info parameter
-                                    elem = ConstantFP::get(targetType, val);
-                                }
-                                newElements.push_back(elem);
-                            }
-                            global.setInitializer(ConstantStruct::get(sty, newElements));
 
-                            // Recalculate alignment
-                            const auto &DL = module.getDataLayout();
-                            unsigned align = DL.getABITypeAlign(sty).value();
-                            global.setAlignment(MaybeAlign(align));
-                        }
-                    }
-                }
-
-                // Get max align
+                // TODO：尚不支持强制对齐方式#pragma pack(n)
                 unsigned maxAlign = 0;
+                SmallVector<unsigned, 4> maxAlignTillNow;  // 后续Load/Store指令使用的对齐长度遵循“此前最长”这一规则
                 const auto &DL = module.getDataLayout();
                 for (unsigned i = 0; i < sty->getNumElements(); ++i) {
                     auto *elemType = sty->getElementType(i);
@@ -1170,72 +1139,33 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                     if (align > maxAlign) {
                         maxAlign = align;
                     }
+                    maxAlignTillNow.push_back(maxAlign);
                 }
+                maxAlignTillNow[0] = maxAlign;  // IMPORTANT: load/store对于第一个成员使用最大对齐
 
-                // Repair GEP
-                for (auto &F : module) {
-                    for (auto &BB : F) {
-                        for (auto &I : BB) {
-                            if (auto *gep = dyn_cast<GetElementPtrInst>(&I)) {
-                                if (gep->getSourceElementType() == sty) {
-                                    IRBuilder<> builder(gep);
-                                    SmallVector<Value*, 4> indices;
-                                    for (auto &idx : gep->indices()) {
-                                        indices.push_back(idx.get());
-                                    }
-                                    auto *newGEP = builder.CreateInBoundsGEP(
-                                        sty,
-                                        gep->getPointerOperand(),
-                                        indices
-                                    );
-                                    gep->replaceAllUsesWith(newGEP);
-                                    instToErase.insert(gep);
+                // Replace global/static initializers
+                for (auto &global : module.globals()) {
+                    if (!global.hasInitializer() || global.getValueType() != sty) continue;
+                    global.setAlignment(Align(maxAlign));
+                    if (global.hasInternalLinkage())
+                        errs() << "[set static align] ";
+                    else
+                        errs() << "[set global align] ";
+                    errs() << global.getName() << "'s align:" << maxAlign << '\n';
+                    
+                    // 遍历结构体变量的所有users
+                    for (auto *user : global.users()) {
+                        errs() << global.getName() << "'s user: " << *user << '\n';
+                        // 若为storeInst/loadInst，说明读写的是第一个成员，将newElements[0]的类型作为替换目标
+                        if (isa<Instruction>(user)) {
+                            repairUserType(user, newElements[0], maxAlign);
+                        } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {  // 读写的是后续成员
+                            errs() << "constant expr: " << *constant << '\n';
 
-                                    if (auto *alloca = dyn_cast<AllocaInst>(gep->getPointerOperand())) {
-                                        alloca->setAlignment(Align(maxAlign));
-                                    }
-
-                                    for (auto *user : newGEP->users()) {
-                                        if (auto *store = dyn_cast<StoreInst>(user)) {
-                                            auto *value = store->getValueOperand();
-                                            auto *ptr = store->getPointerOperand();
-                                            if (ptr == newGEP) {
-                                                auto *structType = cast<StructType>(gep->getSourceElementType());
-                                                auto *lastIndex = gep->idx_end() - 1; // 获取最后一个索引
-                                                unsigned elementIndex = cast<ConstantInt>(lastIndex->get())->getZExtValue();
-                                                auto *elementType = structType->getElementType(elementIndex);
-
-                                                if (value->getType() != elementType) {
-                                                    IRBuilder<> builder(store);
-                                                    auto *newValue = builder.CreateFPCast(value, elementType);
-                                                    store->setOperand(0, newValue);
-                                                    store->setAlignment(Align(maxAlign));
-                                                    for (auto *user : store->users())
-                                                        repairUserType(user);
-                                                }
-                                            }
-                                        }
-                                        else if (auto *load = dyn_cast<LoadInst>(user)) {
-                                            auto *lastIndex = gep->idx_end() - 1; // 获取最后一个索引
-                                            unsigned elementIndex = cast<ConstantInt>(lastIndex->get())->getZExtValue();
-                                            auto *elemType = sty->getElementType(elementIndex);
-                                            
-                                            auto *newLoad = new LoadInst(
-                                                elemType,
-                                                newGEP,
-                                                "",  // empty name
-                                                load->isVolatile(),
-                                                load
-                                            );
-                                            newLoad->setAlignment(Align(maxAlign));
-                                            
-                                            load->replaceAllUsesWith(newLoad);
-                                            instToErase.insert(load);
-                                            for (auto *loadUser : newLoad->users())
-                                                repairUserType(loadUser);
-                                        }
-                                    }
-                                }
+                            unsigned memberIndex = cast<ConstantInt>(constant->getOperand(constant->getNumOperands() - 1))->getZExtValue();
+                            errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
+                            for (auto *user : constant->users()) {
+                                repairUserType(user, newElements[memberIndex], maxAlignTillNow[memberIndex]);
                             }
                         }
                     }
