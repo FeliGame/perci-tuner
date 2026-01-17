@@ -480,3 +480,4 @@
 ### 17
 * repair ChangeVariableDecl: struct member users type.
 * update PrintConfig: structs decl won't shown in global.
+* CRUCIAL update PrintConfig: show global ptr type.

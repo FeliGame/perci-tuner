@@ -225,13 +225,11 @@ void PrintConfig::findGlobalVariables(Module &M) {
         if (GV.isDeclaration()) continue;
 
         auto name = demangle(GV.getName());
-        auto type = parseTypeName(GV.getValueType());
-        // Skip vars not declared by user & struct type (shown in config[structs])
-        if(name.find('.') != string::npos || type.find('.') != string::npos) continue;
+        // Skip vars not declared by user
+        if(name.find('.') != string::npos) continue;
 
         nlohmann::json globalVar;
         globalVar["name"] = name;
-        globalVar["type"] = type;
         globalVar["isStatic"] = GV.hasInternalLinkage();
 
         SmallVector<DIGlobalVariableExpression *, 1> GVs;
@@ -245,6 +243,9 @@ void PrintConfig::findGlobalVariables(Module &M) {
                     DIFile *file = GVDebug->getFile();
                     globalVar["line"] = lineNo;
                     globalVar["file"] = file->getFilename().str();
+                    auto typeName = parseDITypeName(GVDebug->getType());
+                    if (typeName.empty()) continue;
+                    globalVar["type"] = typeName;
                 }
             }
         }
