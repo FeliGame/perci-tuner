@@ -232,9 +232,14 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
     if (loadType) {
         if (auto *arrayType = dyn_cast<ArrayType>(loadType))
             loadType = arrayType->getElementType();
+        if (load->getType()->isPointerTy()) {
+            load->setAlignment(align ? Align(align) : getAlign(loadType));
+            return load;
+        }
         if (loadType != load->getType()) {
             auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load);
             newLoad->setAlignment(align ? Align(align) : getAlign(loadType));
+            newLoad->setDebugLoc(load->getDebugLoc());
             load->replaceAllUsesWith(newLoad);
             instToErase.insert(load);
             errs() << "[repair load] " << *load << "->" << *newLoad << '\n';
@@ -254,12 +259,11 @@ Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetT
     if (storeType) {
         if (auto *arrayType = dyn_cast<ArrayType>(storeType))
             storeType = arrayType->getElementType();
+        store->setAlignment(align ? Align(align) : getAlign(storeType));
         if (oldValue->getType() != storeType) {
             errs() << "[repair store] " << *store << "->";
-            if (auto *castValue = insertCast(oldValue, storeType, store)) {
+            if (auto *castValue = insertCast(oldValue, storeType, store))
                 store->setOperand(0, castValue);
-                store->setAlignment(align ? Align(align) : getAlign(storeType));
-            }
             errs() << *store << '\n';
         }
     }
@@ -853,7 +857,7 @@ AllocaInst* ChangeVariableDecl::findOriginalAlloca(Value* value) {
 }
 
 // Translate Perci-Tuner supported typename into llvm type
-Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& context)
+Type* ChangeVariableDecl::typeNameToType(string typeName, LLVMContext& context)
 {
     size_t constPos;
     while ((constPos = typeName.find("const")) != string::npos) {
@@ -867,9 +871,7 @@ Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& c
     // else 
     if (typeName.find("__fp16") != string::npos) {
         targetType = Type::getHalfTy(context);
-    }
-    else 
-    if (typeName.find("float") != string::npos) {
+    } else if (typeName.find("float") != string::npos) {
         targetType = Type::getFloatTy(context);
     } else if (typeName.find("long double") != string::npos) {
         targetType = Type::getFP128Ty(context);
@@ -879,6 +881,9 @@ Type* ChangeVariableDecl::translateValidTypeName(string typeName, LLVMContext& c
         errs() << "Unknown type: " << typeName << ", ignored.\n";
         return nullptr;
     }
+    // 为了保证上下文可获知基类型，此处不需要封装为ptr类型，而是在处理位置特殊处理
+    // if (typeName.find("*") != string::npos)
+    //     targetType = PointerType::get(targetType, 0);
     
     if (typeName.find("[") == string::npos) return targetType;
 
@@ -904,7 +909,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
             auto srcTypeName = parseTypeName(F.getFunctionType()->getReturnType());
             auto targetTypeName = configEntry["type"].get<string>();
             if (targetTypeName == srcTypeName) continue;
-            auto *targetType = translateValidTypeName(targetTypeName, context);
+            auto *targetType = typeNameToType(targetTypeName, context);
             if (targetType == nullptr) continue;
             
             errs() << "[change return type] " << F.getName() << ": " << srcTypeName << "->" << *targetType << "\n";
@@ -934,7 +939,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                             auto typeName = configEntry["type"].get<string>();
                             auto srcTypeName = parseTypeName(GV->getValueType());
                             if (typeName == srcTypeName) continue;
-                            auto *targetType = translateValidTypeName(typeName, context);
+                            auto *targetType = typeNameToType(typeName, context);
                             if (targetType == nullptr) continue;
 
                             // 变换本地静态变量声明，形如@expm.tp = internal global [25 x fp128] zeroinitializer, align 16 -> @expm.tp = internal global [25 x double] zeroinitializer, align 8
@@ -993,7 +998,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     auto typeName = configEntry["type"].get<string>();
                     auto srcTypeName = parseDITypeName(DV->getType());
                     if (typeName == srcTypeName) continue;
-                    auto *targetType = translateValidTypeName(typeName, context);
+                    auto *targetType = typeNameToType(typeName, context);
                     if (targetType == nullptr) continue;
                     
                     if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
@@ -1061,7 +1066,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     auto &configEntry = it->second;
                     auto typeName = configEntry["type"].get<string>();
                     if (typeName == srcTypeName) continue;
-                    auto *targetType = translateValidTypeName(typeName, context);
+                    auto *targetType = typeNameToType(typeName, context);
                     if (targetType == nullptr) continue;
 
                     if (typeName.find("*") != string::npos) {  // ptr's AllocaInst don't need change
@@ -1108,7 +1113,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
         StringRef structName = rawName.starts_with("struct.") ? rawName.substr(7) : rawName;
         if (!structInfos.contains(structName.str())) continue;
         auto members = structInfos[structName.str()];
-        SmallVector<Type*, 4> newElements;
+        SmallVector<Type*, 4> memberNewTypes, memberNewBaseTypes;  // 成员的完整类型和基类型
         bool needsUpdate = false;
 
         // Iterate original struct members
@@ -1116,19 +1121,22 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
             auto *oldType = sty->getElementType(i);
         
             string typeStr = members[i]["type"].get<string>();
-            auto *targetType = translateValidTypeName(typeStr, context);
+            auto *targetType = typeNameToType(typeStr, context);
 
             if (targetType && targetType != oldType) {
                 errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
-                oldType = targetType;
+                if (oldType->isPointerTy())
+                    oldType = PointerType::get(targetType, 0);
+                else
+                    oldType = targetType;
                 needsUpdate = true;
             }
-        
-            newElements.push_back(oldType);
+            memberNewBaseTypes.push_back(targetType);
+            memberNewTypes.push_back(oldType);
         }
         if (!needsUpdate) continue;
         
-        sty->setBody(newElements, sty->isPacked());
+        sty->setBody(memberNewTypes, sty->isPacked());
 
         // TODO：尚不支持强制对齐方式#pragma pack(n)
         unsigned maxAlign = 0;
@@ -1157,14 +1165,14 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
             // 结构体全局变量的user替换
             for (auto *user : global.users()) {
                 errs() << global.getName() << "'s user: " << *user << '\n';
-                // 若为storeInst/loadInst，说明读写的是第一个成员，将newElements[0]的类型作为替换目标
+                // 若为storeInst/loadInst，说明读写的是第一个成员，将memberNewTypes[0]的类型作为替换目标
                 if (isa<Instruction>(user)) {
-                    repairUserType(user, newElements[0], maxAlign);
+                    repairUserType(user, memberNewBaseTypes[0], maxAlign);
                 } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {  // 读写的是后续成员
                     unsigned memberIndex = cast<ConstantInt>(constant->getOperand(constant->getNumOperands() - 1))->getZExtValue();
                     errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
                     for (auto *user : constant->users()) {
-                        repairUserType(user, newElements[memberIndex], maxAlignTillNow[memberIndex]);
+                        repairUserType(user, memberNewBaseTypes[memberIndex], maxAlignTillNow[memberIndex]);
                     }
                 } else {
                     errs() << "[TODO] unhandled user: " << *user << '\n';
@@ -1197,11 +1205,9 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                             originalAlloca->setAlignment(Align(maxAlign));
 
                         // 获取成员在结构体中的索引及其类型
-                        auto *lastIndex = gep->idx_end() - 1;
-                        unsigned elementIndex = cast<ConstantInt>(lastIndex->get())->getZExtValue();
-                        auto *elementType = sty->getElementType(elementIndex);
+                        unsigned elementIndex = cast<ConstantInt>(gep->idx_end() - 1)->getZExtValue();
                         for (auto *user : newGEP->users())
-                            repairUserType(user, elementType, maxAlignTillNow[elementIndex]);
+                            repairUserType(user, memberNewBaseTypes[elementIndex], maxAlignTillNow[elementIndex]);
                     }
                 }
             }

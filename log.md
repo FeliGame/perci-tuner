@@ -480,3 +480,6 @@
 ### 17
 * repair ChangeVariableDecl: struct member users type.
 * CRUCIAL update PrintConfig: show global ptr type, struct's type (global & local).
+
+### 18
+* repair ChangeVariableDecl: struct pointer type member users.

@@ -71,7 +71,7 @@ private:
 
     AllocaInst* findOriginalAlloca(Value* value);
 
-    Type* translateValidTypeName(std::string typeName, LLVMContext& context);
+    Type* typeNameToType(std::string typeName, LLVMContext& context);
 
     void changeStructDeclarations(Module &module);
     
