@@ -483,3 +483,4 @@
 
 ### 18
 * repair ChangeVariableDecl: struct pointer type member users.
+* CRUCIAL update ChangeVariableDecl & PrintConfig: print & change global ptr/array type.

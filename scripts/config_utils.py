@@ -92,57 +92,70 @@ def set_var_search_types(change_set):
     return [change_var for change_var in change_set if len(change_var.get('search_types', [])) > 1]
 
 
+def _process_variable_list(var_list, item_type, index_name, shuffle=False, filter_func=None):
+    change_entries = []
+    if var_list is None:
+        return change_entries
+        
+    indices = list(range(len(var_list)))
+    if shuffle:
+        random.shuffle(indices)
+        
+    for i in indices:
+        item = var_list[i]
+        if filter_func and not filter_func(item):
+            continue
+            
+        change_entry = copy.deepcopy(item)
+        change_entry[index_name] = i
+        if item_type:
+            change_entry[item_type] = True if item_type == 'global' else item_type
+        change_entry['search_types'] = []
+        change_entries.append(change_entry)
+    
+    return change_entries
+
+def _process_nested_variable_list(nested_list, item_type, index_name, shuffle=False, filter_func=None):
+    change_entries = []
+    if nested_list is None:
+        return change_entries
+        
+    outer_list = list(nested_list.items())
+    if shuffle:
+        random.shuffle(outer_list)
+        
+    for outer_key, var_list in outer_list:
+        if var_list is None:
+            continue
+            
+        entries = _process_variable_list(var_list, outer_key, index_name, shuffle, filter_func)
+        for entry in entries:
+            entry[item_type] = outer_key
+        change_entries.extend(entries)
+    
+    return change_entries
+
 def parse_config(config, shuffled=False):
     global thres
     if 'result_error' in config and config['result_error'] is not None:
         thres = float(config['result_error'])
     change_set = []
-    # TODO: put global into change_set
+    
+    # Define common filter function
+    def precision_filter(item):
+        return any(p in item['type'] for p in PRECISIONS)
+    
+    # Process global variables
+    global_vars = config.get('global')
+    change_set.extend(_process_variable_list(global_vars, 'global', 'gvar_index', shuffled, precision_filter))
+    
+    # Process local variables
     local_vars = config.get('local')
-    if local_vars is not None:
-        func_list = list(local_vars.items())
-        if shuffled:
-            random.shuffle(func_list)  # 随机排序函数顺序
-            
-        for func, func_vars in func_list:
-            if func_vars is None:
-                continue
-            var_indices = list(range(len(func_vars)))
-            if shuffled:
-                random.shuffle(var_indices)  # 随机排序变量顺序
-                
-            for i in var_indices:
-                type_str = func_vars[i]['type']
-                if not any(p in type_str for p in PRECISIONS):
-                    continue
-                change_entry = copy.deepcopy(func_vars[i])
-                change_entry['fvar_index'] = i
-                change_entry['func'] = func
-                change_entry['search_types'] = []
-                change_set.append(change_entry)
+    change_set.extend(_process_nested_variable_list(local_vars, 'func', 'fvar_index', shuffled, precision_filter))
 
-    # 处理结构体成员 (保持原有结构)
+    # Process struct members
     structs = config.get('structs')
-    if structs is not None:
-        struct_list = list(structs.items())
-        if shuffled:
-            random.shuffle(struct_list)
-            
-        for struct, members in struct_list:
-            if members is None:
-                continue
-            member_indices = list(range(len(members)))
-            if shuffled:
-                random.shuffle(member_indices)
-                
-            for i in member_indices:
-                type_str = members[i]['type']
-                if not any(p in type_str for p in PRECISIONS):
-                    continue
-                change_entry = copy.deepcopy(members[i])
-                change_entry['struct'] = struct
-                change_entry['search_types'] = []
-                change_set.append(change_entry)
+    change_set.extend(_process_nested_variable_list(structs, 'struct', None, shuffled, precision_filter))
 
     # 处理函数调用 (保持原有结构)
     calls = config.get('calls')
@@ -204,51 +217,40 @@ def parse_config(config, shuffled=False):
     return change_set
 
 
+def _update_variable_type(var_list, index, new_type):
+    if index < len(var_list):
+        member_info = var_list[index]
+        is_pointer = member_info['type'].endswith('*')
+        final_type = new_type
+        if is_pointer and not new_type.endswith('*'):
+            final_type += '*'
+        if member_info['type'] != final_type:
+            member_info['type'] = final_type
+
 # rebuild config from change set
 def rebuild(change_set):
     new_config = copy.deepcopy(CURRENT_CONFIG)
     for item in change_set:
-        if 'func' in item:
+        if 'global' in item:
+            _update_variable_type(new_config['global'], item['gvar_index'], item['type'])
+            
+        elif 'func' in item:
             func = item['func']
             local_vars = new_config['local'].get(func)
             if local_vars is not None:
-                member_index = item['fvar_index']
-                if member_index < len(local_vars):
-                    member_info = local_vars[member_index]
-                    is_pointer = member_info['type'].endswith('*')
-                    new_type = item['type']
-                    if is_pointer and not new_type.endswith('*'):
-                        new_type += '*'
-                    if member_info['type'] != new_type:
-                        member_info['type'] = new_type
+                _update_variable_type(local_vars, item['fvar_index'], item['type'])
                         
         elif 'caller' in item:
             caller = item['caller']
             call_entries = new_config['calls'].get(caller)
             if call_entries is not None:
-                fcall_index = item['fcall_index']
-                if fcall_index < len(call_entries):
-                    callee_info = call_entries[fcall_index]
-                    is_pointer = callee_info['type'].endswith('*')
-                    new_type = item['type']
-                    if is_pointer and not new_type.endswith('*'):
-                        new_type += '*'
-                    if callee_info['type'] != new_type:
-                        callee_info['type'] = new_type
+                _update_variable_type(call_entries, item['fcall_index'], item['type'])
         
         elif 'struct' in item:
             struct = item['struct']
             struct_members = new_config['structs'].get(struct)
             if struct_members is not None:
-                member_index = item['member_index']
-                if member_index < len(struct_members):
-                    member_info = struct_members[member_index]
-                    is_pointer = member_info['type'].endswith('*')
-                    new_type = item['type']
-                    if is_pointer and not new_type.endswith('*'):
-                        new_type += '*'
-                    if member_info['type'] != new_type:
-                        member_info['type'] = new_type
+                _update_variable_type(struct_members, item['member_index'], item['type'])
        
     return new_config
 

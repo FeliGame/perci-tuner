@@ -74,6 +74,8 @@ private:
     Type* typeNameToType(std::string typeName, LLVMContext& context);
 
     void changeStructDeclarations(Module &module);
+
+    void changeGlobalDeclarations(Module &module);
     
     Function* changeFunctionDecl(Function &F, DenseMap<int, Type*> declTypeMap);
 

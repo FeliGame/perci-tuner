@@ -111,15 +111,17 @@ void PrintConfig::findLocalVariables(Function &F) {
                                 }
                             } else if (auto *baseType = dyn_cast<DICompositeType>(derivedType->getBaseType())) {
                                 // 其他派生类型，直接获取基类型
-                                if (baseType->getTag() != dwarf::DW_TAG_structure_type) continue;
-                                structName = baseType->getName().str();
-                                structType = baseType;
+                                if (baseType->getTag() == dwarf::DW_TAG_structure_type) {
+                                    structName = baseType->getName().str();
+                                    structType = baseType;
+                                }
                             }
                         } else if (auto *compositeType = dyn_cast<DICompositeType>(DV->getType())) {
                             // 直接获取结构体类型
-                            if (compositeType->getTag() != dwarf::DW_TAG_structure_type) continue;
-                            structName = compositeType->getName().str();
-                            structType = compositeType;
+                            if (compositeType->getTag() == dwarf::DW_TAG_structure_type) {
+                                structName = compositeType->getName().str();
+                                structType = compositeType;
+                            }
                         }
                         if (structName.empty()) {
                             if (auto *AI = dyn_cast<AllocaInst>(DDI->getAddress())) {
@@ -292,15 +294,17 @@ void PrintConfig::findGlobalVariables(Module &M) {
 
         // 处理结构体声明的全局变量
         if (auto *compositeType = dyn_cast<DICompositeType>(GVDebug->getType())) {
-            if (compositeType->getTag() != dwarf::DW_TAG_structure_type) continue;
-            typeName = compositeType->getName().str();
-            // 如果typeName为空，尝试从global initializer获取信息
-            if (typeName.empty()) {
-                if (auto *ST = dyn_cast<StructType>(GV.getValueType())) {
-                    typeName = ST->getStructName().str();
+            if (compositeType->getTag() == dwarf::DW_TAG_structure_type) {
+                typeName = compositeType->getName().str();
+                // 如果typeName为空，尝试从global initializer获取信息
+                if (typeName.empty()) {
+                    if (auto *ST = dyn_cast<StructType>(GV.getValueType())) {
+                        typeName = ST->getStructName().str();
+                    }
                 }
+                dumpStructDecl(compositeType, typeName);
             }
-            dumpStructDecl(compositeType, typeName);
+            // DICompositeType还有一种情况：数组变量
         }
 
         globalVar["type"] = typeName;
