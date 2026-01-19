@@ -185,10 +185,18 @@ def compute_relative_error_hex(base_components, current_components):
     """
     复用核心误差计算逻辑：基于原生组件运算，无十进制转换
     相对误差公式：|(current - base) / base|
+    当基础值为0时，计算绝对误差：|current|
     """
     # 解析基础值（x）和对比值（y）的组件
     b_sign, b_mantissa, b_exp, b_frac = base_components
     c_sign, c_mantissa, c_exp, c_frac = current_components
+    
+    # 检查基础值是否为0（尾数为0时整个数值为0）
+    if b_mantissa == 0:
+        # 计算当前值的绝对值作为绝对误差
+        # 构建当前值的完整表示：sign * mantissa * 2^(exp - 4*frac)
+        current_value = c_sign * Decimal(c_mantissa) * (Decimal(2) ** (c_exp - 4 * c_frac))
+        return abs(current_value)
     
     # 1. 计算符号比值（仅±1，同号为1，异号为-1）
     sign_ratio = c_sign * b_sign

@@ -52,7 +52,9 @@ def remove_unchangable(change_set):
 # 辅助函数：生成元素的哈希键
 def get_element_hash_key(element):
     # 根据元素类型生成唯一可哈希的键
-    if 'func' in element:  # 局部变量类型
+    if 'global' in element:  # 全局变量类型
+        return ('global', element['gvar_index'])
+    elif 'func' in element:  # 局部变量类型
         return ('func', element['func'], element['fvar_index'])
     elif 'caller' in element:  # 函数调用类型
         return ('caller', element['caller'], element['fcall_index'])

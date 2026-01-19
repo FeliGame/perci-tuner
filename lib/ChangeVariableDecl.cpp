@@ -572,6 +572,8 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
 }
 
 Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* targetType) {
+    // 多级指针的情形，保持targetType状态，返回原指令，直到访问到最低一级的元素类型，将其转换为targetType
+    if (gep->getSourceElementType()->isPointerTy()) return gep;
     if (!targetType || gep->getSourceElementType() == targetType) {
         return nullptr; // 类型一致，无需替换
     }
@@ -952,8 +954,11 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                                 if (isa<ConstantAggregateZero>(initializer)) {
                                     // 如果原初始化器是zeroinitializer，创建新类型的zeroinitializer
                                     newInitializer = ConstantAggregateZero::get(targetType);
+                                } else if (isa<ConstantFP>(initializer)) {
+                                    // TODO: 该语句并不生效，为什么？
+                                    // newInitializer = ConstantFP::get(targetType, cfp->getValueAPF());
+                                    newInitializer = ConstantExpr::getFPCast(initializer, targetType);
                                 }
-                                // TODO: 处理其他类型的初始化器
                             }
                             
                             // 创建新的全局变量
@@ -1234,7 +1239,7 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
         
         // 转换目标类型
         auto *targetType = typeNameToType(typeName, context);
-        if (targetType == nullptr) continue;
+        if (targetType == nullptr || (targetType == oldType && !oldType->isPointerTy())) continue;
         
         // 准备新的初始化器
         Constant *newInitializer = nullptr;
@@ -1280,14 +1285,13 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
         }
         // 指针情形下，targetType是指针的base type
         newGV->setAlignment(getAlign(targetType));
-        
         // 修复所有使用该全局变量的users指令
         for (auto *user : newGV->users()) {
             if (isa<Instruction>(user)) {  // 数组索引为0
                 repairUserType(user, targetType);
             } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {
                 // 处理GEP常量表达式用户（数组索引>1）
-                errs() << "[repair GEP constant expr] " << *constant << "\n";
+                errs() << "[repair GEP constant expr] " << *constant << "->";
                 
                 // 获取原GEP的参数
                 SmallVector<Value*, 8> indices;
@@ -1304,6 +1308,7 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
                     indices,
                     isInBounds
                 );
+                errs() << *newConstant << '\n';
                 // 替换原常量表达式的所有使用
                 constant->replaceAllUsesWith(newConstant);
                 

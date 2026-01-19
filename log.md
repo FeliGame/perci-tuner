@@ -484,3 +484,7 @@
 ### 18
 * repair ChangeVariableDecl: struct pointer type member users.
 * CRUCIAL update ChangeVariableDecl & PrintConfig: print & change global ptr/array type.
+
+### 19
+* repair ChangeVariableDecl: same array-type & multi-level pointers.
+* repair pedd: hash 'global'.
