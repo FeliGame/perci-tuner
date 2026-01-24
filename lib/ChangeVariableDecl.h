@@ -67,6 +67,10 @@ private:
 
     void repairUserType(User *user, Type* targetType=nullptr, unsigned align=0);
 
+    Constant* changeGVInitializer(Constant *initializer, Type* targetType);
+
+    void repairGVUsers(GlobalVariable *GV, Type* targetType);
+
     void repairCasts(Function &F);
 
     AllocaInst* findOriginalAlloca(Value* value);
@@ -74,6 +78,8 @@ private:
     Type* typeNameToType(std::string typeName, LLVMContext& context);
 
     void changeStructDeclarations(Module &module);
+
+    void changeGlobalVariable(GlobalVariable *GV, Type* targetType);
 
     void changeGlobalDeclarations(Module &module);
     
@@ -90,6 +96,8 @@ private:
     DenseSet<StringRef> includedFunctions;
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
+
+    DenseSet<GlobalVariable*> GVToErase;
 
     DenseSet<Function*> funcToErase;    // Function to be erased later
 

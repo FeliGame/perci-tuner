@@ -56,23 +56,43 @@ void PrintConfig::findLocalVariables(Function &F) {
                     else typeName = ""; // 已经添加过返回值，跳过    
                 }
             }
-            // Get pointer safely
             else if (auto *SI = dyn_cast<StoreInst>(&I)) {
                 Value *Addr = SI->getPointerOperand();
-                if (auto *GV = dyn_cast<GlobalVariable>(Addr)) {
-                    // Check local static vars
-                    if (GV->hasInternalLinkage()) {
-                        // Skip global static vars
-                        if (GV->getName().find(F.getName()) == std::string::npos) continue;
-                        // "func_name.var_name" -> "var_name"
-                        std::string prefix = F.getName().str() + ".";
-                        size_t prefixLen = prefix.length();
-                        varName = GV->getName().substr(prefixLen);
-                        typeName = parseTypeName(GV->getValueType());
-
-                        DL = I.getDebugLoc();
-                        isStatic = true;
+                GlobalVariable *GV = nullptr;
+            
+                // 直接是GlobalVariable的情况
+                if (auto *TempGV = dyn_cast<GlobalVariable>(Addr)) {
+                    GV = TempGV;
+                }
+                // ConstantExpr的情况，处理getelementptr inbounds操作
+                else if (auto *CE = dyn_cast<ConstantExpr>(Addr)) {
+                    if (CE->getOpcode() == Instruction::GetElementPtr) {
+                        // 检查第一个操作数是否是GlobalVariable
+                        if (auto *TempGV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
+                            GV = TempGV;
+                        }
                     }
+                }
+                
+                if (GV && GV->hasInternalLinkage()) {
+                    // Skip global static vars
+                    if (GV->getName().find(F.getName()) == std::string::npos) continue;
+                    // "func_name.var_name" -> "var_name"
+                    std::string prefix = F.getName().str() + ".";
+                    size_t prefixLen = prefix.length();
+                    varName = GV->getName().substr(prefixLen);
+
+                    SmallVector<DIGlobalVariableExpression *, 1> GVs;
+                    GV->getDebugInfo(GVs);
+                    if (GVs.empty()) continue;
+                    DIGlobalVariableExpression *GVE = GVs[0];
+                    if (!GVE) continue;
+                    DIGlobalVariable *GVDebug = GVE->getVariable();
+                    if (!GVDebug) continue;
+                    typeName = parseDITypeName(GVDebug->getType());
+
+                    DL = I.getDebugLoc();
+                    isStatic = true;
                 }
             }
             else if (auto *CI = dyn_cast<CallInst>(&I)) {

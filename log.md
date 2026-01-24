@@ -488,3 +488,6 @@
 ### 19
 * repair ChangeVariableDecl: same array-type & multi-level pointers.
 * repair pedd: hash 'global'.
+
+### 24
+* CRUCIAL update PrintConfig & ChangeVariableDecl: print & change static ptr/array type.

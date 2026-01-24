@@ -224,6 +224,7 @@ Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
 
 Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType, unsigned align) {
     if (load->getType()->isIntegerTy()) return nullptr; // ignore integer load
+    if (load->getType()->isPointerTy()) return load;
     auto *ptrOperand = load->getPointerOperand();
     Type* loadType = targetType;
     if (auto *allocaInst = findOriginalAlloca(ptrOperand))
@@ -250,6 +251,8 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
 }
 
 Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetType, unsigned align) {
+    if (store->getType()->isIntegerTy()) return nullptr; // ignore integer store
+    if (store->getType()->isPointerTy()) return store;
     Value *oldValue = store->getOperand(0);
     auto *ptrOperand = store->getPointerOperand();
     Type* storeType = targetType;
@@ -723,8 +726,97 @@ void ChangeVariableDecl::repairUserType(User *user, Type* targetType, unsigned a
         newInst = inst;
 
     if (newInst) {
-        for (auto *user : newInst->users()) {
+        // 防止修改迭代器导致无限递归
+        SmallVector<User*> users;
+        for (auto *user : newInst->users())
+            users.push_back(user);
+        for (auto *user : users)
             repairUserType(user, targetType);
+        users.clear();
+    }
+}
+
+// Change global & static & local static to target type
+void ChangeVariableDecl::changeGlobalVariable(GlobalVariable *GV, Type* targetType) {
+    if (!targetType || targetType == GV->getValueType() || !GV->hasInitializer()) return;
+    auto *initializer = GV->getInitializer();
+    auto *newInitializer = GV->getValueType()->isPointerTy() ? 
+                            initializer : changeGVInitializer(initializer, targetType);
+    if (!newInitializer) return;
+    GlobalVariable *newGV = GV;
+    if (newInitializer != initializer) {
+        errs() << "[change GV] " << *GV << " -> ";
+        newGV = new GlobalVariable(
+                    *GV->getParent(),
+                    targetType,
+                    GV->isConstant(),
+                    GV->getLinkage(),
+                    newInitializer,
+                    GV->getName()
+                );
+        newGV->copyAttributesFrom(GV);
+        // TODO: 复制metadata，但metadata中的类型信息未改为targetType
+        for (unsigned i = 0; i < GV->getNumOperands(); ++i) {
+            if (GV->hasMetadata(i)) {
+                newGV->setMetadata(i, GV->getMetadata(i));
+            }
+        }
+        newGV->setThreadLocalMode(GV->getThreadLocalMode());
+        newGV->setExternallyInitialized(GV->isExternallyInitialized());
+        newGV->setAlignment(getAlign(targetType));
+        GV->replaceAllUsesWith(newGV);
+        errs() << *newGV << '\n';
+    }
+
+    repairGVUsers(newGV, targetType);  // TODO: use newGV cause inifinite user loop
+    if (initializer != newInitializer) {
+        GVToErase.insert(GV);
+    }
+}
+
+Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* targetType) {
+    if (isa<ConstantAggregateZero>(initializer)) {
+        // 如果原初始化器是zeroinitializer，创建新类型的zeroinitializer
+        return ConstantAggregateZero::get(targetType);
+    } else if (isa<ConstantFP>(initializer)) {
+        // TODO: 该语句并不生效，为什么？
+        // newInitializer = ConstantFP::get(targetType, cfp->getValueAPF());
+        return ConstantExpr::getFPCast(initializer, targetType);
+    }
+    return nullptr;
+}
+
+void ChangeVariableDecl::repairGVUsers(GlobalVariable *GV, Type* targetType) {
+    auto *GVType = GV->getValueType();
+    for (auto *user : GV->users()) {
+        if (isa<Instruction>(user)) {  // 数组索引为0
+            repairUserType(user, targetType);
+        } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {
+            // 处理GEP常量表达式用户（数组索引>1）
+            errs() << "[repair GEP constant expr] " << *constant << "->";
+            
+            // 获取原GEP的参数
+            SmallVector<Value*, 8> indices;
+            for (unsigned i = 1; i < constant->getNumOperands(); ++i) {
+                indices.push_back(constant->getOperand(i));
+            }
+
+            // 检查是否是inbounds GEP
+            bool isInBounds = constant->getRawSubclassOptionalData();
+            // 创建新的GEP表达式
+            auto *newConstant = ConstantExpr::getGetElementPtr(
+                GVType->isPointerTy() ? GVType : targetType,
+                GV,
+                indices,
+                isInBounds
+            );
+            errs() << *newConstant << '\n';
+            // 替换原常量表达式的所有使用
+            constant->replaceAllUsesWith(newConstant);
+            
+            for (auto *constantUser : newConstant->users()) {
+                repairUserType(constantUser, targetType);
+            }
         }
     }
 }
@@ -925,67 +1017,36 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
         for (auto &I : BB) {
             if (auto *SI = dyn_cast<StoreInst>(&I)) {
                 Value *Addr = SI->getPointerOperand();
-                if (auto *GV = dyn_cast<GlobalVariable>(Addr)) {
-                    // Check local static vars
-                    if (GV->hasInternalLinkage()) {
-                        auto DL = I.getDebugLoc();
-                        if (DL) {
-                            auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
-                            string fileName = localScope->getNonLexicalBlockFileScope()->getFile()->getFilename().str();
-
-                            std::string key = fileName + ":" + std::to_string(DL.getLine()) + ":" + std::to_string(DL.getCol());
-                            auto it = configMap.find(key);
-                            if (it == configMap.end()) continue;
-
-                            auto &configEntry = it->second;
-                            auto typeName = configEntry["type"].get<string>();
-                            auto srcTypeName = parseTypeName(GV->getValueType());
-                            if (typeName == srcTypeName) continue;
-                            auto *targetType = typeNameToType(typeName, context);
-                            if (targetType == nullptr) continue;
-
-                            // 变换本地静态变量声明，形如@expm.tp = internal global [25 x fp128] zeroinitializer, align 16 -> @expm.tp = internal global [25 x double] zeroinitializer, align 8
-                            errs() << "[change global] " << *GV << " -> ";
-                            
-                            // 准备新的初始化器
-                            Constant *newInitializer = nullptr;
-                            if (GV->hasInitializer()) {
-                                Constant *initializer = GV->getInitializer();
-                                if (isa<ConstantAggregateZero>(initializer)) {
-                                    // 如果原初始化器是zeroinitializer，创建新类型的zeroinitializer
-                                    newInitializer = ConstantAggregateZero::get(targetType);
-                                } else if (isa<ConstantFP>(initializer)) {
-                                    // TODO: 该语句并不生效，为什么？
-                                    // newInitializer = ConstantFP::get(targetType, cfp->getValueAPF());
-                                    newInitializer = ConstantExpr::getFPCast(initializer, targetType);
-                                }
-                            }
-                            
-                            // 创建新的全局变量
-                            GlobalVariable *newGV = new GlobalVariable(
-                                *GV->getParent(),
-                                targetType,
-                                GV->isConstant(),
-                                GV->getLinkage(),
-                                newInitializer,
-                                GV->getName()
-                            );
-                            
-                            // 复制原全局变量的属性
-                            newGV->setAlignment(getAlign(targetType));
-                            newGV->copyAttributesFrom(GV);
-                            newGV->setThreadLocalMode(GV->getThreadLocalMode());
-                            newGV->setExternallyInitialized(GV->isExternallyInitialized());
-                            
-                            GV->replaceAllUsesWith(newGV);
-                            errs() << *newGV << "\n";
-                            
-                            // 修复所有使用该全局变量的users指令
-                            for (User *user : newGV->users()) {
-                                repairUserType(user, targetType);
-                            }
-                            GV->eraseFromParent();
+                
+                GlobalVariable *GV = nullptr;
+                // 直接是GlobalVariable的情况
+                if (auto *TempGV = dyn_cast<GlobalVariable>(Addr)) {
+                    GV = TempGV;
+                }
+                // ConstantExpr的情况，处理getelementptr inbounds操作
+                else if (auto *CE = dyn_cast<ConstantExpr>(Addr)) {
+                    if (CE->getOpcode() == Instruction::GetElementPtr) {
+                        // 检查第一个操作数是否是GlobalVariable
+                        if (auto *TempGV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
+                            GV = TempGV;
                         }
+                    }
+                }
+                // local static
+                if (GV && GV->hasInternalLinkage()) {
+                    auto DL = I.getDebugLoc();
+                    if (DL) {
+                        auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
+                        string fileName = localScope->getNonLexicalBlockFileScope()->getFile()->getFilename().str();
+
+                        std::string key = fileName + ":" + std::to_string(DL.getLine()) + ":" + std::to_string(DL.getCol());
+                        auto it = configMap.find(key);
+                        if (it == configMap.end()) continue;
+
+                        auto &configEntry = it->second;
+                        auto typeName = configEntry["type"].get<string>();
+                        auto *targetType = typeNameToType(typeName, context);
+                        changeGlobalVariable(GV, targetType);
                     }
                 }
             }
@@ -1162,10 +1223,6 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
         for (auto &global : module.globals()) {
             if (!global.hasInitializer() || global.getValueType() != sty) continue;
             global.setAlignment(Align(maxAlign));
-            if (global.hasInternalLinkage())
-                errs() << "[set static align] ";
-            else
-                errs() << "[set global align] ";
             
             // 结构体全局变量的user替换
             for (auto *user : global.users()) {
@@ -1179,7 +1236,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                         repairUserType(user, memberNewBaseTypes[memberIndex], maxAlignTillNow[memberIndex]);
                     }
                 } else {
-                    errs() << "[TODO] unhandled user: " << *user << '\n';
+                    errs() << "[TODO] unhandled struct's user: " << *user << '\n';
                 }
             }
         }
@@ -1228,96 +1285,21 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
     
     for (auto &globalEntry : globalConfig) {
         std::string varName = globalEntry["name"];
-        std::string typeName = globalEntry["type"];
-        
-        // 查找对应的全局变量
-        auto *GV = module.getGlobalVariable(varName);
-        if (!GV) continue;
-        
-        // 获取当前类型并检查是否需要修改
-        auto *oldType = GV->getValueType();
-        
-        // 转换目标类型
-        auto *targetType = typeNameToType(typeName, context);
-        if (targetType == nullptr || (targetType == oldType && !oldType->isPointerTy())) continue;
-        
-        // 准备新的初始化器
-        Constant *newInitializer = nullptr;
-        if (!oldType->isPointerTy() && GV->hasInitializer()) {
-            errs() << "[change global] " << GV->getName() << ": " << *oldType << "->" << *targetType << "\n";
-            Constant *initializer = GV->getInitializer();
-            // 尝试将原初始化器转换为新类型
-            if (initializer->getType() != targetType) {
-                if (isa<ConstantAggregateZero>(initializer)) {
-                    // 如果原初始化器是zeroinitializer，创建新类型的zeroinitializer
-                    newInitializer = ConstantAggregateZero::get(targetType);
-                } else if (isa<ConstantFP>(initializer)) {
-                    // TODO: 该语句并不生效，为什么？
-                    // newInitializer = ConstantFP::get(targetType, cfp->getValueAPF());
-                    newInitializer = ConstantExpr::getFPCast(initializer, targetType);
-                }
-            } else {
-                newInitializer = initializer;
-            }
-        }
-        
-        // 创建新的全局变量
-        GlobalVariable *newGV = nullptr;
-        bool replaced = false;
-        if (oldType->isPointerTy()) {
-            newGV = GV;
-        } else {
-            newGV = new GlobalVariable(
-                module,
-                targetType,
-                GV->isConstant(),
-                GV->getLinkage(),
-                newInitializer,
-                GV->getName()
-            );
-            newGV->copyAttributesFrom(GV);
-            newGV->setThreadLocalMode(GV->getThreadLocalMode());
-            newGV->setExternallyInitialized(GV->isExternallyInitialized());
-            
-            // 替换原全局变量的所有使用
-            GV->replaceAllUsesWith(newGV);
-            replaced = true;
-        }
-        // 指针情形下，targetType是指针的base type
-        newGV->setAlignment(getAlign(targetType));
-        // 修复所有使用该全局变量的users指令
-        for (auto *user : newGV->users()) {
-            if (isa<Instruction>(user)) {  // 数组索引为0
-                repairUserType(user, targetType);
-            } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {
-                // 处理GEP常量表达式用户（数组索引>1）
-                errs() << "[repair GEP constant expr] " << *constant << "->";
-                
-                // 获取原GEP的参数
-                SmallVector<Value*, 8> indices;
-                for (unsigned i = 1; i < constant->getNumOperands(); ++i) {
-                    indices.push_back(constant->getOperand(i));
-                }
+        configMap[varName] = globalEntry;
+    }
 
-                // 检查是否是inbounds GEP
-                bool isInBounds = constant->getRawSubclassOptionalData();
-                // 创建新的GEP表达式
-                Constant *newConstant = ConstantExpr::getGetElementPtr(
-                    targetType,
-                    newGV,
-                    indices,
-                    isInBounds
-                );
-                errs() << *newConstant << '\n';
-                // 替换原常量表达式的所有使用
-                constant->replaceAllUsesWith(newConstant);
-                
-                for (auto *constantUser : newConstant->users()) {
-                    repairUserType(constantUser, targetType);
-                }
-            }
-        }
-        if (replaced) GV->eraseFromParent();
+    for (auto &GV : module.globals()) {
+        if (GV.isDeclaration()) continue;
+        auto name = demangle(GV.getName().str());
+        // Skip vars not declared by user
+        if(name.find('.') != string::npos) continue;
+
+        auto it = configMap.find(name);
+        if (it == configMap.end()) continue;
+        auto &configEntry = it->second;
+        std::string typeName = configEntry["type"].get<string>();
+        auto *targetType = typeNameToType(typeName, context);
+        changeGlobalVariable(&GV, targetType);
     }
 }
 
@@ -1562,6 +1544,10 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
             runOnFunction(f);
         }
     }
+    // 清理global/static的旧GV
+    for (auto *GV : GVToErase)
+        GV->eraseFromParent();
+    GVToErase.clear();
 
     // 遍历整个funcDeclTypeMap，将其中的函数替换
     DenseMap<Function*, Function*> replaceMap;
