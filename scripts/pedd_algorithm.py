@@ -127,7 +127,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, di
     # 执行测试配置，记录结果无论是否符合阈值
     run_passed = algorithm_utils.run_config(bitcode, new_config, change_set)
     current_result = transform.current_run_result  # 从change_set中移除test_set的元素
-    if current_result == 'RUNTIME-ERROR':
+    if current_result is None:
         return new_change_set, False, None
 
     pruned_change_set = None  # 用于标记是否需要更新change_set

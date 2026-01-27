@@ -782,6 +782,29 @@ Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* t
         // TODO: 该语句并不生效，为什么？
         // newInitializer = ConstantFP::get(targetType, cfp->getValueAPF());
         return ConstantExpr::getFPCast(initializer, targetType);
+    } else if (isa<ConstantDataArray>(initializer)) {
+        // 处理ConstantDataArray初始化器（如字符串常量）
+        auto *targetArrayType = dyn_cast<ArrayType>(targetType);
+        if (!targetArrayType)
+            report_fatal_error("ConstantDataArray: targetType is not ArrayType");
+        auto *targetElementType = targetArrayType->getElementType();
+        auto *dataArr = dyn_cast<ConstantDataArray>(initializer);
+        // 如果元素类型相同，直接返回原初始化器
+        if (dataArr->getElementType() == targetElementType)
+            return initializer;
+        
+        unsigned numElements = dataArr->getNumElements();
+        SmallVector<Constant*, 8> newElements;
+        for (unsigned i = 0; i < numElements; ++i) {
+            auto *elem = dataArr->getElementAsConstant(i);
+            auto *newElem = changeGVInitializer(elem, targetElementType);
+            if (!newElem)
+                report_fatal_error("ConstantDataArray: failed to convert element");
+            newElements.push_back(newElem);
+        }
+        return ConstantArray::get(targetArrayType, newElements);
+    } else {
+        report_fatal_error("Unsupported initializer.");
     }
     return nullptr;
 }

@@ -491,3 +491,7 @@
 
 ### 24
 * CRUCIAL update PrintConfig & ChangeVariableDecl: print & change static ptr/array type.
+
+### 25
+* feature ChangeVariableDecl: support array type global/static intializers.
+* repair transform.py: handle all exception results (RUNTIME-ERROR/TIMEOUT).

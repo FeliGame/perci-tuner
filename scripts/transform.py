@@ -131,6 +131,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         except subprocess.TimeoutExpired:
             print(f">>> Perci-Tuner(Py) Error: Timeout after {TIMEOUT_THRESHOLD} seconds.")
             RUNNING_FAIL_TIMES += 1
+            current_run_result = None
             if show_history:
                 data_utils.store_data(run_id, float("inf"), "TIMEOUT", diff)
             return -2
@@ -138,7 +139,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             print(e.output.decode())
             print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")
             RUNNING_FAIL_TIMES += 1
-            current_run_result = 'RUNTIME-ERROR'
+            current_run_result = None
             if show_history:
                 data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff)
             return -2
