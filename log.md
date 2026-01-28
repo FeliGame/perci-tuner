@@ -495,3 +495,7 @@
 ### 25
 * feature ChangeVariableDecl: support array type global/static intializers.
 * repair transform.py: handle all exception results (RUNTIME-ERROR/TIMEOUT).
+
+### 28
+* feature PrintConfig: print struct's real type rather than typedef.
+* feature ChangeVariableDecl: support struct intializers.

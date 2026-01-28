@@ -803,9 +803,52 @@ Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* t
             newElements.push_back(newElem);
         }
         return ConstantArray::get(targetArrayType, newElements);
-    } else {
-        report_fatal_error("Unsupported initializer.");
-    }
+    } else if (isa<ConstantArray>(initializer)) {
+        // 处理ConstantArray初始化器（如结构体中的数组）
+        auto *targetArrayType = dyn_cast<ArrayType>(targetType);
+        if (!targetArrayType)
+            return initializer;
+        
+        auto *targetElementType = targetArrayType->getElementType();
+        auto *array = dyn_cast<ConstantArray>(initializer);
+        // 如果元素类型相同，直接返回原初始化器
+        if (array->getType()->getElementType() == targetElementType)
+            return initializer;
+        
+        unsigned numElements = array->getNumOperands();
+        SmallVector<Constant*, 8> newElements;
+        for (unsigned i = 0; i < numElements; ++i) {
+            auto *elem = array->getOperand(i);
+            auto *newElem = changeGVInitializer(elem, targetElementType);
+            if (!newElem)
+                return initializer;
+            newElements.push_back(newElem);
+        }
+        return ConstantArray::get(targetArrayType, newElements);
+    } else if (isa<ConstantStruct>(initializer)) {
+        // 处理ConstantStruct初始化器（如结构体本身）
+        auto *targetStructType = dyn_cast<StructType>(targetType);
+        if (!targetStructType)
+            return initializer;
+        
+        auto *structInit = dyn_cast<ConstantStruct>(initializer);
+        // 如果成员数量相同，直接返回原初始化器
+        if (structInit->getNumOperands() != targetStructType->getNumElements())
+            return initializer;
+        
+        SmallVector<Constant*, 8> newElements;
+        for (unsigned i = 0; i < structInit->getNumOperands(); ++i) {
+            auto *elem = structInit->getOperand(i);
+            auto *elemTargetType = targetStructType->getElementType(i);
+            auto *newElem = changeGVInitializer(elem, elemTargetType);
+            if (!newElem)
+                newElements.push_back(elem);
+            else
+                newElements.push_back(newElem);
+        }
+        return ConstantStruct::get(targetStructType, newElements);
+    } 
+    errs() << "Ignored intializer: " << *initializer << '\n';
     return nullptr;
 }
 
@@ -1246,6 +1289,13 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
         for (auto &global : module.globals()) {
             if (!global.hasInitializer() || global.getValueType() != sty) continue;
             global.setAlignment(Align(maxAlign));
+            
+            // 更新全局变量的初始化器
+            auto *initializer = global.getInitializer();
+            auto *newInitializer = changeGVInitializer(initializer, sty);
+            if (newInitializer && newInitializer != initializer) {
+                global.setInitializer(newInitializer);
+            }
             
             // 结构体全局变量的user替换
             for (auto *user : global.users()) {

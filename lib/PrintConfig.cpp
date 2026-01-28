@@ -113,27 +113,15 @@ void PrintConfig::findLocalVariables(Function &F) {
                         if (auto *derivedType = dyn_cast<DIDerivedType>(DV->getType())) {
                             // 如果是typedef类型，获取其名称作为结构体名称
                             if (derivedType->getTag() == dwarf::DW_TAG_typedef) {
-                                structName = derivedType->getName().str();
                                 // 获取typedef的基类型
                                 if (auto *baseType = derivedType->getBaseType()) {
                                     if (auto *baseComposite = dyn_cast<DICompositeType>(baseType)) {
                                         if (baseComposite->getTag() == dwarf::DW_TAG_structure_type) {
                                             structType = baseComposite;
-                                        } else if (auto *baseDerived = dyn_cast<DIDerivedType>(baseType)) {
-                                            // 处理嵌套的typedef情况
-                                            if (auto *nestedComposite = dyn_cast<DICompositeType>(baseDerived->getBaseType())) {
-                                                if (nestedComposite->getTag() == dwarf::DW_TAG_structure_type) {
-                                                    structType = nestedComposite;
-                                                }
-                                            }
+                                            // 获取原始结构体名称
+                                            structName = baseComposite->getName().str();
                                         }
                                     }
-                                }
-                            } else if (auto *baseType = dyn_cast<DICompositeType>(derivedType->getBaseType())) {
-                                // 其他派生类型，直接获取基类型
-                                if (baseType->getTag() == dwarf::DW_TAG_structure_type) {
-                                    structName = baseType->getName().str();
-                                    structType = baseType;
                                 }
                             }
                         } else if (auto *compositeType = dyn_cast<DICompositeType>(DV->getType())) {
@@ -311,9 +299,24 @@ void PrintConfig::findGlobalVariables(Module &M) {
         globalVar["line"] = lineNo;
         globalVar["file"] = file->getFilename().str();
         auto typeName = parseDITypeName(GVDebug->getType());
+        DICompositeType *structType = nullptr;
+        std::string structName = "";
 
         // 处理结构体声明的全局变量
-        if (auto *compositeType = dyn_cast<DICompositeType>(GVDebug->getType())) {
+        if (auto *derivedType = dyn_cast<DIDerivedType>(GVDebug->getType())) {
+            if (derivedType->getTag() == dwarf::DW_TAG_typedef) {
+                // 获取typedef的基类型
+                if (auto *baseType = derivedType->getBaseType()) {
+                    if (auto *baseComposite = dyn_cast<DICompositeType>(baseType)) {
+                        if (baseComposite->getTag() == dwarf::DW_TAG_structure_type) {
+                            structType = baseComposite;
+                            // 获取原始结构体名称
+                            structName = baseComposite->getName().str();
+                        }
+                    }
+                }
+            }
+        } else if (auto *compositeType = dyn_cast<DICompositeType>(GVDebug->getType())) {
             if (compositeType->getTag() == dwarf::DW_TAG_structure_type) {
                 typeName = compositeType->getName().str();
                 // 如果typeName为空，尝试从global initializer获取信息
@@ -322,10 +325,9 @@ void PrintConfig::findGlobalVariables(Module &M) {
                         typeName = ST->getStructName().str();
                     }
                 }
-                dumpStructDecl(compositeType, typeName);
             }
-            // DICompositeType还有一种情况：数组变量
         }
+        if (structType) dumpStructDecl(structType, structName);
 
         globalVar["type"] = typeName;
 
