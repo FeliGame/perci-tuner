@@ -499,3 +499,9 @@
 ### 28
 * feature PrintConfig: print struct's real type rather than typedef.
 * feature ChangeVariableDecl: support struct intializers.
+
+## Feb, 2025
+
+### 10
+* update CMakeLists.txt: print line/column in stack dump.
+* feature run.sh: support -base-result, -base-time option.

@@ -1595,7 +1595,9 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         for(auto &bb : f) {
             for(auto &i : bb) {
                 if(auto *call = dyn_cast<CallInst>(&i)) {
-                    unsigned numFixedArgs = call->getCalledFunction()->getFunctionType()->getNumParams();
+                    auto *function = call->getCalledFunction();
+                    if (!function) continue;
+                    unsigned numFixedArgs = function->getFunctionType()->getNumParams();
                     // 跳过固定参数调用
                     if(numFixedArgs == call->arg_size()) continue;
                     // 否则，记录所有参数类型

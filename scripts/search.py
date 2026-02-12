@@ -26,6 +26,8 @@ def parse_arguments():
         '-cflags': [],
         '-threads': 1,
 	    '-run-args': [],
+        '-base-time': '',
+        '-base-result': '',
     }
     
     for arg in sys.argv[1:]:
@@ -60,6 +62,10 @@ def parse_arguments():
                     params[key] = value.lower() in ('true', '1', 'yes')
                 elif key == '-threads':
                     params[key] = int(value)
+                elif key == '-base-time' and value != '':
+                    params[key] = float(value)
+                elif key == '-base-result' and value != '':
+                    params[key] = value
                 else:
                     params[key] = value
         elif arg.startswith('-'):
@@ -186,12 +192,19 @@ def main():
     print(f"  CFlags: {args['-cflags']}")
     print(f"  Run args: {args['-run-args']}")
     print(f"  MXP: {args['-mxp']}")
+    print(f"  Baseline time: {args['-base-time'] if args['-base-time'] else 'auto-detect'}")
+    print(f"  Baseline result: {args['-base-result'] if args['-base-result'] else 'auto-detect'}")
 
     # get the original time and original result for compare
     # change_to_highest_precision(change_set)
     algorithm_utils.run_config(bitcode, algorithm_utils.original_conf, change_set)
-    data_utils.ORIGINAL_TIME = transform.current_run_time
-    data_utils.ORIGINAL_RESULT = transform.current_run_result
+    if args['-base-time'] and args['-base-result']:
+        data_utils.ORIGINAL_TIME = args['-base-time']
+        data_utils.ORIGINAL_RESULT = args['-base-result']
+        print(">>> Perci-Tuner(Py): Using manual baseline values")
+    else:
+        data_utils.ORIGINAL_TIME = transform.current_run_time
+        data_utils.ORIGINAL_RESULT = transform.current_run_result
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
     
     # start searching

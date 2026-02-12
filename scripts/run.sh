@@ -35,6 +35,8 @@ TIMEOUT=60.0
 HISTORY_FLAG=true
 SHUFFLED_FLAG=false
 THREADS=1
+BASELINE_TIME=""
+BASELINE_RESULT=""
 
 # convert fp128 to double-double
 DD_FLAG=false
@@ -140,6 +142,10 @@ do
         REPEAT_TIMES="${arg#-repeat=}"
     elif test "${arg#-timeout=}" != "$arg"; then
         TIMEOUT="${arg#-timeout=}"
+    elif test "${arg#-base-time=}" != "$arg"; then
+        BASELINE_TIME="${arg#-base-time=}"
+    elif test "${arg#-base-result=}" != "$arg"; then
+        BASELINE_RESULT="${arg#-base-result=}"
     elif test "$arg" = "-h" -o "$arg" = "--help"; then 
         echo "Usage: run.sh [options] src_files -l<library> -L<lib_path> -I<include_path> -O<optimize level, such as -O2, WARNING: may cause unexpected result!>"
         echo "Without modes option below, run.sh calls clang directly"
@@ -158,6 +164,8 @@ do
         echo "  -j<threads>                 (search-optimize) Set threads count for dd-algorithm(default 1)"
         echo "  -history                    (search-optimize) Keep search history (default false)"
         echo "  -arg=<arg>                  (search-optimize) arguments for executable, should be input in order"
+        echo "  -base-time=<time>           (search-optimize) Manually set baseline running time (skip first run_config)"
+        echo "  -base-result=<result>       (search-optimize) Manually set baseline result value (skip first run_config)"
         echo "  -check-result               (all modes) Print relative error in exec"
         echo "  -fp128todd                  (all modes) fp128 regarded as double-double. On x86_64, must use printf("%Qa", result)!"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables, will auto enable -check-result"
@@ -284,7 +292,7 @@ fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
-    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc -arg=$RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS
+    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc -arg=$RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS -base-time=$BASELINE_TIME -base-result=$BASELINE_RESULT
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 

@@ -17,7 +17,7 @@ include(AddLLVM)
 
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "-Wall -fno-rtti")
+set(CMAKE_CXX_FLAGS "-Wall -fno-rtti -g")
 
 # add_subdirectory(lib/check_result)
 # add_subdirectory(lib/dd_real)
