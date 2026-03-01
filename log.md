@@ -463,7 +463,7 @@
 ### 30 
 * repair ChangeVariableDecl: infinite loop while running repairBinOp, reduce new multi-op inst creation (better performance).
 
-## Jan, 2025
+## Jan, 2026
 
 ### 5
 * update PEDD: optimize set operation performance O(n*m) -> O(n + m), optimize break loop timing.
@@ -500,8 +500,14 @@
 * feature PrintConfig: print struct's real type rather than typedef.
 * feature ChangeVariableDecl: support struct intializers.
 
-## Feb, 2025
+## Feb, 2026
 
 ### 10
 * update CMakeLists.txt: print line/column in stack dump.
 * feature run.sh: support -base-result, -base-time option.
+
+## Mar, 2026
+
+### 1
+* repair dd_algorithm's bug.
+* remove incorrect strategy of PEDD algorithm.

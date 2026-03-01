@@ -96,18 +96,6 @@ def remove_from_change_set(change_set, elements):
     # 过滤change_set中不在elements_keys中的元素，O(n)时间
     return [e for e in change_set if get_element_hash_key(e) not in elements_keys]
 
-# 辅助函数：判断 set1 是否是 set2 的子集
-def is_subset_of(set1, set2):
-    if len(set1) > len(set2):
-        return False
-    # 将set2转换为哈希键集合，O(m)时间
-    set2_keys = {get_element_hash_key(element) for element in set2}
-    # 检查set1的每个元素是否都在set2中，O(n)时间
-    for element in set1:
-        if get_element_hash_key(element) not in set2_keys:
-            return False
-    return True
-
 # 辅助函数：测试变化集并更新结果映射
 def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, div_num):
     change_to_2nd_highest_precision(change_set)
@@ -117,12 +105,6 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, di
     # 计算降低后的变量集: change_set - test_set
     reduced_set = remove_from_change_set(change_set, test_set)
     # print(f'reduced_set: {reduced_set}\n')
-    # 策略二：如果reduced_set 是 invalid_result_map 中任意 value 的超集则跳过，因为结果必然是超误差阈值的
-    for existing_reduced_set in invalid_result_map.values():
-        # print(f'existing reduced_set:{existing_reduced_set}')
-        if is_subset_of(existing_reduced_set, reduced_set):
-            print(f'Skipping execution')
-            return new_change_set, False, None
     
     # 执行测试配置，记录结果无论是否符合阈值
     run_passed = algorithm_utils.run_config(bitcode, new_config, change_set)
@@ -144,7 +126,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, di
             # 运行结果第一次出现，记录降低后的变量集
             invalid_result_map[current_result] = reduced_set.copy()
             intersection = reduced_set
-        # 策略一：精度敏感变量剪枝
+        # 精度敏感变量剪枝
         if len(intersection) == 1:
             # 将该元素从当前change_set中清除
             element_to_remove = intersection[0]

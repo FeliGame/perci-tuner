@@ -109,7 +109,7 @@ def search_minimal_change_set(bitcode, change_set, div_num, threads):
     # 处理并行结果
     for better, new_change, min_time in results:
         if better:
-            if not have_better_set or len(new_change) < len(new_change_set) or (len(new_change) == len(new_change_set) and min_time < algorithm_utils.min_time):
+            if not have_better_set or min_time < algorithm_utils.min_time:
                 have_better_set = True
                 new_change_set = new_change
                 algorithm_utils.min_time = min_time
