@@ -511,3 +511,10 @@
 ### 1
 * repair dd_algorithm's bug.
 * remove incorrect strategy of PEDD algorithm.
+
+## Apr, 2026
+
+### 14
+
+* fix run.sh: add -u flag to python command in search-optimize mode for faster output.
+* fix change-by-config mode: output.bc is human readable.

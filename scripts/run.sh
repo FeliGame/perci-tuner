@@ -251,7 +251,7 @@ done
 llvm-link $BCS -o output.bc
 
 if test $MODE_FLAG = "change-by-config"; then
-    # 根据config修改源程序
+    opt output.bc -o output.bc  # 人类可读形式
     PASSES="change_function_call,change_variable_decl"
     if $DD_FLAG; then
         PASSES="$PASSES,fp128_to_dd"
@@ -292,7 +292,7 @@ fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
-    python3 $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc -arg=$RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS -base-time=$BASELINE_TIME -base-result=$BASELINE_RESULT
+    python3 -u $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc -arg=$RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS -base-time=$BASELINE_TIME -base-result=$BASELINE_RESULT
     echo "[Optimized] Config: optimized_config.json, IR: optimized_output.bc, Executable: optimized_output"
 fi
 

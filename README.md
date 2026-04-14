@@ -49,6 +49,9 @@ Check run.sh for more information.
 
 Each Optional Flag should be enclosed in double quotes, and it must start with '--'. Current available flags are shown below:
 
+### -fp128_to_dd(bool)
+Convert long double (fp128/x86_fp80) to double-double.
+
 ### --mxp(bool)
 Search all floating-point vars in IR if set to false, or search only __autofp vars or vars in #pragma region.
 From Pass: print_config.
