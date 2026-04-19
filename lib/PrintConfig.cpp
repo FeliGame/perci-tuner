@@ -42,7 +42,7 @@ void PrintConfig::findLocalVariables(Function &F) {
             std::string typeName = "";
             DebugLoc DL;
             unsigned lineNo = 0, colNo = 0;
-            bool isStatic = false, isParam = false;
+            bool isStatic = false;
             
             // 处理ret指令以识别返回值
             if (auto *RI = dyn_cast<ReturnInst>(&I)) {
@@ -98,12 +98,12 @@ void PrintConfig::findLocalVariables(Function &F) {
             else if (auto *CI = dyn_cast<CallInst>(&I)) {
                 if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
                     if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
+                        if (DV->isParameter()) continue;  // 跳过函数形参
                         varName = DV->getName();
                         typeName = parseDITypeName(DV->getType());
                         if (varName == "this") continue;
                         DL = DDI->getDebugLoc();
                         isStatic = false;
-                        isParam = DV->isParameter();
                         
                         // 处理结构体声明的局部变量 (通过dbg.declare)
                         std::string structName = "";
@@ -244,7 +244,6 @@ void PrintConfig::findLocalVariables(Function &F) {
                 localVar["column"] = colNo;
                 localVar["file"] = fileName;
                 localVar["isStatic"] = isStatic;
-                localVar["isParam"] = isParam;
                 // Handle __autofp
                 if (autoFPRange.count(varName)) {
                     localVar["range"] = autoFPRange[varName];

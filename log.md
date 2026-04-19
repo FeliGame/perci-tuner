@@ -518,3 +518,13 @@
 
 * fix run.sh: add -u flag to python command in search-optimize mode for faster output.
 * fix change-by-config mode: output.bc is human readable.
+
+### 19
+
+* CRUCIAL/INCOMPATIBLE feat: multi-version functions according to callinst's actual args' type.
+* How to realize this:
+  1. Detect and keep all callinsts actual arg base types.
+  2. Clone called function definition with new arg base types and repair arg's user insts.
+  3. Update callinsts to apply cloned functions.
+  4. Remove old unused function definitions.
+* remove from PrintConfig: never detect function args (but keep return type).

@@ -82,10 +82,8 @@ private:
     void changeGlobalVariable(GlobalVariable *GV, Type* targetType);
 
     void changeGlobalDeclarations(Module &module);
-    
-    Function* changeFunctionDecl(Function &F, DenseMap<int, Type*> declTypeMap);
 
-    void updateCaller(Function &oldFunc, Function &newFunc, DenseMap<int, Type*>& declTypeMap);
+    void updateCaller(CallInst *call, Function &newFunc, std::map<int, Type*> &declTypeMap);
 
     void replaceMultiOperandInst(Instruction* oldInst, Instruction* newInst);
 
@@ -93,13 +91,17 @@ private:
 
     DIType* createDIType(Type* type, DIScope* scope, DIBuilder* DIB);
 
+    void initCalleeToCallInsts(Module &module);
+
+    Function* cloneFunctionWithNewArgs(Function *oldFunc, std::map<int, Type*> &argBaseTypes);
+
+    Type* getBasicTypeFromDebugInfo(Value *value);
+
     DenseSet<StringRef> includedFunctions;
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
 
     DenseSet<GlobalVariable*> GVToErase;
-
-    DenseSet<Function*> funcToErase;    // Function to be erased later
 
     DenseSet<AllocaInst*> newAllocas;
 
@@ -107,7 +109,12 @@ private:
 
     DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
 
-    DenseMap<Function*, DenseMap<int, Type*>> funcDeclTypeMap;  // 函数声明类型原型，-1表示返回值，0...表示参数索引
+    // <被调函数，<参数索引，实参类型>> -> 该被调函数版本的CallInst列表
+    std::map<std::pair<Function*, std::map<int, Type*>>, SmallVector<CallInst*>> calleeToCallInsts;
+
+    DenseMap<Function*, Type*> funcRetTypeMap;  // 函数返回类型
+
+    DenseSet<Function*> funcToErase;  // 被替换的旧函数副本
     
     DenseMap<CallInst*, std::vector<Type*>> varargCallOriginalTypes;  // printf等可变参数
     
