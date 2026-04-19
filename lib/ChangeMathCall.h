@@ -1,7 +1,7 @@
 // @Author: Guocheng - NUDT
 
-#ifndef LLVM_CHANGE_FUNCTION_CALL_H
-#define LLVM_CHANGE_FUNCTION_CALL_H
+#ifndef LLVM_CHANGE_MATH_CALL_H
+#define LLVM_CHANGE_MATH_CALL_H
 
 #include "nlohmann/json.hpp"
 
@@ -20,7 +20,7 @@ using namespace std;
 namespace llvm {
 
 
-class ChangeFunctionCall : public PassInfoMixin<ChangeFunctionCall> {
+class ChangeMathCall : public PassInfoMixin<ChangeMathCall> {
 public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager
 
@@ -66,4 +66,4 @@ private:
 
 } // namespace llvm
 
-#endif // LLVM_CHANGE_FUNCTION_CALL_H
+#endif // LLVM_CHANGE_MATH_CALL_H

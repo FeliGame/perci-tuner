@@ -528,3 +528,4 @@
   3. Update callinsts to apply cloned functions.
   4. Remove old unused function definitions.
 * remove from PrintConfig: never detect function args (but keep return type).
+* rename ChangeFunctionCall to ChangeMathCall.

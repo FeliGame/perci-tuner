@@ -252,7 +252,7 @@ llvm-link $BCS -o output.bc
 
 if test $MODE_FLAG = "change-by-config"; then
     opt output.bc -o output.bc  # 人类可读形式
-    PASSES="change_function_call,change_variable_decl"
+    PASSES="change_math_call,change_variable_decl"
     if $DD_FLAG; then
         PASSES="$PASSES,fp128_to_dd"
         if is_x86_64; then

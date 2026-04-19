@@ -67,7 +67,7 @@ From Pass: change_variable_decl.
 
 ### --function-config
 
-Customize target function calls input filename. From Pass: change_function_call.
+Customize target function calls input filename. From Pass: change_math_call.
 
 ### --ir-timing-result
 

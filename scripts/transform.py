@@ -14,8 +14,9 @@ import platform
 
 
 COMPILER = 'clang'
+ARCH = platform.machine()
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
-PASSES = "change_function_call,change_variable_decl"
+PASSES = "change_math_call,change_variable_decl"
 FP128_TO_DD = False
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
@@ -73,7 +74,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                "-S", 
                "-passes=" + PASSES + 
                (",record_result" if is_mxp else "") + ",remove_pragma" + 
-               (",fp128_to_dd" if (run_id > 1 and FP128_TO_DD) else ""),  # TODO: x86上需要移除run_id > 1条件
+               (",fp128_to_dd" if ((run_id > 1 or ARCH == "x86_64") and FP128_TO_DD) else ""),
             #    "--print-dd=" + str(FP128_TO_DD),
                "--variable-config=" + CURRENT_CONFIG_NAME, 
                "--function-config=" + CURRENT_CONFIG_NAME, 
@@ -86,9 +87,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     
     # generate executable
     command = [COMPILER, '-o', CURRENT_EXEC_NAME, CURRENT_BC_NAME] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
-    # TODO: x86上需要移除run_id > 1条件
-    if run_id > 1 and FP128_TO_DD:
-        command += [os.path.join(os.getenv("PERCI_TUNER"), "lib/dd_real/libautop-x86.a" if platform.machine() == "x86_64" else "lib/dd_real/libautop.a"), '-lm']
+    if (run_id > 1 or ARCH == "x86_64") and FP128_TO_DD:
+        command += [os.path.join(os.getenv("PERCI_TUNER"), "lib/dd_real/libautop-x86.a" if ARCH == "x86_64" else "lib/dd_real/libautop.a"), '-lm']
     retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
     if retval != 0:
         return -2

@@ -1,9 +1,9 @@
 // @Author: Guocheng - NUDT
-// Usage: Change CallInst according to json.
-// Input: Function's type config
-// Output: CallInst-changed IR
+// Usage: Change math callInsts according to json.
+// Input: Math callInst's type config
+// Output: Math callInst-changed IR
 
-#include "ChangeFunctionCall.h"
+#include "ChangeMathCall.h"
 #include "utils/ParseTypeName.hpp"
 
 #include <llvm/IR/DebugInfo.h>
@@ -23,7 +23,7 @@ using namespace llvm;
 
 cl::opt<string> FunctionConfigName("function-config", cl::value_desc("filename"), cl::desc("Function's Type Config"), cl::init("config.json"));
 
-void ChangeFunctionCall::parseConfig() {
+void ChangeMathCall::parseConfig() {
     ifstream configFile(FunctionConfigName.c_str());
     if (!configFile) {
         errs() << "Error: Failed to open " << FunctionConfigName << "\n";
@@ -45,7 +45,7 @@ void ChangeFunctionCall::parseConfig() {
     }
 }
 
-bool ChangeFunctionCall::runOnFunction(Function &F) {
+bool ChangeMathCall::runOnFunction(Function &F) {
     auto getSrcOperand = [](Value* operand) -> Value* {
         // 处理CastInst：用转换指令的源操作数替换所有使用
         auto* srcOp = operand;
@@ -173,7 +173,7 @@ bool ChangeFunctionCall::runOnFunction(Function &F) {
     return modified;
 }
 
-bool ChangeFunctionCall::runOnModule(Module &module) {
+bool ChangeMathCall::runOnModule(Module &module) {
     parseConfig();
     bool modified = false;
     for(auto &F: module) {
@@ -185,12 +185,12 @@ bool ChangeFunctionCall::runOnModule(Module &module) {
     return modified;
 }  
 
-void ChangeFunctionCall::getAnalysisUsage(AnalysisUsage &AU) const {
+void ChangeMathCall::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll(); 
 }
 
-PreservedAnalyses ChangeFunctionCall::run(Module &M, ModuleAnalysisManager &) {
-    errs() << ">>> Perci-Tuner: Running ChangeFunctionCall Pass...\n";
+PreservedAnalyses ChangeMathCall::run(Module &M, ModuleAnalysisManager &) {
+    errs() << ">>> Perci-Tuner: Running ChangeMathCall Pass...\n";
     if (!runOnModule(M))
         return PreservedAnalyses::all();
     return PreservedAnalyses::none();

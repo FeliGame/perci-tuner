@@ -27,7 +27,7 @@ add_llvm_pass_plugin(PerciTuner
     lib/RegisterPasses.cpp
     lib/PrintConfig.cpp
     lib/ChangeVariableDecl.cpp
-    lib/ChangeFunctionCall.cpp
+    lib/ChangeMathCall.cpp
     lib/IRTiming.cpp
     lib/MergeMultiVersion.cpp
     lib/RecordResult.cpp

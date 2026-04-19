@@ -12,7 +12,7 @@ global CURRENT_CONFIG
 PRECISIONS = ["__fp16", "float", "double", "long double"]
 CONST_PRECISIONS = ["const " + p for p in PRECISIONS]
 POINTER_PRECISIONS = [p + "*" for p in PRECISIONS]
-# Same as ChangeFunctionCall.h
+# Same as ChangeMathCall.h
 FUNCTION_PRECISIONS = [
     # 三角函数
     "sin", "sinf", "sinl", "cos", "cosf", "cosl", "tan", "tanf", "tanl",

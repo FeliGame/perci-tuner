@@ -12,7 +12,7 @@
 
 #include "PrintConfig.h"
 #include "ChangeVariableDecl.h"
-#include "ChangeFunctionCall.h"
+#include "ChangeMathCall.h"
 #include "IRTiming.h"
 #include "MergeMultiVersion.h"
 #include "RecordResult.h"
@@ -52,9 +52,9 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 							PM.addPass(ChangeVariableDecl());
 							return true;
 						}
-						if (Name == "change_function_call")
+						if (Name == "change_math_call")
 						{
-							PM.addPass(ChangeFunctionCall());
+							PM.addPass(ChangeMathCall());
 							return true;
 						}
 						if (Name == "ir_timing")
