@@ -529,3 +529,10 @@
   4. Remove old unused function definitions.
 * remove from PrintConfig: never detect function args (but keep return type).
 * rename ChangeFunctionCall to ChangeMathCall.
+
+### 20
+
+* fix ptr's StoreInst align: always 8.
+* fix cloned old function, they will only be removed if no use.
+* fix cloned function arg can't detect global intializer (global/static).
+* fix function's ret type.

@@ -311,7 +311,7 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
 
 Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetType, unsigned align) {
     if (store->getType()->isIntegerTy()) return nullptr; // ignore integer store
-    if (store->getType()->isPointerTy()) return store;
+    if (store->getOperand(1)->getType()->isPointerTy()) return store;
     Value *oldValue = store->getOperand(0);
     auto *ptrOperand = store->getPointerOperand();
     Type* storeType = targetType;
@@ -1128,7 +1128,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
             auto srcTypeName = parseTypeName(F.getFunctionType()->getReturnType());
             auto targetTypeName = configEntry["type"].get<string>();
             // TODO: 暂不处理指针类型返回值
-            if (targetTypeName == srcTypeName || targetTypeName.find('*') != string::npos) continue;
+            if (targetTypeName.find('*') != string::npos) continue;
             auto *targetType = typeNameToType(targetTypeName, context);
             if (targetType == nullptr) continue;
             
@@ -1249,35 +1249,36 @@ void ChangeVariableDecl::initCalleeToCallInsts(Module &module) {
                     std::map<int, Type*> argBaseTypes;
                     for (unsigned i = 0; i < call->arg_size(); ++i) {
                         Value *arg = call->getArgOperand(i);
-                        Type *argBaseType = arg->getType();
+                        auto *argBaseType = arg->getType();
+                        Type *baseType = nullptr;
                         
                         // 从DebugInfo中获取原始类型，特别是指针类型的基类型
                         if (argBaseType->isPointerTy()) {
                             // 尝试从DebugInfo中获取指针的基类型
-                            if (auto *baseType = getBasicTypeFromDebugInfo(arg)) {
-                                argBaseTypes[i] = baseType;
-                            }
+                            baseType = getBasicTypeFromDebugInfo(arg);
                         }
                         else if (argBaseType->isFloatingPointTy()) {
                             // 对于浮点类型实参，如果是cast指令，需要找到最原始的源操作数和类型
                             Value *originalArg = arg;
-                            Type *originalType = argBaseType;
+                            baseType = argBaseType;
                             
                             // 沿着cast链向上查找，直到找到最原始的值
                             while (auto *castInst = dyn_cast<CastInst>(originalArg)) {
                                 Type *srcType = castInst->getSrcTy();
                                 if (srcType->isFloatingPointTy()) {
                                     originalArg = castInst->getOperand(0);
-                                    originalType = srcType;
+                                    baseType = srcType;
                                 } else {
                                     break;
                                 }
                             }
-                            
-                            argBaseTypes[i] = originalType;
-                        }   
+                        }
+                        if (baseType && baseType->isFloatingPointTy())
+                            argBaseTypes[i] = baseType;
                     }
-                    calleeToCallInsts[{func, argBaseTypes}].push_back(call);
+                    if (argBaseTypes.size() || (funcRetTypeMap.find(func) != funcRetTypeMap.end() && func->getReturnType() != nullptr && funcRetTypeMap[func] != nullptr && funcRetTypeMap[func] != func->getReturnType())) {
+                        calleeToCallInsts[{func, argBaseTypes}].push_back(call);
+                    }
                 }
             }
         }
@@ -1430,50 +1431,62 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
 Type* ChangeVariableDecl::getBasicTypeFromDebugInfo(Value *value) {
     // 首先尝试找到原始的AllocaInst
     AllocaInst *alloca = findOriginalAlloca(value);
-    if (!alloca) return nullptr;
-    errs() << "[getBasicTypeFromDebugInfo alloca] " << *alloca << '\n';
-    
-    // 遍历函数中的DbgDeclareInst，查找与当前AllocaInst相关的调试信息
-    Function *func = alloca->getFunction();
-    if (!func) return nullptr;
-    
-    errs() << "[getBasicTypeFromDebugInfo function] " << func->getName() << '\n';
-    for (auto &BB : *func) {
-        for (auto &I : BB) {
-            if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
-                if (DDI->getAddress() == alloca) {
-                    if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
-                        DIType *diType = DV->getType();
-                        errs() << "[getBasicTypeFromDebugInfo DIType] " << *diType << '\n';
-                        // 递归获取最基础的类型
-                        while (diType) {
-                            if (auto *derivedType = dyn_cast<DIDerivedType>(diType)) {
-                                if (derivedType->getTag() == dwarf::DW_TAG_pointer_type || 
-                                    derivedType->getTag() == dwarf::DW_TAG_reference_type) {
-                                    diType = derivedType->getBaseType();
+    if (alloca) {
+        errs() << "[getBasicTypeFromDebugInfo alloca] " << *alloca << '\n';
+        
+        // 遍历函数中的DbgDeclareInst，查找与当前AllocaInst相关的调试信息
+        Function *func = alloca->getFunction();
+        if (!func) return nullptr;
+        
+        errs() << "[getBasicTypeFromDebugInfo function] " << func->getName() << '\n';
+        for (auto &BB : *func) {
+            for (auto &I : BB) {
+                if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
+                    if (DDI->getAddress() == alloca) {
+                        if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
+                            DIType *diType = DV->getType();
+                            errs() << "[getBasicTypeFromDebugInfo DIType] " << *diType << '\n';
+                            // 递归获取最基础的类型
+                            while (diType) {
+                                if (auto *derivedType = dyn_cast<DIDerivedType>(diType)) {
+                                    if (derivedType->getTag() == dwarf::DW_TAG_pointer_type || 
+                                        derivedType->getTag() == dwarf::DW_TAG_reference_type) {
+                                        diType = derivedType->getBaseType();
+                                    } else break;
                                 } else break;
-                            } else break;
-                        }
-                        // 将DIType转换为LLVM Type
-                        if (diType) {
-                            LLVMContext &context = alloca->getContext();
-                            if (auto *basicType = dyn_cast<DIBasicType>(diType)) {
-                                StringRef name = basicType->getName();
-                                errs() << "[getBasicTypeFromDebugInfo basicType] " << name << '\n';
-                                if (name == "float") {
-                                    return Type::getFloatTy(context);
-                                } else if (name == "double") {
-                                    return Type::getDoubleTy(context);
-                                } else if (name == "half") {
-                                    return Type::getHalfTy(context);
-                                } else if (name == "long double") {
-                                    return Type::getFP128Ty(context);
+                            }
+                            // 将DIType转换为LLVM Type
+                            if (diType) {
+                                LLVMContext &context = alloca->getContext();
+                                if (auto *basicType = dyn_cast<DIBasicType>(diType)) {
+                                    StringRef name = basicType->getName();
+                                    errs() << "[getBasicTypeFromDebugInfo basicType] " << name << '\n';
+                                    if (name == "float") {
+                                        return Type::getFloatTy(context);
+                                    } else if (name == "double") {
+                                        return Type::getDoubleTy(context);
+                                    } else if (name == "half") {
+                                        return Type::getHalfTy(context);
+                                    } else if (name == "long double") {
+                                        return Type::getFP128Ty(context);
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    } else if (auto *globalVar = dyn_cast<GlobalVariable>(value)) {
+        Type *globalType = globalVar->getInitializer()->getType();
+        errs() << "[getBasicTypeFromDebugInfo global initializer] " << *globalType << '\n';
+        
+        if (auto *arrayType = dyn_cast<ArrayType>(globalType)) {
+            Type *elementType = arrayType->getArrayElementType();
+            errs() << "[getBasicTypeFromDebugInfo global initializer base type] " << *elementType << '\n';
+            return elementType;
+        } else {
+            return globalType;
         }
     }
     return nullptr;
@@ -1493,10 +1506,9 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
         }
     }
 
-    // 确定返回类型
+    // 确定返回类型，当前仅支持变换浮点类型返回值
     Type *returnType = oldFuncType->getReturnType();
-    if (funcRetTypeMap.contains(oldFunc) && !returnType->isPointerTy()) {
-        // 如果有指定返回类型且不是指针类型，则使用指定的返回类型
+    if (funcRetTypeMap.find(oldFunc) != funcRetTypeMap.end() && returnType->isFloatingPointTy()) {
         returnType = funcRetTypeMap[oldFunc];
     }
     
@@ -1594,7 +1606,7 @@ void ChangeVariableDecl::updateCaller(CallInst *call, Function &newFunc, std::ma
         }
         
         // 如果类型不匹配，添加类型转换
-        if (oldArg->getType() != targetType) {
+        if (oldArg->getType() != targetType && !oldArg->getType()->isPointerTy()) {
             if (Value *castedArg = insertCast(oldArg, targetType, call)) {
                 newArgs.push_back(castedArg);
             } else {
@@ -1747,7 +1759,7 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
 
         // 将替换后的函数副本作为callInsts的新callee
         for (auto *call : callInsts) {
-            // 移除替换前的老副本
+            // 替换前的函数，【可能】需要移除
             funcToErase.insert(call->getCalledFunction());
             updateCaller(call, *newFunc, argBaseTypes);
         }
@@ -1759,7 +1771,7 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
 
     for (auto *oldFunc : funcToErase) {
         errs() << "[remove unused function] " << oldFunc->getName() << '\n';
-        oldFunc->eraseFromParent();
+        if(oldFunc->use_empty()) oldFunc->eraseFromParent();
     }
     funcToErase.clear();
     
