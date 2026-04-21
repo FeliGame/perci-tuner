@@ -1237,48 +1237,41 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
     instToErase.clear();
 }
 
-void ChangeVariableDecl::initCalleeToCallInsts(Module &module) {
-    for (auto &F : module) {
-        for (auto &BB : F) {
-            for (auto &I : BB) {
-                if (auto *call = dyn_cast<CallInst>(&I)) {
-                    // 如果是用户定义的函数，则将浮点或者指针的实参类型记录到multiVersionCallMap
-                    auto *func = dyn_cast<Function>(call->getCalledFunction());
-                    // 被调函数必须在IR中已经定义了函数体，否则直接跳过
-                    if (func->isDeclaration()) continue;
-                    std::map<int, Type*> argBaseTypes;
-                    for (unsigned i = 0; i < call->arg_size(); ++i) {
-                        Value *arg = call->getArgOperand(i);
-                        auto *argBaseType = arg->getType();
-                        Type *baseType = nullptr;
-                        
-                        // 从DebugInfo中获取原始类型，特别是指针类型的基类型
-                        if (argBaseType->isPointerTy()) {
-                            // 尝试从DebugInfo中获取指针的基类型
-                            baseType = getBasicTypeFromDebugInfo(arg);
-                        }
-                        else if (argBaseType->isFloatingPointTy()) {
-                            // 对于浮点类型实参，如果是cast指令，需要找到最原始的源操作数和类型
-                            Value *originalArg = arg;
-                            baseType = argBaseType;
-                            
-                            // 沿着cast链向上查找，直到找到最原始的值
-                            while (auto *castInst = dyn_cast<CastInst>(originalArg)) {
-                                Type *srcType = castInst->getSrcTy();
-                                if (srcType->isFloatingPointTy()) {
-                                    originalArg = castInst->getOperand(0);
-                                    baseType = srcType;
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
-                        if (baseType && baseType->isFloatingPointTy())
-                            argBaseTypes[i] = baseType;
+void ChangeVariableDecl::updateCalleeToCallInsts(Function *F) {
+    for (auto &BB : *F) {
+        for (auto &I : BB) {
+            if (auto *call = dyn_cast<CallInst>(&I)) {
+                // 如果是用户定义的函数，则将浮点或者指针的实参类型记录到multiVersionCallMap
+                auto *func = dyn_cast<Function>(call->getCalledFunction());
+                // 被调函数必须在IR中已经定义了函数体，否则直接跳过
+                if (func->isDeclaration()) continue;
+                std::map<int, Type*> argBaseTypes;
+                for (unsigned i = 0; i < call->arg_size(); ++i) {
+                    Value *arg = call->getArgOperand(i);
+                    auto *argBaseType = arg->getType();
+                    Type *baseType = nullptr;
+                    
+                    // 从DebugInfo中获取原始类型，特别是指针类型的基类型
+                    if (argBaseType->isPointerTy()) {
+                        // 尝试从DebugInfo中获取指针的基类型
+                        baseType = getBasicTypeFromDebugInfo(arg);
                     }
-                    if (argBaseTypes.size() || (funcRetTypeMap.find(func) != funcRetTypeMap.end() && func->getReturnType() != nullptr && funcRetTypeMap[func] != nullptr && funcRetTypeMap[func] != func->getReturnType())) {
-                        calleeToCallInsts[{func, argBaseTypes}].push_back(call);
+                    else if (argBaseType->isFloatingPointTy()) {
+                        // 对于浮点类型实参，如果是cast指令，需要找到最原始的源操作数和类型
+                        Value *originalArg = arg;
+                        baseType = argBaseType;
+                        // 沿着cast链向上查找，直到找到最原始的值
+                        while (auto *castInst = dyn_cast<CastInst>(originalArg)) {
+                            baseType = castInst->getSrcTy();
+                            if (!baseType->isFloatingPointTy()) break;
+                            originalArg = castInst->getOperand(0);
+                        }
                     }
+                    if (baseType && baseType->isFloatingPointTy())
+                        argBaseTypes[i] = baseType;
+                }
+                if (argBaseTypes.size() || (funcRetTypeMap.find(func) != funcRetTypeMap.end() && funcRetTypeMap[func] != func->getReturnType())) {
+                    calleeToCallInsts[{func, argBaseTypes}].push_back(call);
                 }
             }
         }
@@ -1576,6 +1569,8 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
             }
         }
     }
+    // 克隆的函数包含的CallInst，同样需支持多版本
+    updateCalleeToCallInsts(newFunc);
 
     return newFunc;
 }
@@ -1738,7 +1733,8 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
     GVToErase.clear();
 
     // 根据calleeToCallInsts来创建函数副本
-    initCalleeToCallInsts(module);
+    for (auto &F : module)
+        updateCalleeToCallInsts(&F);
     for (auto entry : calleeToCallInsts) {
         auto functionArgs = entry.first;
         auto callInsts = entry.second;
@@ -1746,6 +1742,7 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         auto *func = functionArgs.first;
         auto &argBaseTypes = functionArgs.second;
         auto *newFunc = cloneFunctionWithNewArgs(func, argBaseTypes);
+        functionReplaceMap[func] = newFunc;        
 
         // 输出每个函数副本的func和对应callInsts
         errs() << "-----------------------------\n";
@@ -1756,12 +1753,18 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         for (auto *call : callInsts)
             errs() << *call << '\n';
         errs() << "-----------------------------\n";
-
+    }
+    // 待所有函数副本创建完成后，再做替换函数调用
+    for (auto entry : calleeToCallInsts) {
+        auto functionArgs = entry.first;
+        auto callInsts = entry.second;
+        auto *func = functionArgs.first;
+        auto &argBaseTypes = functionArgs.second;
         // 将替换后的函数副本作为callInsts的新callee
         for (auto *call : callInsts) {
             // 替换前的函数，【可能】需要移除
             funcToErase.insert(call->getCalledFunction());
-            updateCaller(call, *newFunc, argBaseTypes);
+            updateCaller(call, *functionReplaceMap[func], argBaseTypes);
         }
     }
 

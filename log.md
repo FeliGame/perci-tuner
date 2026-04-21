@@ -536,3 +536,7 @@
 * fix cloned old function, they will only be removed if no use.
 * fix cloned function arg can't detect global intializer (global/static).
 * fix function's ret type.
+
+### 21
+
+* fix no multi-version cloned function in nested callinsts.

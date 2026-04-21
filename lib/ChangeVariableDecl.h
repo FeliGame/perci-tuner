@@ -91,7 +91,7 @@ private:
 
     DIType* createDIType(Type* type, DIScope* scope, DIBuilder* DIB);
 
-    void initCalleeToCallInsts(Module &module);
+    void updateCalleeToCallInsts(Function *F);
 
     Function* cloneFunctionWithNewArgs(Function *oldFunc, std::map<int, Type*> &argBaseTypes);
 
@@ -106,6 +106,8 @@ private:
     DenseSet<AllocaInst*> newAllocas;
 
     DenseMap<Instruction*, Instruction*> instReplaceMap;    // MultiOperandInst replacement
+    
+    DenseMap<Function*, Function*> functionReplaceMap;    // Multi-Version Function replacement
 
     DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
 
