@@ -107,7 +107,7 @@ private:
 
     DenseMap<Instruction*, Instruction*> instReplaceMap;    // MultiOperandInst replacement
     
-    DenseMap<Function*, Function*> functionReplaceMap;    // Multi-Version Function replacement
+    DenseMap<CallInst*, Function*> functionReplaceMap;    // Multi-Version Function replacement
 
     DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
 

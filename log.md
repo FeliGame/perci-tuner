@@ -540,3 +540,7 @@
 ### 21
 
 * fix no multi-version cloned function in nested callinsts.
+
+### 22
+
+* fix multi-version function replace map.

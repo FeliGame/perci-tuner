@@ -1742,7 +1742,8 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         auto *func = functionArgs.first;
         auto &argBaseTypes = functionArgs.second;
         auto *newFunc = cloneFunctionWithNewArgs(func, argBaseTypes);
-        functionReplaceMap[func] = newFunc;        
+        for (auto *call : callInsts)
+            functionReplaceMap[call] = newFunc;
 
         // 输出每个函数副本的func和对应callInsts
         errs() << "-----------------------------\n";
@@ -1758,13 +1759,12 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
     for (auto entry : calleeToCallInsts) {
         auto functionArgs = entry.first;
         auto callInsts = entry.second;
-        auto *func = functionArgs.first;
         auto &argBaseTypes = functionArgs.second;
         // 将替换后的函数副本作为callInsts的新callee
         for (auto *call : callInsts) {
             // 替换前的函数，【可能】需要移除
             funcToErase.insert(call->getCalledFunction());
-            updateCaller(call, *functionReplaceMap[func], argBaseTypes);
+            updateCaller(call, *functionReplaceMap[call], argBaseTypes);
         }
     }
 
