@@ -1764,7 +1764,8 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         for (auto *call : callInsts) {
             // 替换前的函数，【可能】需要移除
             funcToErase.insert(call->getCalledFunction());
-            updateCaller(call, *functionReplaceMap[call], argBaseTypes);
+            if(functionReplaceMap[call])
+                updateCaller(call, *functionReplaceMap[call], argBaseTypes);
         }
     }
 
