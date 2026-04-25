@@ -544,3 +544,7 @@
 ### 22
 
 * fix multi-version function replace map.
+
+### 25
+
+* feat: global floating-point pointer type recognition.

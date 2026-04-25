@@ -1250,10 +1250,8 @@ void ChangeVariableDecl::updateCalleeToCallInsts(Function *F) {
                     Value *arg = call->getArgOperand(i);
                     auto *argBaseType = arg->getType();
                     Type *baseType = nullptr;
-                    
                     // 从DebugInfo中获取原始类型，特别是指针类型的基类型
                     if (argBaseType->isPointerTy()) {
-                        // 尝试从DebugInfo中获取指针的基类型
                         baseType = getBasicTypeFromDebugInfo(arg);
                     }
                     else if (argBaseType->isFloatingPointTy()) {
@@ -1443,6 +1441,7 @@ Type* ChangeVariableDecl::getBasicTypeFromDebugInfo(Value *value) {
                             while (diType) {
                                 if (auto *derivedType = dyn_cast<DIDerivedType>(diType)) {
                                     if (derivedType->getTag() == dwarf::DW_TAG_pointer_type || 
+                                        derivedType->getTag() == dwarf::DW_TAG_typedef ||
                                         derivedType->getTag() == dwarf::DW_TAG_reference_type) {
                                         diType = derivedType->getBaseType();
                                     } else break;
@@ -1452,17 +1451,9 @@ Type* ChangeVariableDecl::getBasicTypeFromDebugInfo(Value *value) {
                             if (diType) {
                                 LLVMContext &context = alloca->getContext();
                                 if (auto *basicType = dyn_cast<DIBasicType>(diType)) {
-                                    StringRef name = basicType->getName();
+                                    string name = basicType->getName().str();
                                     errs() << "[getBasicTypeFromDebugInfo basicType] " << name << '\n';
-                                    if (name == "float") {
-                                        return Type::getFloatTy(context);
-                                    } else if (name == "double") {
-                                        return Type::getDoubleTy(context);
-                                    } else if (name == "half") {
-                                        return Type::getHalfTy(context);
-                                    } else if (name == "long double") {
-                                        return Type::getFP128Ty(context);
-                                    }
+                                    return typeNameToType(name, context);
                                 }
                             }
                         }
@@ -1473,14 +1464,50 @@ Type* ChangeVariableDecl::getBasicTypeFromDebugInfo(Value *value) {
     } else if (auto *globalVar = dyn_cast<GlobalVariable>(value)) {
         Type *globalType = globalVar->getInitializer()->getType();
         errs() << "[getBasicTypeFromDebugInfo global initializer] " << *globalType << '\n';
-        
+
+        // 处理全局变量指针类型，从调试信息中获取基本类型
+        if (globalType->isPointerTy()) {
+            // 检查是否有调试信息
+            if (auto *dbg = globalVar->getMetadata(LLVMContext::MD_dbg)) {
+                if (auto *digve = dyn_cast<DIGlobalVariableExpression>(dbg)) {
+                    auto *divar = digve->getVariable();
+                    if (divar) {
+                        DIType *diType = divar->getType();
+                        // 递归获取最基础的类型
+                        while (diType) {
+                            if (auto *derivedType = dyn_cast<DIDerivedType>(diType)) {
+                                if (derivedType->getTag() == dwarf::DW_TAG_pointer_type || 
+                                    derivedType->getTag() == dwarf::DW_TAG_typedef ||
+                                    derivedType->getTag() == dwarf::DW_TAG_reference_type) {
+                                    diType = derivedType->getBaseType();
+                                } else break;
+                            } else if (auto *compositeType = dyn_cast<DICompositeType>(diType)) {
+                                if (compositeType->getTag() == dwarf::DW_TAG_array_type) {
+                                    diType = compositeType->getBaseType();
+                                }
+                            } else break;
+                        }
+                        // 将DIType转换为LLVM Type
+                        if (diType) {
+                            LLVMContext &context = globalVar->getContext();
+                            if (auto *basicType = dyn_cast<DIBasicType>(diType)) {
+                                string name = basicType->getName().str();
+                                errs() << "[getBasicTypeFromDebugInfo global basic type] " << name << '\n';
+                                return typeNameToType(name, context);
+                            }
+                        }
+                    }
+                }
+            }
+        }  
         if (auto *arrayType = dyn_cast<ArrayType>(globalType)) {
             Type *elementType = arrayType->getArrayElementType();
             errs() << "[getBasicTypeFromDebugInfo global initializer base type] " << *elementType << '\n';
             return elementType;
-        } else {
-            return globalType;
         }
+        return globalType;
+    } else if (auto *gep = dyn_cast<GetElementPtrInst>(value)) {
+        return gep->getSourceElementType()->getArrayElementType();
     }
     return nullptr;
 }

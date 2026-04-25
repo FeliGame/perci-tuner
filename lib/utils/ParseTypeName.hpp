@@ -74,6 +74,8 @@ inline string parseDITypeName(DIType* type) {
     if (auto *derivedType = llvm::dyn_cast<llvm::DIDerivedType>(type)) {
         switch (derivedType->getTag()) {
             case dwarf::DW_TAG_typedef: {
+                if (auto baseType = derivedType->getBaseType())
+                    return parseDITypeName(baseType);
                 return derivedType->getName().str();
             }
             case dwarf::DW_TAG_const_type: {
