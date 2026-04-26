@@ -95,7 +95,7 @@ private:
 
     Function* cloneFunctionWithNewArgs(Function *oldFunc, std::map<int, Type*> &argBaseTypes);
 
-    Type* getBasicTypeFromDebugInfo(Value *value);
+    Type* getBasicType(Value *value);
 
     DenseSet<StringRef> includedFunctions;
 
@@ -119,6 +119,9 @@ private:
     DenseSet<Function*> funcToErase;  // 被替换的旧函数副本
     
     DenseMap<CallInst*, std::vector<Type*>> varargCallOriginalTypes;  // printf等可变参数
+    
+    DenseMap<GlobalVariable*, Type*> globalBaseTypeMap;  // Global variable to its base type
+    DenseMap<AllocaInst*, Type*> localBaseTypeMap;  // Local variable to its base type
     
     nlohmann::json config;
 

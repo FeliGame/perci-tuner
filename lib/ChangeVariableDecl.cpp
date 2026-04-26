@@ -72,14 +72,21 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
     if (alloca->getAllocatedType()->isPointerTy()) {
         // 对于指针类型，保存指向类型的基本类型
         pointeeTypeMap[alloca] = newType;
-        newAllocas.insert(alloca);
     } else {
         // 对于非指针类型，更改AllocaInst的类型
         alloca->setAllocatedType(newType);
         alloca->setAlignment(getAlign(newType));
-        newAllocas.insert(alloca);
     }
+    newAllocas.insert(alloca);
     errs() << *alloca << '\n';
+
+    // 存储局部变量到目标类型的映射
+    Type *baseType = newType;
+    while (baseType->isArrayTy()) {
+        baseType = baseType->getArrayElementType();
+    }
+    localBaseTypeMap[alloca] = baseType;
+    errs() << "[local base type] " << alloca->getName() << " -> " << *baseType << '\n';
     
     // 变换DI类型
     for (auto &BB : *(alloca->getFunction())) {
@@ -827,6 +834,15 @@ void ChangeVariableDecl::changeGlobalVariable(GlobalVariable *GV, Type* targetTy
         errs() << *newGV << '\n';
     }
 
+    // Extract base type from targetType and store in globalBaseTypeMap
+    Type *baseType = targetType;
+    // 递归获取数组的基类型
+    while (baseType->isArrayTy()) {
+        baseType = baseType->getArrayElementType();
+    }
+    globalBaseTypeMap[newGV] = baseType;
+    errs() << "[GV base type] " << newGV->getName() << " -> " << *baseType << '\n';
+
     repairGVUsers(newGV, targetType);  // TODO: use newGV cause inifinite user loop
     if (initializer != newInitializer) {
         GVToErase.insert(GV);
@@ -1252,7 +1268,7 @@ void ChangeVariableDecl::updateCalleeToCallInsts(Function *F) {
                     Type *baseType = nullptr;
                     // 从DebugInfo中获取原始类型，特别是指针类型的基类型
                     if (argBaseType->isPointerTy()) {
-                        baseType = getBasicTypeFromDebugInfo(arg);
+                        baseType = getBasicType(arg);
                     }
                     else if (argBaseType->isFloatingPointTy()) {
                         // 对于浮点类型实参，如果是cast指令，需要找到最原始的源操作数和类型
@@ -1418,94 +1434,13 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
     }
 }
 
-// 从DebugInfo中获取指针的基类型，递归处理多级指针
-Type* ChangeVariableDecl::getBasicTypeFromDebugInfo(Value *value) {
+Type* ChangeVariableDecl::getBasicType(Value *value) {
     // 首先尝试找到原始的AllocaInst
     AllocaInst *alloca = findOriginalAlloca(value);
     if (alloca) {
-        errs() << "[getBasicTypeFromDebugInfo alloca] " << *alloca << '\n';
-        
-        // 遍历函数中的DbgDeclareInst，查找与当前AllocaInst相关的调试信息
-        Function *func = alloca->getFunction();
-        if (!func) return nullptr;
-        
-        errs() << "[getBasicTypeFromDebugInfo function] " << func->getName() << '\n';
-        for (auto &BB : *func) {
-            for (auto &I : BB) {
-                if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
-                    if (DDI->getAddress() == alloca) {
-                        if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
-                            DIType *diType = DV->getType();
-                            errs() << "[getBasicTypeFromDebugInfo DIType] " << *diType << '\n';
-                            // 递归获取最基础的类型
-                            while (diType) {
-                                if (auto *derivedType = dyn_cast<DIDerivedType>(diType)) {
-                                    if (derivedType->getTag() == dwarf::DW_TAG_pointer_type || 
-                                        derivedType->getTag() == dwarf::DW_TAG_typedef ||
-                                        derivedType->getTag() == dwarf::DW_TAG_reference_type) {
-                                        diType = derivedType->getBaseType();
-                                    } else break;
-                                } else break;
-                            }
-                            // 将DIType转换为LLVM Type
-                            if (diType) {
-                                LLVMContext &context = alloca->getContext();
-                                if (auto *basicType = dyn_cast<DIBasicType>(diType)) {
-                                    string name = basicType->getName().str();
-                                    errs() << "[getBasicTypeFromDebugInfo basicType] " << name << '\n';
-                                    return typeNameToType(name, context);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        return localBaseTypeMap[alloca];
     } else if (auto *globalVar = dyn_cast<GlobalVariable>(value)) {
-        Type *globalType = globalVar->getInitializer()->getType();
-        errs() << "[getBasicTypeFromDebugInfo global initializer] " << *globalType << '\n';
-
-        // 处理全局变量指针类型，从调试信息中获取基本类型
-        if (globalType->isPointerTy()) {
-            // 检查是否有调试信息
-            if (auto *dbg = globalVar->getMetadata(LLVMContext::MD_dbg)) {
-                if (auto *digve = dyn_cast<DIGlobalVariableExpression>(dbg)) {
-                    auto *divar = digve->getVariable();
-                    if (divar) {
-                        DIType *diType = divar->getType();
-                        // 递归获取最基础的类型
-                        while (diType) {
-                            if (auto *derivedType = dyn_cast<DIDerivedType>(diType)) {
-                                if (derivedType->getTag() == dwarf::DW_TAG_pointer_type || 
-                                    derivedType->getTag() == dwarf::DW_TAG_typedef ||
-                                    derivedType->getTag() == dwarf::DW_TAG_reference_type) {
-                                    diType = derivedType->getBaseType();
-                                } else break;
-                            } else if (auto *compositeType = dyn_cast<DICompositeType>(diType)) {
-                                if (compositeType->getTag() == dwarf::DW_TAG_array_type) {
-                                    diType = compositeType->getBaseType();
-                                }
-                            } else break;
-                        }
-                        // 将DIType转换为LLVM Type
-                        if (diType) {
-                            LLVMContext &context = globalVar->getContext();
-                            if (auto *basicType = dyn_cast<DIBasicType>(diType)) {
-                                string name = basicType->getName().str();
-                                errs() << "[getBasicTypeFromDebugInfo global basic type] " << name << '\n';
-                                return typeNameToType(name, context);
-                            }
-                        }
-                    }
-                }
-            }
-        }  
-        if (auto *arrayType = dyn_cast<ArrayType>(globalType)) {
-            Type *elementType = arrayType->getArrayElementType();
-            errs() << "[getBasicTypeFromDebugInfo global initializer base type] " << *elementType << '\n';
-            return elementType;
-        }
-        return globalType;
+        return globalBaseTypeMap[globalVar];
     } else if (auto *gep = dyn_cast<GetElementPtrInst>(value)) {
         return gep->getSourceElementType()->getArrayElementType();
     }

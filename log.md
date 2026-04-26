@@ -548,3 +548,7 @@
 ### 25
 
 * feat: global floating-point pointer type recognition.
+
+### 26
+
+* fix: get args' basic type from map rather than DebugInfo (better performance).
