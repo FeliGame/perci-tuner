@@ -944,9 +944,13 @@ void ChangeVariableDecl::repairGVUsers(GlobalVariable *GV, Type* targetType) {
 
             // 检查是否是inbounds GEP
             bool isInBounds = constant->getRawSubclassOptionalData();
-            // 创建新的GEP表达式
+            // 对于数组类型，应该使用数组元素类型作为源类型
+            Type *gepSourceType = GVType->isPointerTy() ? GVType : targetType;
+            // 如果是数组类型，提取元素类型
+            if (gepSourceType->isArrayTy())
+                gepSourceType = gepSourceType->getArrayElementType();
             auto *newConstant = ConstantExpr::getGetElementPtr(
-                GVType->isPointerTy() ? GVType : targetType,
+                gepSourceType,
                 GV,
                 indices,
                 isInBounds
@@ -1264,16 +1268,15 @@ void ChangeVariableDecl::updateCalleeToCallInsts(Function *F) {
                 std::map<int, Type*> argBaseTypes;
                 for (unsigned i = 0; i < call->arg_size(); ++i) {
                     Value *arg = call->getArgOperand(i);
-                    auto *argBaseType = arg->getType();
+                    auto *argType = arg->getType();
                     Type *baseType = nullptr;
                     // 从DebugInfo中获取原始类型，特别是指针类型的基类型
-                    if (argBaseType->isPointerTy()) {
+                    if (argType->isPointerTy()) {
                         baseType = getBasicType(arg);
-                    }
-                    else if (argBaseType->isFloatingPointTy()) {
+                    } else if (argType->isFloatingPointTy()) {
                         // 对于浮点类型实参，如果是cast指令，需要找到最原始的源操作数和类型
                         Value *originalArg = arg;
-                        baseType = argBaseType;
+                        baseType = argType;
                         // 沿着cast链向上查找，直到找到最原始的值
                         while (auto *castInst = dyn_cast<CastInst>(originalArg)) {
                             baseType = castInst->getSrcTy();
@@ -1443,7 +1446,14 @@ Type* ChangeVariableDecl::getBasicType(Value *value) {
         return globalBaseTypeMap[globalVar];
     } else if (auto *gep = dyn_cast<GetElementPtrInst>(value)) {
         return gep->getSourceElementType()->getArrayElementType();
+    } else if (auto *constant = dyn_cast<ConstantExpr>(value)) {
+        // 应对EP的vranlc: ptr getelementptr inbounds ([131072 x double], ptr @x.1, i64 -1)的右半部分
+        if (constant->getOpcode() == Instruction::GetElementPtr) {
+            return getBasicType(constant->getOperand(0));
+        }
     }
+    // TODO: 是否有其他情形？
+    errs() <<"[unhandled basic type]" << *value << '\n';
     return nullptr;
 }
 
