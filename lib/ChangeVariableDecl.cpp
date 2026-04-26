@@ -7,6 +7,7 @@
 #include "utils/ParseTypeName.hpp"
 #include "nlohmann/json.hpp"
 
+#include <functional>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
@@ -641,21 +642,33 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
 }
 
 Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* targetType) {
+    auto *srcType = gep->getSourceElementType();
     // 多级指针的情形，保持targetType状态，返回原指令，直到访问到最低一级的元素类型，将其转换为targetType
-    if (gep->getSourceElementType()->isPointerTy()) return gep;
-    if (!targetType || gep->getSourceElementType() == targetType) {
-        return nullptr; // 类型一致，无需替换
-    }
+    if (srcType->isPointerTy()) return gep;
+    if (!targetType || srcType == targetType) return nullptr; // 类型一致，无需替换
 
     // 提取 GEP 指令的索引
     SmallVector<Value*, 4> indices;
     for (auto& index : gep->indices()) {
         indices.push_back(index.get());
     }
+    // 降级到基类型保证正确性
+    while (auto *targetArrayType = dyn_cast<ArrayType>(targetType))
+        targetType = targetArrayType->getElementType();
+    
+    // 递归函数：保持数组维度，将最内层基类型替换为targetType
+    std::function<Type*(Type*)> getNewTypeWithBaseReplaced = [&](Type *type) -> Type * {
+        if (auto *arrayType = dyn_cast<ArrayType>(type)) {
+            Type *newElementType = getNewTypeWithBaseReplaced(arrayType->getElementType());
+            return ArrayType::get(newElementType, arrayType->getArrayNumElements());
+        }
+        return targetType;
+    };
+    Type *newSrcType = getNewTypeWithBaseReplaced(srcType);
 
     // 创建新的 GEP 指令
     auto* newGEP = GetElementPtrInst::CreateInBounds(
-        targetType,
+        newSrcType,
         gep->getPointerOperand(),
         indices,
         gep->getName(),

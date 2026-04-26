@@ -554,3 +554,4 @@
 * fix: get args' basic type from map rather than DebugInfo (better performance).
 * FATAL fix: repairStoreInst is unrunnable before.
 * fix: change type for Callinst's arg like 'ptr getelementptr...'.
+* fix: change array-type for repairGEPInst.
