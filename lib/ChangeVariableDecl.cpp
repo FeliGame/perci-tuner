@@ -317,21 +317,21 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
 }
 
 Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetType, unsigned align) {
-    if (store->getType()->isIntegerTy()) return nullptr; // ignore integer store
-    if (store->getOperand(1)->getType()->isPointerTy()) return store;
-    Value *oldValue = store->getOperand(0);
+    auto *srcOperand = store->getOperand(0);
+    auto *srcType = srcOperand->getType();
+    if (srcType->isPointerTy() || srcType->isIntegerTy() || srcType == targetType) return store;
     auto *ptrOperand = store->getPointerOperand();
     Type* storeType = targetType;
-    if (auto *allocaInst = findOriginalAlloca(ptrOperand))
-        if (!storeType)
+    if (!storeType)
+        if (auto *allocaInst = findOriginalAlloca(ptrOperand))
             storeType = allocaInst->getAllocatedType();
     if (storeType) {
         if (auto *arrayType = dyn_cast<ArrayType>(storeType))
             storeType = arrayType->getElementType();
         store->setAlignment(align ? Align(align) : getAlign(storeType));
-        if (oldValue->getType() != storeType) {
+        if (srcType != storeType) {
             errs() << "[repair store] " << *store << "->";
-            if (auto *castValue = insertCast(oldValue, storeType, store))
+            if (auto *castValue = insertCast(srcOperand, storeType, store))
                 store->setOperand(0, castValue);
             errs() << *store << '\n';
         }
