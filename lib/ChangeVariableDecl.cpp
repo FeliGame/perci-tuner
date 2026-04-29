@@ -1508,6 +1508,15 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
         return nullptr;
     }
 
+    DenseMap<CallInst*, std::pair<unsigned, unsigned>> oldCallInstsInfo;
+    for (auto &BB : *oldFunc) {
+        for (auto &I : BB) {
+            if (auto *oldCall = dyn_cast<CallInst>(&I)) {
+                oldCallInstsInfo[oldCall] = {oldCall->getDebugLoc().getLine(), oldCall->getDebugLoc().getCol()};
+            }
+        }
+    }
+
     // 使用 CloneFunction 函数来克隆函数体
     // 首先在 VMap 中添加旧函数参数到新函数参数的映射
     ValueToValueMapTy VMap;
@@ -1554,8 +1563,24 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
             }
         }
     }
-    // 克隆的函数包含的CallInst，同样需支持多版本
-    updateCalleeToCallInsts(newFunc);
+
+    // 建立旧函数callInst到新函数中等价callInst的映射
+    for (auto &BB : *newFunc) {
+        for (auto &I : BB) {
+            if (auto *newCall = dyn_cast<CallInst>(&I)) {
+                unsigned newLine = newCall->getDebugLoc().getLine();
+                unsigned newCol = newCall->getDebugLoc().getCol();
+                for (auto &oldPair : oldCallInstsInfo) {
+                    auto *oldCall = oldPair.first;
+                    auto &info = oldPair.second;
+                    if (info.first == newLine && info.second == newCol) {
+                        oldToNewCallInstMap[oldCall] = newCall;
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
     return newFunc;
 }
@@ -1740,6 +1765,15 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
             errs() << *call << '\n';
         errs() << "-----------------------------\n";
     }
+
+    //  在克隆完所有函数之后，再统一更新
+    for (auto entry : functionReplaceMap) {
+        auto call = entry.first;
+        auto newFunc = entry.second;
+        if (oldToNewCallInstMap.find(call) != oldToNewCallInstMap.end())
+            functionReplaceMap[oldToNewCallInstMap[call]] = newFunc;  // 函数副本中的也要替换
+    }
+
     // 待所有函数副本创建完成后，再做替换函数调用
     for (auto entry : calleeToCallInsts) {
         auto functionArgs = entry.first;
@@ -1751,6 +1785,8 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
             funcToErase.insert(call->getCalledFunction());
             if(functionReplaceMap[call])
                 updateCaller(call, *functionReplaceMap[call], argBaseTypes);
+            if(oldToNewCallInstMap.find(call) != oldToNewCallInstMap.end())
+                updateCaller(oldToNewCallInstMap[call], *functionReplaceMap[oldToNewCallInstMap[call]], argBaseTypes);
         }
     }
 
@@ -1759,8 +1795,10 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
     instToErase.clear();
 
     for (auto *oldFunc : funcToErase) {
-        errs() << "[remove unused function] " << oldFunc->getName() << '\n';
-        if(oldFunc->use_empty()) oldFunc->eraseFromParent();
+        if(oldFunc->use_empty()) {
+            errs() << "[remove unused function] " << oldFunc->getName() << '\n';
+            oldFunc->eraseFromParent();
+        }
     }
     funcToErase.clear();
     

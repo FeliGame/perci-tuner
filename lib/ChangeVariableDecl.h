@@ -109,6 +109,8 @@ private:
     
     DenseMap<CallInst*, Function*> functionReplaceMap;    // Multi-Version Function replacement
 
+    DenseMap<CallInst*, CallInst*> oldToNewCallInstMap;  // 原始函数callInst到克隆函数中等价callInst的映射
+
     DenseMap<AllocaInst*, Type*> pointeeTypeMap;  // AllocaInst's new pointee type
 
     // <被调函数，<参数索引，实参类型>> -> 该被调函数版本的CallInst列表

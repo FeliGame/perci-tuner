@@ -555,3 +555,7 @@
 * FATAL fix: repairStoreInst is unrunnable before.
 * fix: change type for Callinst's arg like 'ptr getelementptr...'.
 * fix: change array-type for repairGEPInst.
+
+### 29
+
+* fix no multi-version cloned function in nested callinsts.
