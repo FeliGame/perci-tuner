@@ -1,0 +1,73 @@
+-- Found LLVM 17.0.6
+-- Using LLVMConfig.cmake in: /home/guocheng2/llvm-project-17.0.6/install/lib/cmake/llvm
+-- Registering PerciTuner as a pass plugin (static build: OFF)
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/guocheng2/perci-tuner/build
+[100%] Built target PerciTuner
+clang version 17.0.6
+Target: aarch64-unknown-linux-gnu
+Thread model: posix
+InstalledDir: /home/guocheng2/llvm-project-17.0.6/install/bin
+>>> Perci-Tuner: Running PrintConfig Pass...
+>>> Perci-Tuner: Running RemovePragma Pass...
+[Original] Config: config.json, IR: output.bc, Executable: output
+  Compiler: clang
+  IR file: output.bc
+  Config file: config.json
+  Threshold: 1e-14
+  Repeat times: 1
+  Show history: True
+  Algorithm: pedd
+  Timeout seconds: 200.0
+  Shuffled: False
+  Threads: 1
+  FP128 to DD: True
+  Link libs: ['-lm']
+  Link dirs: []
+  Runtime lib dirs: []
+  CFlags: []
+  Run args: []
+  MXP: False
+  Baseline time: auto-detect
+  Baseline result: auto-detect
+current result: 0x1.46d5976ab23faf70deeeeeeeeeefp+67
+
+>>> Perci-Tuner(Py): VALID config1
+original time: 2.2650607370305806 original result: 0x1.46d5976ab23faf70deeeeeeeeeefp+67
+
+change set size: 3, div num: 2, div size: 2
+delta size: 2, complement delta size: 2
+>>> Perci-Tuner(Py): INVALID config2
+New result encountered: 0x1.46d5976ab27bdp+67
+Remove config with {'column': 17, 'file': 'dd_test/SimpsonsRule_V1F1/SimpsonsRule_long_double.c', 'isStatic': False, 'line': 16, 'name': 'sum', 'range': [], 'type': 'double', 'fvar_index': 1, 'floatSimpsonsRuleV1F1': 'floatSimpsonsRuleV1F1', 'search_types': ['__fp16', 'float', 'double', 'long double'], 'func': 'floatSimpsonsRuleV1F1'}
+current result: 0x1.46d5976ab23faee186022ee759fp+67
+
+>>> Perci-Tuner(Py): VALID config3
+Pruned better set: []
+
+change set size: 2, div num: 2, div size: 1
+delta size: 2, complement delta size: 2
+>>> Perci-Tuner(Py): INVALID config4
+New result encountered: 0x1.46d5988eb3377dae2ddfef8cep+67
+Remove config with {'column': 17, 'file': 'dd_test/SimpsonsRule_V1F1/SimpsonsRule_long_double.c', 'isStatic': False, 'line': 14, 'name': 'step', 'range': [], 'type': 'float', 'fvar_index': 0, 'floatSimpsonsRuleV1F1': 'floatSimpsonsRuleV1F1', 'search_types': ['__fp16', 'float', 'double'], 'func': 'floatSimpsonsRuleV1F1'}
+>>> Perci-Tuner(Py): INVALID config5
+New result encountered: 0x1.46d5976aae3eeda819578440bp+67
+Remove config with {'column': 0, 'file': '', 'isStatic': False, 'line': 0, 'name': 'ret.', 'range': [], 'type': 'float', 'fvar_index': 0, 'f': 'f', 'search_types': ['__fp16', 'float', 'double'], 'func': 'f'}
+
+change set size: 2, div num: 2, div size: 1
+delta size: 2, complement delta size: 2
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+>>> Perci-Tuner(Py): The config has been runned, skipped...
+none better in current iteration
+>>> Perci-Tuner Report <<<
+Search history recorded in config/ IR/ exec/ run_history.csv
+Searched 5 configs including 0 failed configs.
+Search spent: 1.18e+01s
+Search space size: 3
+Best result index: 3 , also saved as optimized_config.json, optimized_output, optimized_output.bc
+ Optimized cost: 1.7962711360305548 s
+Original time: 2.2650607370305806 s
+Acc rate: 26.097930963583202 %

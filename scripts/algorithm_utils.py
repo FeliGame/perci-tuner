@@ -14,6 +14,8 @@ run_times = 0
 run_times_lock = threading.Lock()  # lock for run_times
 global min_time
 min_time = float('inf')
+global best_config_index
+best_config_index = 0
 global algorithm
 algorithm = 'dd'
 global is_mxp
@@ -32,7 +34,8 @@ def atomic_increment_run_times():
 
 # update the best IR, exec and config file
 def update_opt(opt_config):
-    global OPT_PREFIX, bitcode_name
+    global OPT_PREFIX, bitcode_name, best_config_index
+    best_config_index = run_times
     shutil.copyfile(os.path.join('IR', f'{run_times}.bc'), OPT_PREFIX + bitcode_name)
     shutil.copyfile(os.path.join('exec', f'{run_times}'), OPT_PREFIX + 'output')
     config_utils.print_config(opt_config, OPT_PREFIX + "config.json")

@@ -559,3 +559,9 @@
 ### 29
 
 * fix no multi-version cloned function in nested callinsts.
+
+## May, 2026
+
+### 1
+
+* feat: optimized config index.
