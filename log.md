@@ -569,3 +569,4 @@
 ### 4
 
 * feat: always show acc rate if config runned.
+* feat PrintConfig: skip local-var decl in function without users.
