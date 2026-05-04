@@ -565,3 +565,7 @@
 ### 1
 
 * feat: optimized config index.
+
+### 4
+
+* feat: always show acc rate if config runned.
