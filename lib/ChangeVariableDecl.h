@@ -116,6 +116,8 @@ private:
     // <被调函数，<参数索引，实参类型>> -> 该被调函数版本的CallInst列表
     std::map<std::pair<Function*, std::map<int, Type*>>, SmallVector<CallInst*>> calleeToCallInsts;
 
+    DenseMap<Function*, std::map<int, Type*>> funcDeclTypeMap;  // 函数浮点参数类型
+
     DenseMap<Function*, Type*> funcRetTypeMap;  // 函数返回类型
 
     DenseSet<Function*> funcToErase;  // 被替换的旧函数副本

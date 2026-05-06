@@ -63,7 +63,7 @@ Align ChangeVariableDecl::getAlign(Type* targetType) {
     } else if (auto *arrayType = dyn_cast<ArrayType>(targetType)) {
         return getAlign(arrayType->getElementType());
     } else {
-        return Align(targetType->getPrimitiveSizeInBits() / 8);
+        return DL->getABITypeAlign(targetType);
     }
 }
 
@@ -1212,6 +1212,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
             // 适用clang情况
             else if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
                 if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
+                    auto varName = DV->getName();
                     auto fileName = DV->getFile()->getFilename().str();
                     auto loc = DDI->getDebugLoc();
 
@@ -1225,6 +1226,16 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     auto *targetType = typeNameToType(typeName, context);
                     if (targetType == nullptr) continue;
                     
+                    if (configEntry["isParam"]) {
+                        unsigned argIndex = 0;
+                        for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                            if (argIt->getName() == varName) {
+                                errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
+                                funcDeclTypeMap[&F][argIndex] = targetType;
+                                break;
+                            }
+                        }
+                    }
                     changeAllocaInst(dyn_cast<AllocaInst>(DDI->getAddress()), targetType);
                 }
             }
@@ -1284,19 +1295,10 @@ void ChangeVariableDecl::updateCalleeToCallInsts(Function *F) {
                     auto *argType = arg->getType();
                     Type *baseType = nullptr;
                     // 从DebugInfo中获取原始类型，特别是指针类型的基类型
-                    if (argType->isPointerTy()) {
-                        baseType = getBasicType(arg);
-                    } else if (argType->isFloatingPointTy()) {
-                        // 对于浮点类型实参，如果是cast指令，需要找到最原始的源操作数和类型
-                        Value *originalArg = arg;
-                        baseType = argType;
-                        // 沿着cast链向上查找，直到找到最原始的值
-                        while (auto *castInst = dyn_cast<CastInst>(originalArg)) {
-                            baseType = castInst->getSrcTy();
-                            if (!baseType->isFloatingPointTy()) break;
-                            originalArg = castInst->getOperand(0);
-                        }
-                    }
+                    if (argType->isPointerTy())
+                        baseType = getBasicType(arg);  // 指针基类型跟随实参
+                    else if (argType->isFloatingPointTy())
+                        baseType = funcDeclTypeMap[func][i];  // 非指针跟随config指定
                     if (baseType && baseType->isFloatingPointTy())
                         argBaseTypes[i] = baseType;
                 }

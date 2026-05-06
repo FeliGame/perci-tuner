@@ -568,5 +568,11 @@
 
 ### 4
 
-* feat: always show acc rate if config runned.
-* feat PrintConfig: skip local-var decl in function without users.
+* feat: always show acc rate if config runned.(The impl is FATAL WRONG!!!)
+* feat PrintConfig: skip local-var decl in function without users.(The impl is FATAL WRONG!!!)
+
+### 6
+
+* fix ChangeVariableDecl: floating parameter type follow config rather than callinst's args, optimize getAlign() logic.
+* FATAL fix transform.py: recover hidden acc rate if break error threshold.
+* FATAL fix PrintConfig: main function is no more skipped.

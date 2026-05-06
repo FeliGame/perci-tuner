@@ -121,9 +121,13 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                     if float(output_val) > config_utils.thres:
                         satisfy_thres = False
                         current_run_result = output_val
+                        current_run_time = float("nan")
+                        break
                 elif data_utils.ORIGINAL_TIME != float('inf') and not data_utils.is_nearly_equal(output_val, data_utils.ORIGINAL_RESULT, config_utils.thres):
                     satisfy_thres = False
                     current_run_result = output_val
+                    current_run_time = float("nan")
+                    break
         except subprocess.TimeoutExpired:
             print(f">>> Perci-Tuner(Py) Error: Timeout after {TIMEOUT_THRESHOLD} seconds.")
             RUNNING_FAIL_TIMES += 1
@@ -149,6 +153,12 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             if current_run_result is None:
                 return -4
 
+    if not satisfy_thres:
+        if show_history:
+            data_utils.store_data(run_id, float('inf'), current_run_result, diff, is_mxp)
+        return 0
+    
+    # 计算中位数
     time_list.sort()
     if RUNNING_TIMES % 2 == 1:
         current_run_time = time_list[RUNNING_TIMES//2]

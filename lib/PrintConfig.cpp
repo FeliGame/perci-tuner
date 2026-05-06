@@ -418,7 +418,7 @@ bool PrintConfig::runOnModule(Module &module) {
 
     for(auto &f : module) {
         string name = f.getName().str();
-        if(!f.isDeclaration() && !f.use_empty()) {
+        if(!f.isDeclaration() && (name == "main" || !f.use_empty())) {
             runOnFunction(f);
         }
     }
