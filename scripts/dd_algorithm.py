@@ -71,7 +71,7 @@ def search_minimal_change_set(bitcode, change_set, div_num, threads):
     # to find the current minimal change set
     new_change_set = []
     new_div_num = div_num
-    have_better_set = False
+    layer_better = False  # 在本层级找到更优配置
     print(f'delta size: {len(delta_change_set)}, complement delta size: {len(complement_delta_change_set)}')
 
     # 并行处理delta搜索的辅助函数
@@ -107,15 +107,14 @@ def search_minimal_change_set(bitcode, change_set, div_num, threads):
         results = list(executor.map(process_delta, range(len(delta_change_set))))
     
     # 处理并行结果
-    for better, new_change, min_time in results:
-        if better:
-            if not have_better_set or min_time < algorithm_utils.min_time:
-                have_better_set = True
+    for local_better, new_change, local_min_time in results:
+        if local_better:
+            layer_better = True  # 本层级找到更优配置
+            if local_min_time < algorithm_utils.min_time:
                 new_change_set = new_change
-                algorithm_utils.min_time = min_time
-                algorithm_utils.update_opt(config_utils.rebuild(change_set))
+                algorithm_utils.update_opt(local_min_time)
 
-    if have_better_set:
+    if layer_better:
         # 还原最佳配置
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(new_change_set)

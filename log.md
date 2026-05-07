@@ -576,3 +576,7 @@
 * fix ChangeVariableDecl: floating parameter type follow config rather than callinst's args, optimize getAlign() logic.
 * FATAL fix transform.py: recover hidden acc rate if break error threshold.
 * FATAL fix PrintConfig: main function is no more skipped.
+
+### 7
+
+* fix search: remove optimized config, better performance coz of less copy & json dump.

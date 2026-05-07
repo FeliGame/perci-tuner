@@ -137,8 +137,7 @@ def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, di
     if run_passed and transform.current_run_time < algorithm_utils.min_time:
         have_better_set = True
         new_change_set = test_set.copy()
-        algorithm_utils.min_time = transform.current_run_time
-        algorithm_utils.update_opt(new_config)
+        algorithm_utils.update_opt(transform.current_run_time)
     
     return new_change_set, have_better_set, pruned_change_set
 

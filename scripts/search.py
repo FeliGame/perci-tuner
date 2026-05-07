@@ -223,11 +223,10 @@ def main():
     else:
         print("Error: Invalid algorithm!")
         sys.exit(1)
-    config_utils.print_config(new_conf, "optimized_config.json")
     
     end_time = time.perf_counter()
-    print(f">>> Perci-Tuner Report <<<\nSearch history recorded in config/ IR/ exec/ run_history.csv\nSearched {algorithm_utils.run_times} configs including {transform.RUNNING_FAIL_TIMES} failed.\nSearch spent: {(end_time - start_time):.2e}s\nSearch space size: {len(change_set)}")
-    print("Optimized config index:", algorithm_utils.best_config_index, ", saved as optimized_config.json, optimized_output, optimized_output.bc\nOptimized cost:", algorithm_utils.min_time, "s\nOriginal time:", data_utils.ORIGINAL_TIME, "s\nAcc rate:", 100.0 * (data_utils.ORIGINAL_TIME - algorithm_utils.min_time) / algorithm_utils.min_time, "%")
+    print(f">>> Perci-Tuner Report <<<\nSearch history recorded in run_history.csv\nSearched {algorithm_utils.run_times} configs including {transform.RUNNING_FAIL_TIMES} failed.\nSearch spent: {(end_time - start_time):.2e}s\nSearch space size: {len(change_set)}")
+    print("Optimized config index [", algorithm_utils.best_config_index, "] saved in config/ IR/ exec/\nOptimized cost:", algorithm_utils.min_time, "s\nOriginal time:", data_utils.ORIGINAL_TIME, "s\nAcc rate:", 100.0 * (data_utils.ORIGINAL_TIME - algorithm_utils.min_time) / algorithm_utils.min_time, "%")
 
     # baseline_test(bitcode, algorithm_utils.original_conf)
 

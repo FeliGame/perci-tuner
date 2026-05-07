@@ -32,8 +32,7 @@ def exhaustive_search(bitcode, change_set):
         new_config = config_utils.rebuild(temp_change_set)
         
         if algorithm_utils.run_config(bitcode, new_config, temp_change_set) and transform.current_run_time < algorithm_utils.min_time:
-            algorithm_utils.min_time = transform.current_run_time
-            algorithm_utils.update_opt(new_config)
+            algorithm_utils.update_opt(transform.current_run_time)
             candidates.append((new_config, algorithm_utils.min_time))
 
     return candidates

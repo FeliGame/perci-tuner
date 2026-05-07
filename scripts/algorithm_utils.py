@@ -7,8 +7,6 @@ import config_utils, data_utils, transform
 import threading
 
 
-# the optimized bitcode & config file prefix
-OPT_PREFIX = "optimized_"
 global run_times
 run_times = 0
 run_times_lock = threading.Lock()  # lock for run_times
@@ -32,14 +30,11 @@ def atomic_increment_run_times():
         run_times += 1
         return run_times
 
-# update the best IR, exec and config file
-def update_opt(opt_config):
-    global OPT_PREFIX, bitcode_name, best_config_index
+# update best config
+def update_opt(updated_min_time):
+    global best_config_index, min_time
     best_config_index = run_times
-    shutil.copyfile(os.path.join('IR', f'{run_times}.bc'), OPT_PREFIX + bitcode_name)
-    shutil.copyfile(os.path.join('exec', f'{run_times}'), OPT_PREFIX + 'output')
-    config_utils.print_config(opt_config, OPT_PREFIX + "config.json")
-    os.chmod(OPT_PREFIX + "output", 0o755)
+    min_time = updated_min_time
 
 def compare_json(original, current, diff, prefix=""):
     """
