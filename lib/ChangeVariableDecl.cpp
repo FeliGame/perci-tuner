@@ -1583,6 +1583,8 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
             }
         }
     }
+    // 新函数内可能callInst的指针参数类型也发生了变化
+    updateCalleeToCallInsts(newFunc);
 
     return newFunc;
 }
@@ -1747,7 +1749,10 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
     // 根据calleeToCallInsts来创建函数副本
     for (auto &F : module)
         updateCalleeToCallInsts(&F);
-    for (auto entry : calleeToCallInsts) {
+
+    auto it = calleeToCallInsts.begin();
+    while (it != calleeToCallInsts.end()) {
+        auto entry = *it;
         auto functionArgs = entry.first;
         auto callInsts = entry.second;
         // 对于每组不同的functionArgs，创建一个函数副本
@@ -1766,6 +1771,8 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         for (auto *call : callInsts)
             errs() << *call << '\n';
         errs() << "-----------------------------\n";
+
+        ++it;
     }
 
     //  在克隆完所有函数之后，再统一更新

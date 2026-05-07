@@ -580,3 +580,4 @@
 ### 7
 
 * fix search: remove optimized config, better performance coz of less copy & json dump.
+* fix: nested called function's ptr arg type transform (solve CG's RUNTIME-ERROR).
