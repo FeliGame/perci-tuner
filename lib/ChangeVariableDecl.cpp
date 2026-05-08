@@ -362,6 +362,7 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
     SmallVector<Value*, 2> newOperands;
     auto *highestType = findHighestPrecisionType(binOp);
 
+    bool operandsChanged = false;
     for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
         auto *operand = binOp->getOperand(i);
         // if typecast, use src value
@@ -369,11 +370,13 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
             operand = castInst->getOperand(0);
             // 将原始cast指令添加到待删除列表，消除冗余
             instToErase.insert(castInst);
+            operandsChanged = true;
         }
         // type of src operands not match
         if (operand->getType() != highestType) {
             if (auto *newOperand = insertCast(operand, highestType, binOp)) {
                 operand = newOperand;
+                operandsChanged = true;
             }
         }
         newOperands.push_back(operand);
@@ -391,10 +394,14 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
         }
         errs() << "[repair binop] " << *binOp << "->";
         binOp = dyn_cast<BinaryOperator>(newBinOp);
-    } else {
+    } else if (operandsChanged) {
         for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
             binOp->setOperand(i, newOperands[i]);
         }
+    } else {
+        // 操作数已经是正确类型，不需要修改，直接返回nullptr避免递归处理
+        errs() << "[binop already correct] " << *binOp << '\n';
+        return nullptr;
     }
     errs() << *binOp << '\n';
     return binOp;
@@ -476,18 +483,23 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             }
         }
 
+        if (!highestType)
+            highestType = oldType;
+
         // 更新newOperands并插入必要cast
+        bool operandsChanged = false;
         for (unsigned i = 0; i < 3; ++i) {
             Value* source = newOperands[i];
             if (source->getType() != highestType) {
                 if (auto* casted = insertCast(source, highestType, call)) {
                     newOperands[i] = casted;
+                    operandsChanged = true;
                 }
             }
         }
 
         // 检查操作数是否需要转换（无论当前类型是否与最高精度类型相同）
-        bool needsRepair = highestType != oldType;
+        bool needsRepair = highestType != oldType || operandsChanged;
         SmallVector<Value*, 3> castedOperands;
         
         // 如果需要修复（最高精度类型与当前类型不同，或操作数类型不一致）
@@ -548,10 +560,9 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             errs() << "[repair fmuladd] " << *call << "->";
             call = newCall;
         } else {
-            // 直接替换操作数类型即可
-            for (unsigned i = 0; i < 3; ++i) {
-                call->setArgOperand(i, newOperands[i]);
-            }
+            // 操作数已经是正确类型，不需要修改，直接返回nullptr避免递归处理
+            errs() << "[fmuladd already correct] " << *call << '\n';
+            return nullptr;
         }
         errs() << *call << '\n';
         return call;
@@ -1527,18 +1538,9 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
     for (unsigned i = 0; i < oldFuncType->getNumParams() && oldArgIt != oldFunc->arg_end(); ++i, ++oldArgIt, ++newArgIt) {
         VMap[&(*oldArgIt)] = &(*newArgIt);
     }
-    Function *clonedFunc = CloneFunction(oldFunc, VMap);
 
-    // 将克隆的函数体移动到新函数
-    while (!clonedFunc->empty()) {
-        BasicBlock *BB = &clonedFunc->front();
-        BB->removeFromParent();
-        BB->insertInto(newFunc);
-    }
-
-    // 删除克隆的函数，避免生成额外的 declare 语句
-    clonedFunc->eraseFromParent();
-    newFunc->copyAttributesFrom(oldFunc);
+    SmallVector<ReturnInst*, 8> Returns;  
+    CloneFunctionInto(newFunc, oldFunc, VMap, CloneFunctionChangeType::LocalChangesOnly, Returns);
 
     // 替换newFunc函数体中形参相关的user指令，使之匹配
     for (auto &BB : *newFunc) {

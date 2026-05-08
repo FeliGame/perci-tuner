@@ -581,3 +581,8 @@
 
 * fix search: remove optimized config, better performance coz of less copy & json dump.
 * fix: nested called function's ptr arg type transform (solve CG's RUNTIME-ERROR).
+
+### 8
+
+* fix: infinte repair fmuladd/multi-op in V1F1/V1F2/V2F1/V2F2 cases (introduced from May 7th commit).
+* perf: using CloneFunctionInto rather than CloneFunction, reduce clone times (2 -> 1).
