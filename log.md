@@ -586,3 +586,7 @@
 
 * fix: infinte repair fmuladd/multi-op in V1F1/V1F2/V2F1/V2F2 cases (introduced from May 7th commit).
 * perf: using CloneFunctionInto rather than CloneFunction, reduce clone times (2 -> 1).
+
+### 18
+
+* CRUCIAL feat: CallGraph to solve nested call's ptr-arg base type consistency.

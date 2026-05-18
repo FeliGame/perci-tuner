@@ -34,7 +34,7 @@ cl::opt<string> VariableConfigName("variable-config", cl::value_desc("filename")
 void ChangeVariableDecl::parseConfig() {
     std::ifstream configFile(VariableConfigName.c_str());
     if (!configFile.is_open()) {
-        errs() << "Error: Failed to open " << VariableConfigName << "\n";
+        // errs() << "Error: Failed to open " << VariableConfigName << "\n";
         exit(1);
     }
 
@@ -68,18 +68,20 @@ Align ChangeVariableDecl::getAlign(Type* targetType) {
 }
 
 AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newType) {
-    errs() << "[change alloca] " << *alloca << "->";
-    // 判断是否为指针类型
-    if (alloca->getAllocatedType()->isPointerTy()) {
+    auto *oldType = alloca->getAllocatedType();
+    if (!oldType->isFloatingPointTy()) {
+        return nullptr;
+    } else if (oldType->isPointerTy()) {
         // 对于指针类型，保存指向类型的基本类型
         pointeeTypeMap[alloca] = newType;
     } else {
+        // errs() << "[change alloca] " << *alloca << "->";
         // 对于非指针类型，更改AllocaInst的类型
         alloca->setAllocatedType(newType);
         alloca->setAlignment(getAlign(newType));
+        // errs() << *alloca << '\n';
     }
     newAllocas.insert(alloca);
-    errs() << *alloca << '\n';
 
     // 存储局部变量到目标类型的映射
     Type *baseType = newType;
@@ -87,7 +89,7 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
         baseType = baseType->getArrayElementType();
     }
     localBaseTypeMap[alloca] = baseType;
-    errs() << "[local base type] " << alloca->getName() << " -> " << *baseType << '\n';
+    // errs() << "[local base type] " << alloca->getName() << " -> " << *baseType << '\n';
     
     // 变换DI类型
     for (auto &BB : *(alloca->getFunction())) {
@@ -130,7 +132,7 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
                             DV->getFlags()
                         );
                         DDI->setVariable(newDV);
-                        errs() << "[update alloca's DItype] " << DV->getName() << " type: " << *newType << typeSuffix << '\n';
+                        // errs() << "[update alloca's DItype] " << DV->getName() << " type: " << *newType << typeSuffix << '\n';
                     }
                 }
             }
@@ -189,19 +191,19 @@ Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction 
     IRBuilder<> builder(insertBefore);
 
     if (val->getType()->isFloatingPointTy() && targetType->isFloatingPointTy()) {
-        errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
+        // errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
         return builder.CreateFPCast(val, targetType, "fp_cast");
     }
     if (val->getType()->isIntegerTy() && targetType->isFloatingPointTy()) {
-        errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
+        // errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
         return builder.CreateSIToFP(val, targetType, "int_to_fp");
     }
     if (val->getType()->isFloatingPointTy() && targetType->isIntegerTy()) {
-        errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
+        // errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
         return builder.CreateFPToSI(val, targetType, "fp_to_int");
     }
     
-    errs() << "[unsupported cast] " << *val->getType() << "->" << *targetType << "\n";
+    // errs() << "[unsupported cast] " << *val->getType() << "->" << *targetType << "\n";
     return nullptr;
 }
 
@@ -274,7 +276,7 @@ Type* ChangeVariableDecl::findHighestPrecisionType(PHINode* phi) {
 }
 
 Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
-    errs() << "[repair return]" << *ret << " -> ";
+    // errs() << "[repair return]" << *ret << " -> ";
     Value *retVal = ret->getReturnValue();
     if (!retVal) return nullptr;  // void return
     
@@ -285,7 +287,7 @@ Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
             return dyn_cast<Instruction>(ret);
         }
     }
-    errs() << *ret << '\n';
+    // errs() << *ret << '\n';
     return nullptr;  // nothing changed
 }
 
@@ -310,7 +312,7 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
             newLoad->setDebugLoc(load->getDebugLoc());
             load->replaceAllUsesWith(newLoad);
             instToErase.insert(load);
-            errs() << "[repair load] " << *load << "->" << *newLoad << '\n';
+            // errs() << "[repair load] " << *load << "->" << *newLoad << '\n';
             return newLoad;
         }
     }
@@ -331,10 +333,10 @@ Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetT
             storeType = arrayType->getElementType();
         store->setAlignment(align ? Align(align) : getAlign(storeType));
         if (srcType != storeType) {
-            errs() << "[repair store] " << *store << "->";
+            // errs() << "[repair store] " << *store << "->";
             if (auto *castValue = insertCast(srcOperand, storeType, store))
                 store->setOperand(0, castValue);
-            errs() << *store << '\n';
+            // errs() << *store << '\n';
         }
     }
     return store;
@@ -343,7 +345,7 @@ Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetT
 Instruction* ChangeVariableDecl::repairUnaryOp(UnaryOperator* unaOp) {
     auto *operand = unaOp->getOperand(0);
     if (operand->getType() != unaOp->getType()) {
-        errs() << "[repair unary op] " << *unaOp << "->";
+        // errs() << "[repair unary op] " << *unaOp << "->";
         IRBuilder<> builder(unaOp);
         auto *newUnaOp = builder.CreateUnOp(unaOp->getOpcode(), operand);
         newUnaOp->takeName(unaOp);
@@ -352,7 +354,7 @@ Instruction* ChangeVariableDecl::repairUnaryOp(UnaryOperator* unaOp) {
         }
         unaOp->replaceAllUsesWith(newUnaOp);
         instToErase.insert(unaOp);
-        errs() << *newUnaOp << '\n';
+        // errs() << *newUnaOp << '\n';
         return dyn_cast<Instruction>(newUnaOp);
     }
     return nullptr;
@@ -392,7 +394,7 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
             newBinOpInst->setDebugLoc(binOp->getDebugLoc());
             replaceMultiOperandInst(binOp, newBinOpInst);
         }
-        errs() << "[repair binop] " << *binOp << "->";
+        // errs() << "[repair binop] " << *binOp << "->";
         binOp = dyn_cast<BinaryOperator>(newBinOp);
     } else if (operandsChanged) {
         for (unsigned i = 0; i < binOp->getNumOperands(); ++i) {
@@ -400,10 +402,10 @@ Instruction* ChangeVariableDecl::repairBinaryOp(BinaryOperator* binOp) {
         }
     } else {
         // 操作数已经是正确类型，不需要修改，直接返回nullptr避免递归处理
-        errs() << "[binop already correct] " << *binOp << '\n';
+        // errs() << "[binop already correct] " << *binOp << '\n';
         return nullptr;
     }
-    errs() << *binOp << '\n';
+    // errs() << *binOp << '\n';
     return binOp;
 }
 
@@ -437,14 +439,14 @@ Instruction* ChangeVariableDecl::repairFCmpInst(FCmpInst* fcmp) {
             newFcmpInst->setDebugLoc(fcmp->getDebugLoc());
             replaceMultiOperandInst(fcmp, newFcmpInst);
         }
-        errs() << "[repair FCmp] " << *fcmp << "->";
+        // errs() << "[repair FCmp] " << *fcmp << "->";
         fcmp = dyn_cast<FCmpInst>(newFcmp);
     } else {
         for (unsigned i = 0; i < fcmp->getNumOperands(); ++i) {
             fcmp->setOperand(i, newOperands[i]);
         }
     }
-    errs() << *fcmp << '\n';
+    // errs() << *fcmp << '\n';
     return fcmp;
 }
 
@@ -557,21 +559,21 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             newCall->setDebugLoc(call->getDebugLoc());
             newCall->takeName(call);
             replaceMultiOperandInst(call, newCall);
-            errs() << "[repair fmuladd] " << *call << "->";
+            // errs() << "[repair fmuladd] " << *call << "->";
             call = newCall;
         } else {
             // 操作数已经是正确类型，不需要修改，直接返回nullptr避免递归处理
-            errs() << "[fmuladd already correct] " << *call << '\n';
+            // errs() << "[fmuladd already correct] " << *call << '\n';
             return nullptr;
         }
-        errs() << *call << '\n';
+        // errs() << *call << '\n';
         return call;
     }
     
     // 处理其他函数调用
     bool modified = false;
     unsigned numFixedArgs = callee->getFunctionType()->getNumParams();
-    errs() << "[repair call] " << *call << "->";
+    // errs() << "[repair call] " << *call << "->";
     // 遍历调用的所有参数
     for (unsigned i = 0; i < call->arg_size(); ++i) {
         Value *arg = call->getArgOperand(i);
@@ -602,16 +604,16 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
                 call->setArgOperand(i, castValue); // 替换参数
                 modified = true;
             } else {
-                errs() << "[repair call] Failed to cast arg" << i << " to type " << *targetType << '\n';
+                // errs() << "[repair call] Failed to cast arg" << i << " to type " << *targetType << '\n';
             }
         }
     }
 
     if (modified) {
-        errs() << *call << '\n';
+        // errs() << *call << '\n';
         return call;
     }
-    errs() << '\n';
+    // errs() << '\n';
     return nullptr;
 }
 
@@ -645,7 +647,7 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
         }
         phi->replaceAllUsesWith(newPhi);
         instToErase.insert(phi);
-        errs() << "[repair phi] " << *phi << "->" << *newPhi << '\n';
+        // errs() << "[repair phi] " << *phi << "->" << *newPhi << '\n';
         return dyn_cast<Instruction>(newPhi);
     }
 
@@ -689,7 +691,7 @@ Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* tar
     // 用新的 GEP 指令替换旧的 GEP 指令
     gep->replaceAllUsesWith(newGEP);
     instToErase.insert(gep);
-    errs() << "[repair GEP] " << *gep << "->" << *newGEP << '\n';
+    // errs() << "[repair GEP] " << *gep << "->" << *newGEP << '\n';
 
     return newGEP;
 }
@@ -728,14 +730,14 @@ Instruction* ChangeVariableDecl::repairBitCastInst(BitCastInst* bitCast) {
 
     Value* newSrcValue = insertCast(srcValue, targetFloatType, bitCast);
     if (!newSrcValue) {
-        errs() << "Failed to cast source value in BitCastInst: " << *bitCast << "\n";
+        // errs() << "Failed to cast source value in BitCastInst: " << *bitCast << "\n";
         return nullptr;
     }
 
     BitCastInst* newBitCast = new BitCastInst(newSrcValue, destType, bitCast->getName(), bitCast);
     bitCast->replaceAllUsesWith(newBitCast);
     instToErase.insert(bitCast);
-    errs() << "[repair bitcast] " << *bitCast << "->" << *newBitCast << '\n';
+    // errs() << "[repair bitcast] " << *bitCast << "->" << *newBitCast << '\n';
 
     return newBitCast;
 }
@@ -757,7 +759,7 @@ Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {
     
     // 如果找到合适的目标类型，且与当前类型不同，则修复
     if (targetType && targetType != castInst->getType()) {
-        errs() << "[repair IntToFP] " << *castInst << "->";
+        // errs() << "[repair IntToFP] " << *castInst << "->";
         
         // 创建新的转换指令
         IRBuilder<> builder(castInst);
@@ -771,7 +773,7 @@ Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {
         
         castInst->replaceAllUsesWith(newCast);
         instToErase.insert(castInst);
-        errs() << *newCast << '\n';
+        // errs() << *newCast << '\n';
         return newCastInst;
     }
     
@@ -781,13 +783,13 @@ Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {
 // Make inst operands type consistent
 void ChangeVariableDecl::repairUserType(User *user, Type* targetType, unsigned align) {
     if (!isa<Instruction>(user)) {
-        errs() << "[not an instruction]\n";
+        // errs() << "[not an instruction]\n";
         return;
     }
 
     auto *inst = cast<Instruction>(user);
     Instruction *newInst = nullptr;
-    errs() << "[checking user] " << *inst << "\n";
+    // errs() << "[checking user] " << *inst << "\n";
 
     if (auto ret = dyn_cast<ReturnInst>(inst))
         newInst = repairReturnInst(ret);
@@ -835,7 +837,7 @@ void ChangeVariableDecl::changeGlobalVariable(GlobalVariable *GV, Type* targetTy
     if (!newInitializer) return;
     GlobalVariable *newGV = GV;
     if (newInitializer != initializer) {
-        errs() << "[change GV] " << *GV << " -> ";
+        // errs() << "[change GV] " << *GV << " -> ";
         newGV = new GlobalVariable(
                     *GV->getParent(),
                     targetType,
@@ -855,7 +857,7 @@ void ChangeVariableDecl::changeGlobalVariable(GlobalVariable *GV, Type* targetTy
         newGV->setExternallyInitialized(GV->isExternallyInitialized());
         newGV->setAlignment(getAlign(targetType));
         GV->replaceAllUsesWith(newGV);
-        errs() << *newGV << '\n';
+        // errs() << *newGV << '\n';
     }
 
     // Extract base type from targetType and store in globalBaseTypeMap
@@ -865,7 +867,7 @@ void ChangeVariableDecl::changeGlobalVariable(GlobalVariable *GV, Type* targetTy
         baseType = baseType->getArrayElementType();
     }
     globalBaseTypeMap[newGV] = baseType;
-    errs() << "[GV base type] " << newGV->getName() << " -> " << *baseType << '\n';
+    // errs() << "[GV base type] " << newGV->getName() << " -> " << *baseType << '\n';
 
     repairGVUsers(newGV, targetType);  // TODO: use newGV cause inifinite user loop
     if (initializer != newInitializer) {
@@ -947,7 +949,7 @@ Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* t
         }
         return ConstantStruct::get(targetStructType, newElements);
     } 
-    errs() << "Ignored intializer: " << *initializer << '\n';
+    // errs() << "Ignored intializer: " << *initializer << '\n';
     return nullptr;
 }
 
@@ -958,7 +960,7 @@ void ChangeVariableDecl::repairGVUsers(GlobalVariable *GV, Type* targetType) {
             repairUserType(user, targetType);
         } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {
             // 处理GEP常量表达式用户（数组索引>1）
-            errs() << "[repair GEP constant expr] " << *constant << "->";
+            // errs() << "[repair GEP constant expr] " << *constant << "->";
             
             // 获取原GEP的参数
             SmallVector<Value*, 8> indices;
@@ -979,7 +981,7 @@ void ChangeVariableDecl::repairGVUsers(GlobalVariable *GV, Type* targetType) {
                 indices,
                 isInBounds
             );
-            errs() << *newConstant << '\n';
+            // errs() << *newConstant << '\n';
             // 替换原常量表达式的所有使用
             constant->replaceAllUsesWith(newConstant);
             
@@ -1000,14 +1002,14 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
             if (auto *castInst = dyn_cast<CastInst>(&I)) {
                 // 1. 首先处理未使用的cast
                 if (castInst->use_empty()) {
-                    errs() << "[remove unused cast] " << *castInst << " in " << F.getName() << '\n';
+                    // errs() << "[remove unused cast] " << *castInst << " in " << F.getName() << '\n';
                     instToErase.insert(castInst);
                     continue;
                 }
                 
                 // 2. 处理相同类型的冗余cast
                 if (castInst->getSrcTy() == castInst->getDestTy()) {
-                    errs() << "[remove redundant cast] " << *castInst << '\n';
+                    // errs() << "[remove redundant cast] " << *castInst << '\n';
                     castInst->replaceAllUsesWith(castInst->getOperand(0));
                     instToErase.insert(castInst);
                     continue;
@@ -1061,7 +1063,7 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
                                 }
                             }
                             
-                            errs() << "[replace cast chain] " << *castInst << "->" << *newCast << '\n';
+                            // errs() << "[replace cast chain] " << *castInst << "->" << *newCast << '\n';
                             continue;
                         }
                     }
@@ -1176,7 +1178,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
             auto *targetType = typeNameToType(targetTypeName, context);
             if (targetType == nullptr) continue;
             
-            errs() << "[change return type] " << F.getName() << ": " << srcTypeName << "->" << *targetType << "\n";
+            // errs() << "[change return type] " << F.getName() << ": " << srcTypeName << "->" << *targetType << "\n";
             funcRetTypeMap[&F] = targetType;
             break;
         }
@@ -1241,7 +1243,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                         unsigned argIndex = 0;
                         for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
                             if (argIt->getName() == varName) {
-                                errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
+                                // errs() << "[change arg] " << argIt->getName() << ": " << srcTypeName << "->" << *targetType << '\n';
                                 funcDeclTypeMap[&F][argIndex] = targetType;
                                 break;
                             }
@@ -1292,35 +1294,6 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
     instToErase.clear();
 }
 
-void ChangeVariableDecl::updateCalleeToCallInsts(Function *F) {
-    for (auto &BB : *F) {
-        for (auto &I : BB) {
-            if (auto *call = dyn_cast<CallInst>(&I)) {
-                // 如果是用户定义的函数，则将浮点或者指针的实参类型记录到multiVersionCallMap
-                auto *func = dyn_cast<Function>(call->getCalledFunction());
-                // 被调函数必须在IR中已经定义了函数体，否则直接跳过
-                if (func->isDeclaration()) continue;
-                std::map<int, Type*> argBaseTypes;
-                for (unsigned i = 0; i < call->arg_size(); ++i) {
-                    Value *arg = call->getArgOperand(i);
-                    auto *argType = arg->getType();
-                    Type *baseType = nullptr;
-                    // 从DebugInfo中获取原始类型，特别是指针类型的基类型
-                    if (argType->isPointerTy())
-                        baseType = getBasicType(arg);  // 指针基类型跟随实参
-                    else if (argType->isFloatingPointTy())
-                        baseType = funcDeclTypeMap[func][i];  // 非指针跟随config指定
-                    if (baseType && baseType->isFloatingPointTy())
-                        argBaseTypes[i] = baseType;
-                }
-                if (argBaseTypes.size() || (funcRetTypeMap.find(func) != funcRetTypeMap.end() && funcRetTypeMap[func] != func->getReturnType())) {
-                    calleeToCallInsts[{func, argBaseTypes}].push_back(call);
-                }
-            }
-        }
-    }
-}
-
 void ChangeVariableDecl::changeStructDeclarations(Module &module) {
     if (!config.contains("structs")) return;
 
@@ -1346,7 +1319,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                 if (oldType->isPointerTy())
                     oldType = PointerType::get(targetType, 0);
                 else {
-                    errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
+                    // errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
                     oldType = targetType;
                 }
                 needsUpdate = true;
@@ -1391,7 +1364,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                     repairUserType(user, memberNewBaseTypes[0], maxAlign);
                 } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {  // 读写的是后续成员
                     unsigned memberIndex = cast<ConstantInt>(constant->getOperand(constant->getNumOperands() - 1))->getZExtValue();
-                    errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
+                    // errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
                     for (auto *user : constant->users()) {
                         repairUserType(user, memberNewBaseTypes[memberIndex], maxAlignTillNow[memberIndex]);
                     }
@@ -1464,9 +1437,38 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
 }
 
 Type* ChangeVariableDecl::getBasicType(Value *value) {
-    // 首先尝试找到原始的AllocaInst
-    AllocaInst *alloca = findOriginalAlloca(value);
-    if (alloca) {
+    // 沿着user chain找三类基类型：local variable / global variable / function argument
+    // 递归查找来自形参的类型
+    std::function<Type*(Value*)> findOriginalArgType = [this](Value* v) -> Type* {
+        while (true) {
+            // errs() << "[debug findOriginalArgType]" << *v << '\n';
+            if (auto *load = dyn_cast<LoadInst>(v)) {
+                auto *from = load->getPointerOperand();
+                for (auto *user : from->users()) {
+                    if (user == from) continue;
+                    if (auto *store = dyn_cast<StoreInst>(user)) {
+                        if (auto *arg = dyn_cast<Argument>(store->getOperand(0))) {
+                            auto *argType = arg->getType();
+                            // errs() << "[debug arg type from store] " << *store << ": " << argType << '\n';
+                            if (argType->isPointerTy())
+                                return argPtrBaseType[arg];
+                            return argType;
+                        }
+                    }
+                }
+                return nullptr;
+            }
+            else if (auto *gep = dyn_cast<GetElementPtrInst>(v))
+                v = gep->getPointerOperand();
+            else
+                break;
+        }
+        return nullptr;
+    };
+    if (auto *argType = findOriginalArgType(value)) return argType;
+
+    // 尝试找到原始的AllocaInst
+    if (auto *alloca = findOriginalAlloca(value)) {
         return localBaseTypeMap[alloca];
     } else if (auto *globalVar = dyn_cast<GlobalVariable>(value)) {
         return globalBaseTypeMap[globalVar];
@@ -1483,13 +1485,24 @@ Type* ChangeVariableDecl::getBasicType(Value *value) {
     return nullptr;
 }
 
-// 创建具有新参数类型的函数副本
-Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::map<int, Type*> &argBaseTypes) {
+// 创建具有新参数与返回值类型的函数副本
+Function* ChangeVariableDecl::cloneFunction(Function *oldFunc, std::map<int, Type*> &argBaseTypes) {
     if (!oldFunc) return nullptr;
+
+    // get cloned function's unique key
+    std::ostringstream oss;
+    // callee的函数名的第一个小数点前的子串部分，从而保证是原名
+    oss << oldFunc->getName().str().substr(0, oldFunc->getName().str().find('.'));
+    if (funcRetTypeMap.count(oldFunc)) oss << ":" << (void*)funcRetTypeMap[oldFunc];
+    for (auto &p : argBaseTypes) oss << "," << p.first << ":" << (void*)p.second;
+    std::string key = oss.str();
+    auto it = cloneCache.find(key);
+    if (it != cloneCache.end()) return it->second;
 
     FunctionType *oldFuncType = oldFunc->getFunctionType();
     SmallVector<Type*, 4> newArgTypes;
-    for (unsigned i = 0; i < oldFuncType->getNumParams(); ++i) {
+    int argCnt = oldFuncType->getNumParams();
+    for (int i = 0; i < argCnt; ++i) {
         if (argBaseTypes.count(i) && !oldFuncType->getParamType(i)->isPointerTy()) {
             newArgTypes.push_back(argBaseTypes[i]);
         } else {
@@ -1535,7 +1548,7 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
     ValueToValueMapTy VMap;
     auto oldArgIt = oldFunc->arg_begin();
     auto newArgIt = newFunc->arg_begin();
-    for (unsigned i = 0; i < oldFuncType->getNumParams() && oldArgIt != oldFunc->arg_end(); ++i, ++oldArgIt, ++newArgIt) {
+    for (int i = 0; i < argCnt && oldArgIt != oldFunc->arg_end(); ++i, ++oldArgIt, ++newArgIt) {
         VMap[&(*oldArgIt)] = &(*newArgIt);
     }
 
@@ -1545,13 +1558,13 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
     // 替换newFunc函数体中形参相关的user指令，使之匹配
     for (auto &BB : *newFunc) {
         for (auto &I : BB) {
-            if(auto *Store = dyn_cast<StoreInst>(&I))
-            {
+            if(auto *Store = dyn_cast<StoreInst>(&I)) {
                 if (auto* arg = dyn_cast<Argument>(Store->getOperand(0))) {
                     // 接下来沿着arg的user链变换精度为argBaseType，对于指针类型形参，则需要一直load/GEP抵达最基精度才能变换为argBaseType
                     unsigned argIndex = arg->getArgNo();
                     if (argBaseTypes.count(argIndex)) {
-                        Type *targetType = argBaseTypes[argIndex];
+                        auto *targetType = argBaseTypes[argIndex];
+                        argPtrBaseType[arg] = targetType;
                         errs() << "[Clone functions's Store type] "<< *Store << ':' << *targetType << '\n';
                         auto *storeTo = Store->getOperand(1);
                         changeAllocaInst(findOriginalAlloca(storeTo), targetType);
@@ -1561,37 +1574,54 @@ Function* ChangeVariableDecl::cloneFunctionWithNewArgs(Function *oldFunc, std::m
                             repairUserType(user, targetType);
                     }
                 }
-            }
-            else if (auto *ret = dyn_cast<ReturnInst>(&I)) {
+            } else if (auto *ret = dyn_cast<ReturnInst>(&I)) {
                 repairReturnInst(ret);
             }
         }
     }
 
-    // 建立旧函数callInst到新函数中等价callInst的映射
+    // 上述修复完成后，clonedFunc内部的callInst的callee实参-形参类型可能不匹配，进一步修复
     for (auto &BB : *newFunc) {
         for (auto &I : BB) {
-            if (auto *newCall = dyn_cast<CallInst>(&I)) {
-                unsigned newLine = newCall->getDebugLoc().getLine();
-                unsigned newCol = newCall->getDebugLoc().getCol();
-                for (auto &oldPair : oldCallInstsInfo) {
-                    auto *oldCall = oldPair.first;
-                    auto &info = oldPair.second;
-                    if (info.first == newLine && info.second == newCol) {
-                        oldToNewCallInstMap[oldCall] = newCall;
-                        break;
+            if (auto * call = dyn_cast<CallInst>(&I)) {
+                // TODO: 从所有【创建】的函数副本中，检查CalledFunction的实参-形参类型是否匹配
+                if (auto *callee = call->getCalledFunction()) {
+                    // 遍历被调函数的实参类型，检查一致性
+                    std::map<int, Type*> innerArgBaseTypes;
+                    unsigned innerNumArgs = call->arg_size();
+                    for (unsigned ai = 0; ai < innerNumArgs; ++ai) {
+                        Value *arg = call->getArgOperand(ai);
+                        Type *baseType = nullptr;
+                        auto *argType = arg->getType();
+                        if (argType->isPointerTy()) {
+                            baseType = getBasicType(arg);
+                        }
+                        else if (argType->isFloatingPointTy())
+                            // if caller provides an FP and callee has declaration override, consider it
+                            if (funcDeclTypeMap.count(callee) && funcDeclTypeMap[callee].count(ai))
+                                if (argType != funcDeclTypeMap[callee][ai])
+                                    baseType = funcDeclTypeMap[callee][ai];
+
+                        if (baseType && baseType->isFloatingPointTy())
+                            innerArgBaseTypes[ai] = baseType;
+
+                        bool innerNeedsClone = !innerArgBaseTypes.empty() ||
+                                               (funcRetTypeMap.count(callee) &&
+                                                funcRetTypeMap[callee] != callee->getReturnType());
+                        if (innerNeedsClone)
+                            if (auto *innerNewFunc = cloneFunction(callee, innerArgBaseTypes))
+                                updateCallInst(call, *innerNewFunc, innerArgBaseTypes);
                     }
                 }
             }
         }
     }
-    // 新函数内可能callInst的指针参数类型也发生了变化
-    updateCalleeToCallInsts(newFunc);
 
+    cloneCache[key] = newFunc;
     return newFunc;
 }
 
-void ChangeVariableDecl::updateCaller(CallInst *call, Function &newFunc, std::map<int, Type*> &declTypeMap) {
+void ChangeVariableDecl::updateCallInst(CallInst *call, Function &newFunc, std::map<int, Type*> &declTypeMap) {
     SmallVector<Value*, 16> newArgs;
     // 处理参数类型转换
     for (unsigned i = 0; i < call->arg_size(); ++i) {
@@ -1636,7 +1666,7 @@ void ChangeVariableDecl::updateCaller(CallInst *call, Function &newFunc, std::ma
     replaceMultiOperandInst(call, newCall);
     for (auto *user : newCall->users())
         repairUserType(user);
-    errs() << "[update caller] " << *call << " -> " << *newCall << "\n";
+    // errs() << "[update caller] " << *call << " -> " << *newCall << "\n";
 }
 
 // Replace multi-operand Inst safely (such as BinOp, FCmpInst, CallInst)
@@ -1657,7 +1687,7 @@ void ChangeVariableDecl::removeUnusedReplacements() {
     for (auto &pair : instReplaceMap) {
         auto *candidate = pair.second;
         if (candidate->use_empty()) {
-            errs() << "[remove unused inst in multi-op] " << *candidate << '\n';
+            // errs() << "[remove unused inst in multi-op] " << *candidate << '\n';
             instToErase.insert(candidate);
         }
     }
@@ -1710,6 +1740,92 @@ DIType* ChangeVariableDecl::createDIType(Type* type, DIScope* scope, DIBuilder* 
     return nullptr;
 }
 
+void ChangeVariableDecl::updateCallGraph(CallGraphNode* root) {
+    if (!root) return;
+
+    // collect initial worklist from template tree
+    SmallVector<std::tuple<Function*, CallInst*, CallGraphNode*>, 64> worklist;
+    std::function<void(CallGraphNode*)> collect = [&](CallGraphNode* node) {
+        if (!node) return;
+        for (auto &entry : node->children) {
+            CallInst *call = entry.first;
+            CallGraphNode *childNode = entry.second;
+            worklist.emplace_back(node->func, call, childNode);
+            collect(childNode);
+        }
+    };
+    collect(root);
+
+    for (size_t idx = 0; idx < worklist.size(); ++idx) {
+        Function *callerFunc;
+        CallInst *callInst;
+        CallGraphNode *childTemplate;
+        std::tie(callerFunc, callInst, childTemplate) = worklist[idx];
+
+        Function *origCallee = childTemplate ? childTemplate->func : nullptr;
+        if (!origCallee) continue;
+
+        // compute arg base types for this call
+        std::map<int, Type*> argBaseTypes;
+        unsigned numArgs = callInst->arg_size();
+        for (unsigned i = 0; i < numArgs; ++i) {
+            Value *arg = callInst->getArgOperand(i);
+            Type *baseType = nullptr;
+            auto *argType = arg->getType();
+            if (argType->isPointerTy())
+                baseType = getBasicType(arg); // pointer base follows actual arg
+            else if (argType->isFloatingPointTy())
+                // consult declared desired param type if any (guarded access)
+                if (funcDeclTypeMap.count(origCallee) && funcDeclTypeMap[origCallee].count(i))
+                    if (argType != funcDeclTypeMap[origCallee][i])
+                        baseType = funcDeclTypeMap[origCallee][i];
+
+            if (baseType && baseType->isFloatingPointTy())
+                argBaseTypes[i] = baseType;
+        }
+
+        // decide whether cloning is required
+        bool needsClone = !argBaseTypes.empty() ||
+                          (funcRetTypeMap.count(origCallee) &&
+                           funcRetTypeMap[origCallee] != origCallee->getReturnType());
+        if (needsClone)
+            if (auto *targetCallee = cloneFunction(origCallee, argBaseTypes))
+                updateCallInst(callInst, *targetCallee, argBaseTypes);
+    }
+}
+
+CallGraphNode* ChangeVariableDecl::buildCallGraph(Function* currFunc) {
+    auto it = funcToNode.find(currFunc);
+    if (it != funcToNode.end())
+        return it->second;
+
+    auto* currNode = new CallGraphNode(currFunc);
+    funcToNode[currFunc] = currNode;
+    for (auto &BB : *currFunc) {
+        for (auto &I : BB) {
+            if (auto *call = dyn_cast<CallInst>(&I)) {
+                auto *callee = call->getCalledFunction();
+                if (!callee || callee->isDeclaration()) continue;
+                currNode->children[call] = buildCallGraph(callee);
+            }
+        }
+    }
+    return currNode;
+}
+
+void ChangeVariableDecl::dumpCallGraph(CallGraphNode* node, int layer, DenseSet<Function*> &visited) {
+    if (!node) return;
+    for (int i = 0; i < layer; ++i) errs() << '\t';
+    if (visited.find(node->func) != visited.end()) {
+        errs() << node->func->getName() << " already dumped\n";
+        return;
+    }
+    visited.insert(node->func);
+    errs() << node->func->getName() << '\n';
+    for (auto &child : node->children)
+        dumpCallGraph(child.second, layer + 1, visited);
+}
+
 bool ChangeVariableDecl::runOnModule(Module &module) {
     DL = &module.getDataLayout();
     parseConfig();
@@ -1727,7 +1843,7 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
                     // 否则，记录所有参数类型
                     for (unsigned i = 0; i < call->arg_size(); ++i) {
                         varargCallOriginalTypes[call].push_back(call->getArgOperand(i)->getType());
-                        errs() << "[record vararg call's original type] " << i << ' ' << *call << '\n';
+                        // errs() << "[record vararg call's original type] " << i << ' ' << *call << '\n';
                     }
                 }
             }
@@ -1748,70 +1864,27 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         GV->eraseFromParent();
     GVToErase.clear();
 
-    // 根据calleeToCallInsts来创建函数副本
-    for (auto &F : module)
-        updateCalleeToCallInsts(&F);
+    auto *CallGraph = buildCallGraph(module.getFunction("main"));
 
-    auto it = calleeToCallInsts.begin();
-    while (it != calleeToCallInsts.end()) {
-        auto entry = *it;
-        auto functionArgs = entry.first;
-        auto callInsts = entry.second;
-        // 对于每组不同的functionArgs，创建一个函数副本
-        auto *func = functionArgs.first;
-        auto &argBaseTypes = functionArgs.second;
-        auto *newFunc = cloneFunctionWithNewArgs(func, argBaseTypes);
-        for (auto *call : callInsts)
-            functionReplaceMap[call] = newFunc;
+    // ONLY FOR DEBUG
+    errs() << ">>> Initial Call Graph <<<\n";
+    DenseSet<Function*> visited;
+    dumpCallGraph(CallGraph, 0, visited);
 
-        // 输出每个函数副本的func和对应callInsts
-        errs() << "-----------------------------\n";
-        errs() << "[cloned Function] " << newFunc->getName() << " arg base types: \n";
-        for (auto &pair : argBaseTypes)
-            errs() << pair.first << ' ' << *(pair.second) << '\n';
-        errs() << "[" << newFunc->getName() << "'s callInsts]\n";
-        for (auto *call : callInsts)
-            errs() << *call << '\n';
-        errs() << "-----------------------------\n";
+    // 检查实参、形参不一致情形，创建副本并替换call指令
+    updateCallGraph(CallGraph);
 
-        ++it;
-    }
-
-    //  在克隆完所有函数之后，再统一更新
-    for (auto entry : functionReplaceMap) {
-        auto call = entry.first;
-        auto newFunc = entry.second;
-        if (oldToNewCallInstMap.find(call) != oldToNewCallInstMap.end())
-            functionReplaceMap[oldToNewCallInstMap[call]] = newFunc;  // 函数副本中的也要替换
-    }
-
-    // 待所有函数副本创建完成后，再做替换函数调用
-    for (auto entry : calleeToCallInsts) {
-        auto functionArgs = entry.first;
-        auto callInsts = entry.second;
-        auto &argBaseTypes = functionArgs.second;
-        // 将替换后的函数副本作为callInsts的新callee
-        for (auto *call : callInsts) {
-            // 替换前的函数，【可能】需要移除
-            funcToErase.insert(call->getCalledFunction());
-            if(functionReplaceMap[call])
-                updateCaller(call, *functionReplaceMap[call], argBaseTypes);
-            if(oldToNewCallInstMap.find(call) != oldToNewCallInstMap.end())
-                updateCaller(oldToNewCallInstMap[call], *functionReplaceMap[oldToNewCallInstMap[call]], argBaseTypes);
-        }
-    }
+    // ONLY FOR DEBUG
+    errs() << ">>> Updated Call Graph <<<\n";
+    for (auto &p : funcToNode) delete p.second;
+    funcToNode.clear();
+    CallGraph = buildCallGraph(module.getFunction("main"));
+    visited.clear();
+    dumpCallGraph(CallGraph, 0, visited);
 
     for (auto &F : module) repairCasts(F);
     for (auto *inst : instToErase) inst->eraseFromParent();
     instToErase.clear();
-
-    for (auto *oldFunc : funcToErase) {
-        if(oldFunc->use_empty()) {
-            errs() << "[remove unused function] " << oldFunc->getName() << '\n';
-            oldFunc->eraseFromParent();
-        }
-    }
-    funcToErase.clear();
     
     if (verifyModule(module, &errs()))
     {

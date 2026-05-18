@@ -82,3 +82,9 @@ From Pass: merge_multi.
 
 Decide which function should be merged from another version input IR.
 From Pass: merge_multi.
+
+
+# Limitations
+
+* Perci-Tuner support function return's floating type such as 'long double foo(...)', but not support function return's float-based pointer type, such as 'long double* foo(...)'
+* Perci-Tuner behaves not good under fmuladd (because it need flexible split into fmul + fadd when operands are not of same type, and merge into fmuladd when operands are same)
