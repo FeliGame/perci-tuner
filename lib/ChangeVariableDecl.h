@@ -45,10 +45,11 @@ private:
     Align getAlign(Type* targetType);
     DIType* createDIType(Type* type, DIScope* scope, DIBuilder* DIB);
     
-    Type* typeNameToType(std::string typeName, LLVMContext& context);
+    Type* typeNameToBasicType(std::string typeName, LLVMContext& context);
     AllocaInst* findOriginalAlloca(Value* value);
 
     Type* getBasicType(Value *value);
+    void initBaseTypeMaps(Module &module);
     DenseMap<GlobalVariable*, Type*> globalBaseTypeMap;  // Global variable to its base type
     DenseMap<AllocaInst*, Type*> localBaseTypeMap;  // Local variable to its base type
 
@@ -64,7 +65,7 @@ private:
     Instruction* repairBitCastInst(BitCastInst* bitCast);
     Instruction* repairIntToFP(Instruction* castInst);
     void repairAllocaUsers(AllocaInst* alloca);
-    void repairUserType(User *user, Type* targetType=nullptr, unsigned align=0);
+    void repairUserType(Value* origin, User *user, Type* targetType=nullptr, unsigned align=0);
     void repairGVUsers(GlobalVariable *GV, Type* targetType);
     void repairCasts(Function &F);
 
@@ -92,7 +93,7 @@ private:
 
     DenseMap<Function*, CallGraphNode*> funcToNode;
     std::map<std::string, Function*> cloneCache;
-    DenseMap<Argument*, Type*> argPtrBaseType;  // 函数的浮点指针形参基类型
+    DenseMap<Argument*, Type*> argPtrBaseTypeMap;  // 函数的浮点指针形参基类型
     CallGraphNode* buildCallGraph(Function* function);
     void updateCallGraph(CallGraphNode* root);
     void dumpCallGraph(CallGraphNode* root, int layer, DenseSet<Function*> &visited);

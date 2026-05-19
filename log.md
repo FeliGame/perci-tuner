@@ -590,3 +590,8 @@
 ### 18
 
 * CRUCIAL feat: CallGraph to solve nested call's ptr-arg base type consistency.
+
+### 20
+
+* fix store type when mix-precison inter-pointer assign , A(i) = B(j).
+* TODO: GV & constant repairStore.

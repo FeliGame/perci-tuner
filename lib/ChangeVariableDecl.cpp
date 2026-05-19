@@ -19,6 +19,7 @@
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APSInt.h>
+#include <llvm/ADT/Twine.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Config/llvm-config.h>
@@ -57,6 +58,147 @@ void ChangeVariableDecl::parseConfig() {
     }
 }
 
+// Initialize base-type maps for globals and locals before DIBuilder exists.
+void ChangeVariableDecl::initBaseTypeMaps(Module &module) {
+    auto &context = module.getContext();
+
+    // 为每个alloca和GV都赋予基类型，防止map空调用
+    for (auto &F : module) {
+        for (auto &BB : F) {
+            for (auto &I : BB) {
+                if (auto *alloca = dyn_cast<AllocaInst>(&I)) {
+                    if (!localBaseTypeMap.count(alloca)) {
+                        Type *baseType = alloca->getAllocatedType();
+                        while (baseType->isArrayTy())
+                            baseType = baseType->getArrayElementType();
+                        localBaseTypeMap[alloca] = baseType;
+                    }
+                }
+            }
+        }
+    }
+
+    for (auto &GV : module.globals()) {
+        if (GV.isDeclaration()) continue;
+        if (!globalBaseTypeMap.count(&GV)) {
+            Type *baseType = GV.getValueType();
+            while (baseType->isArrayTy())
+                baseType = baseType->getArrayElementType();
+            globalBaseTypeMap[&GV] = baseType;
+        }
+    }
+
+    // Pre-initialize global base type map from config["global"] (if present)
+    if (config.contains("global")) {
+        nlohmann::json &globalConfig = config["global"];
+        for (auto &globalEntry : globalConfig) {
+            std::string varName = globalEntry["name"];
+            std::string typeName = globalEntry["type"].get<string>();
+            Type *targetType = typeNameToBasicType(typeName, context);
+            if (!targetType) continue;
+
+            Type *baseType = targetType;
+            while (baseType->isArrayTy())
+                baseType = baseType->getArrayElementType();
+
+            for (auto &GV : module.globals()) {
+                if (GV.isDeclaration()) continue;
+                auto name = demangle(GV.getName().str());
+                // Skip compiler-internal or mangled symbols
+                if (name.find('.') != string::npos) continue;
+                if (name == varName) {
+                    globalBaseTypeMap[&GV] = baseType;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Pre-initialize local base type map from configMap (local entries)
+    for (auto &F : module) {
+        for (auto &BB : F) {
+            for (auto &I : BB) {
+                // clang-style debug declare
+                if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
+                    if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
+                        auto loc = DDI->getDebugLoc();
+                        if (!loc) continue;
+                        auto fileName = DV->getFile()->getFilename().str();
+                        std::string key = fileName + ":" + std::to_string(loc.getLine()) + ":" + std::to_string(loc.getCol());
+                        auto it = configMap.find(key);
+                        if (it == configMap.end()) continue;
+                        auto &configEntry = it->second;
+                        auto typeName = configEntry["type"].get<string>();
+                        auto *targetType = typeNameToBasicType(typeName, F.getContext());
+                        if (!targetType) continue;
+
+                        Type *baseType = targetType;
+                        while (baseType->isArrayTy()) baseType = baseType->getArrayElementType();
+
+                        if (auto *addr = dyn_cast<AllocaInst>(DDI->getAddress())) {
+                            localBaseTypeMap[addr] = baseType;
+                        }
+
+                        // 如果该配置项标注为参数，则初始化函数声明映射与指针形参基类型映射
+                        if (configEntry.contains("isParam") && configEntry["isParam"].get<bool>()) {
+                            StringRef varName = DV->getName();
+                            unsigned argIndex = 0;
+                            for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                                if (argIt->getName() == varName) {
+                                    funcDeclTypeMap[&F][argIndex] = targetType;
+                                    if (argIt->getType()->isPointerTy()) {
+                                        argPtrBaseTypeMap[&*argIt] = baseType;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // flang / LLVM19-style alloca metadata
+                if (auto *alloca = dyn_cast<AllocaInst>(&I)) {
+                    if (auto *N = alloca->getMetadata("dbg")) {
+                        if (auto *Loc = dyn_cast<DILocation>(N)) {
+                            unsigned lineNo = Loc->getLine();
+                            unsigned colNo = Loc->getColumn();
+                            std::string fileName = "";
+                            if (auto *Scope = Loc->getScope())
+                                fileName = Scope->getFilename().str();
+                            std::string key = fileName + ":" + std::to_string(lineNo) + ":" + std::to_string(colNo);
+                            auto it = configMap.find(key);
+                            if (it == configMap.end()) continue;
+                            auto &configEntry = it->second;
+                            auto typeName = configEntry["type"].get<string>();
+                            auto *targetType = typeNameToBasicType(typeName, F.getContext());
+                            if (!targetType) continue;
+
+                            Type *baseType = targetType;
+                            while (baseType->isArrayTy()) baseType = baseType->getArrayElementType();
+                            localBaseTypeMap[alloca] = baseType;
+
+                            // 如果该配置项标注为参数，则将其与函数形参关联（若alloca名字对应参数名）
+                            if (it->second.contains("isParam") && it->second["isParam"].get<bool>()) {
+                                std::string varName = "";
+                                if (alloca->hasName()) varName = alloca->getName().str();
+                                unsigned argIndex = 0;
+                                for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                                    if (argIt->getName() == varName) {
+                                        funcDeclTypeMap[&F][argIndex] = targetType;
+                                        if (argIt->getType()->isPointerTy())
+                                            argPtrBaseTypeMap[&*argIt] = baseType;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 Align ChangeVariableDecl::getAlign(Type* targetType) {
     if (targetType->isPointerTy()) {
         return DL->getPointerPrefAlignment();
@@ -69,17 +211,17 @@ Align ChangeVariableDecl::getAlign(Type* targetType) {
 
 AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newType) {
     auto *oldType = alloca->getAllocatedType();
-    if (!oldType->isFloatingPointTy()) {
-        return nullptr;
-    } else if (oldType->isPointerTy()) {
+    if (oldType->isPointerTy()) {
         // 对于指针类型，保存指向类型的基本类型
         pointeeTypeMap[alloca] = newType;
-    } else {
+    } else if (oldType->isFloatingPointTy()) {
         // errs() << "[change alloca] " << *alloca << "->";
         // 对于非指针类型，更改AllocaInst的类型
         alloca->setAllocatedType(newType);
         alloca->setAlignment(getAlign(newType));
         // errs() << *alloca << '\n';
+    } else {
+        return nullptr;
     }
     newAllocas.insert(alloca);
 
@@ -145,32 +287,27 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
 void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
     auto newType = alloca->getAllocatedType();
     auto align = getAlign(newType);
-    
     for (auto *user : alloca->users()) {
         if (auto load = dyn_cast<LoadInst>(user)) {
+            auto *newLoad = load;
             auto *oldType = load->getType();
 
             if (oldType->isPointerTy()) {  // keep pointee type
-                Type* ptrBaseType = nullptr;
-                if (auto* alloca = findOriginalAlloca(load->getPointerOperand())) {
-                    ptrBaseType = pointeeTypeMap[alloca];
-                }
-                for (auto *user : load->users())
-                    repairUserType(user, ptrBaseType);
+                if (auto* alloca = findOriginalAlloca(load->getPointerOperand()))
+                    newType = pointeeTypeMap[alloca];
+            } else if (oldType == newType) {
                 continue;
+            } else {
+                newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
+                newLoad->setAlignment(align);
+
+                load->replaceAllUsesWith(newLoad);
+                instToErase.insert(load);    // erase later to avoid broken iterator
             }
-
-            if (oldType == newType) continue;
-
-            auto *newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
-            newLoad->setAlignment(align);
-
-            load->replaceAllUsesWith(newLoad);
-            instToErase.insert(load);    // erase later to avoid broken iterator
             for (auto *user : newLoad->users())
-                repairUserType(user);
+                repairUserType(newLoad, user, newType);
         }
-        else repairUserType(user, newType);
+        else repairUserType(alloca, user, newType);
     }
 }
 
@@ -293,6 +430,7 @@ Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
 
 Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType, unsigned align) {
     if (load->getType()->isIntegerTy()) return nullptr; // ignore integer load
+    // errs() << "[repair load] " << *load << "->" << *targetType << "\n";
     if (load->getType()->isPointerTy()) return load;
     auto *ptrOperand = load->getPointerOperand();
     Type* loadType = targetType;
@@ -302,10 +440,8 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
     if (loadType) {
         if (auto *arrayType = dyn_cast<ArrayType>(loadType))
             loadType = arrayType->getElementType();
-        if (load->getType()->isPointerTy()) {
-            load->setAlignment(align ? Align(align) : getAlign(loadType));
+        if (load->getType()->isPointerTy())
             return load;
-        }
         if (loadType != load->getType()) {
             auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load);
             newLoad->setAlignment(align ? Align(align) : getAlign(loadType));
@@ -322,22 +458,20 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
 Instruction* ChangeVariableDecl::repairStoreInst(StoreInst* store, Type* targetType, unsigned align) {
     auto *srcOperand = store->getOperand(0);
     auto *srcType = srcOperand->getType();
-    if (srcType->isPointerTy() || srcType->isIntegerTy() || srcType == targetType) return store;
+    if (srcType->isPointerTy() || srcType->isIntegerTy()) return store;
     auto *ptrOperand = store->getPointerOperand();
     Type* storeType = targetType;
-    if (!storeType)
+    if (!storeType) {
         if (auto *allocaInst = findOriginalAlloca(ptrOperand))
             storeType = allocaInst->getAllocatedType();
-    if (storeType) {
+    } else {
         if (auto *arrayType = dyn_cast<ArrayType>(storeType))
             storeType = arrayType->getElementType();
         store->setAlignment(align ? Align(align) : getAlign(storeType));
-        if (srcType != storeType) {
-            // errs() << "[repair store] " << *store << "->";
-            if (auto *castValue = insertCast(srcOperand, storeType, store))
-                store->setOperand(0, castValue);
-            // errs() << *store << '\n';
-        }
+        // errs() << "[repair store] " << *store << "->";
+        if (auto *castValue = insertCast(srcOperand, storeType, store))
+            store->setOperand(0, castValue);
+        // errs() << *store << '\n';
     }
     return store;
 }
@@ -655,10 +789,10 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
 }
 
 Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* targetType) {
+    if (!targetType) return nullptr;
     auto *srcType = gep->getSourceElementType();
     // 多级指针的情形，保持targetType状态，返回原指令，直到访问到最低一级的元素类型，将其转换为targetType
     if (srcType->isPointerTy()) return gep;
-    if (!targetType || srcType == targetType) return nullptr; // 类型一致，无需替换
 
     // 提取 GEP 指令的索引
     SmallVector<Value*, 4> indices;
@@ -781,7 +915,7 @@ Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {
 }
 
 // Make inst operands type consistent
-void ChangeVariableDecl::repairUserType(User *user, Type* targetType, unsigned align) {
+void ChangeVariableDecl::repairUserType(Value* origin, User *user, Type* targetType, unsigned align) {
     if (!isa<Instruction>(user)) {
         // errs() << "[not an instruction]\n";
         return;
@@ -791,12 +925,25 @@ void ChangeVariableDecl::repairUserType(User *user, Type* targetType, unsigned a
     Instruction *newInst = nullptr;
     // errs() << "[checking user] " << *inst << "\n";
 
-    if (auto ret = dyn_cast<ReturnInst>(inst))
+    if (auto store = dyn_cast<StoreInst>(inst)) {
+        auto *srcOp = store->getValueOperand();
+        auto *dstOp = store->getPointerOperand();
+        if (origin == dstOp) {
+            // store转换为dstOp类型
+            newInst = repairStoreInst(store, targetType, align);
+        } else if (origin == srcOp) {
+            // srcOp转换为store类型
+            auto *dstType = getBasicType(dstOp);
+            if (auto *castValue = insertCast(srcOp, dstType, store)) {
+                store->setOperand(0, castValue);
+                newInst = store;
+            }
+        }
+    }
+    else if (auto ret = dyn_cast<ReturnInst>(inst))
         newInst = repairReturnInst(ret);
     else if (auto load = dyn_cast<LoadInst>(inst))
         newInst = repairLoadInst(load, targetType, align);
-    else if (auto store = dyn_cast<StoreInst>(inst))
-        newInst = repairStoreInst(store, targetType, align);
     else if (auto *unaOp = dyn_cast<UnaryOperator>(inst))
         newInst = repairUnaryOp(unaOp);
     else if (auto *binOp = dyn_cast<BinaryOperator>(inst))
@@ -823,7 +970,7 @@ void ChangeVariableDecl::repairUserType(User *user, Type* targetType, unsigned a
         for (auto *user : newInst->users())
             users.push_back(user);
         for (auto *user : users)
-            repairUserType(user, targetType);
+            repairUserType(newInst, user, targetType);
         users.clear();
     }
 }
@@ -957,7 +1104,7 @@ void ChangeVariableDecl::repairGVUsers(GlobalVariable *GV, Type* targetType) {
     auto *GVType = GV->getValueType();
     for (auto *user : GV->users()) {
         if (isa<Instruction>(user)) {  // 数组索引为0
-            repairUserType(user, targetType);
+            repairUserType(GV, user, targetType);
         } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {
             // 处理GEP常量表达式用户（数组索引>1）
             // errs() << "[repair GEP constant expr] " << *constant << "->";
@@ -986,7 +1133,7 @@ void ChangeVariableDecl::repairGVUsers(GlobalVariable *GV, Type* targetType) {
             constant->replaceAllUsesWith(newConstant);
             
             for (auto *constantUser : newConstant->users()) {
-                repairUserType(constantUser, targetType);
+                repairUserType(newConstant, constantUser, targetType);
             }
         }
     }
@@ -1122,7 +1269,7 @@ AllocaInst* ChangeVariableDecl::findOriginalAlloca(Value* value) {
 }
 
 // Translate Perci-Tuner supported typename into llvm type
-Type* ChangeVariableDecl::typeNameToType(string typeName, LLVMContext& context)
+Type* ChangeVariableDecl::typeNameToBasicType(string typeName, LLVMContext& context)
 {
     size_t constPos;
     while ((constPos = typeName.find("const")) != string::npos) {
@@ -1143,7 +1290,6 @@ Type* ChangeVariableDecl::typeNameToType(string typeName, LLVMContext& context)
     } else if (typeName.find("double") != string::npos) {
         targetType = Type::getDoubleTy(context);
     } else {
-        errs() << "Unknown type: " << typeName << ", ignored.\n";
         return nullptr;
     }
     // 为了保证上下文可获知基类型，此处不需要封装为ptr类型，而是在处理位置特殊处理
@@ -1175,7 +1321,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
             auto targetTypeName = configEntry["type"].get<string>();
             // TODO: 暂不处理指针类型返回值
             if (targetTypeName.find('*') != string::npos) continue;
-            auto *targetType = typeNameToType(targetTypeName, context);
+            auto *targetType = typeNameToBasicType(targetTypeName, context);
             if (targetType == nullptr) continue;
             
             // errs() << "[change return type] " << F.getName() << ": " << srcTypeName << "->" << *targetType << "\n";
@@ -1217,7 +1363,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
 
                         auto &configEntry = it->second;
                         auto typeName = configEntry["type"].get<string>();
-                        auto *targetType = typeNameToType(typeName, context);
+                        auto *targetType = typeNameToBasicType(typeName, context);
                         changeGlobalVariable(GV, targetType);
                     }
                 }
@@ -1235,8 +1381,8 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     auto &configEntry = it->second;
                     auto typeName = configEntry["type"].get<string>();
                     auto srcTypeName = parseDITypeName(DV->getType());
-                    if (typeName == srcTypeName) continue;
-                    auto *targetType = typeNameToType(typeName, context);
+                    // if (typeName == srcTypeName) continue;
+                    auto *targetType = typeNameToBasicType(typeName, context);
                     if (targetType == nullptr) continue;
                     
                     if (configEntry["isParam"]) {
@@ -1272,8 +1418,8 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     if (it == configMap.end()) continue;
                     auto &configEntry = it->second;
                     auto typeName = configEntry["type"].get<string>();
-                    if (typeName == srcTypeName) continue;
-                    auto *targetType = typeNameToType(typeName, context);
+                    // if (typeName == srcTypeName) continue;
+                    auto *targetType = typeNameToBasicType(typeName, context);
                     if (targetType == nullptr) continue;
 
                     changeAllocaInst(alloca, targetType);
@@ -1313,7 +1459,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
             auto *oldType = sty->getElementType(i);
         
             string typeStr = members[i]["type"].get<string>();
-            auto *targetType = typeNameToType(typeStr, context);
+            auto *targetType = typeNameToBasicType(typeStr, context);
 
             if (targetType && targetType != oldType) {
                 if (oldType->isPointerTy())
@@ -1361,12 +1507,12 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
             for (auto *user : global.users()) {
                 // 若为storeInst/loadInst，说明读写的是第一个成员，将memberNewTypes[0]的类型作为替换目标
                 if (isa<Instruction>(user)) {
-                    repairUserType(user, memberNewBaseTypes[0], maxAlign);
+                    repairUserType(&global, user, memberNewBaseTypes[0], maxAlign);
                 } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {  // 读写的是后续成员
                     unsigned memberIndex = cast<ConstantInt>(constant->getOperand(constant->getNumOperands() - 1))->getZExtValue();
                     // errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
                     for (auto *user : constant->users()) {
-                        repairUserType(user, memberNewBaseTypes[memberIndex], maxAlignTillNow[memberIndex]);
+                        repairUserType(constant, user, memberNewBaseTypes[memberIndex], maxAlignTillNow[memberIndex]);
                     }
                 } else {
                     errs() << "[TODO] unhandled struct's user: " << *user << '\n';
@@ -1401,7 +1547,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                         // 获取成员在结构体中的索引及其类型
                         unsigned elementIndex = cast<ConstantInt>(gep->idx_end() - 1)->getZExtValue();
                         for (auto *user : newGEP->users())
-                            repairUserType(user, memberNewBaseTypes[elementIndex], maxAlignTillNow[elementIndex]);
+                            repairUserType(newGEP, user, memberNewBaseTypes[elementIndex], maxAlignTillNow[elementIndex]);
                     }
                 }
             }
@@ -1431,7 +1577,7 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
         if (it == configMap.end()) continue;
         auto &configEntry = it->second;
         std::string typeName = configEntry["type"].get<string>();
-        auto *targetType = typeNameToType(typeName, context);
+        auto *targetType = typeNameToBasicType(typeName, context);
         changeGlobalVariable(&GV, targetType);
     }
 }
@@ -1449,9 +1595,9 @@ Type* ChangeVariableDecl::getBasicType(Value *value) {
                     if (auto *store = dyn_cast<StoreInst>(user)) {
                         if (auto *arg = dyn_cast<Argument>(store->getOperand(0))) {
                             auto *argType = arg->getType();
-                            // errs() << "[debug arg type from store] " << *store << ": " << argType << '\n';
-                            if (argType->isPointerTy())
-                                return argPtrBaseType[arg];
+                            if (argType->isPointerTy()) {
+                                return argPtrBaseTypeMap[arg];
+                            }
                             return argType;
                         }
                     }
@@ -1481,13 +1627,13 @@ Type* ChangeVariableDecl::getBasicType(Value *value) {
         }
     }
     // TODO: 是否有其他情形？
-    errs() <<"[unhandled basic type]" << *value << '\n';
+    errs() <<"[Unhandled basic type]" << *value << '\n';
     return nullptr;
 }
 
 // 创建具有新参数与返回值类型的函数副本
 Function* ChangeVariableDecl::cloneFunction(Function *oldFunc, std::map<int, Type*> &argBaseTypes) {
-    if (!oldFunc) return nullptr;
+    if (!oldFunc || oldFunc->isDeclaration()) return nullptr;
 
     // get cloned function's unique key
     std::ostringstream oss;
@@ -1555,7 +1701,25 @@ Function* ChangeVariableDecl::cloneFunction(Function *oldFunc, std::map<int, Typ
     SmallVector<ReturnInst*, 8> Returns;  
     CloneFunctionInto(newFunc, oldFunc, VMap, CloneFunctionChangeType::LocalChangesOnly, Returns);
 
+    // Copy local base-type mappings from original allocas to cloned allocas
+    for (auto &BB : *oldFunc) {
+        for (auto &I : BB) {
+            if (auto *oldAlloca = dyn_cast<AllocaInst>(&I)) {
+                auto it = VMap.find(oldAlloca);
+                if (it != VMap.end()) {
+                    if (auto *newAlloca = dyn_cast<AllocaInst>(it->second)) {
+                        auto lbIt = localBaseTypeMap.find(oldAlloca);
+                        if (lbIt != localBaseTypeMap.end()) {
+                            localBaseTypeMap[newAlloca] = lbIt->second;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 替换newFunc函数体中形参相关的user指令，使之匹配
+    // errs() << "[repair cloned function arg users]" << newFunc->getName() << '\n';
     for (auto &BB : *newFunc) {
         for (auto &I : BB) {
             if(auto *Store = dyn_cast<StoreInst>(&I)) {
@@ -1564,14 +1728,16 @@ Function* ChangeVariableDecl::cloneFunction(Function *oldFunc, std::map<int, Typ
                     unsigned argIndex = arg->getArgNo();
                     if (argBaseTypes.count(argIndex)) {
                         auto *targetType = argBaseTypes[argIndex];
-                        argPtrBaseType[arg] = targetType;
-                        errs() << "[Clone functions's Store type] "<< *Store << ':' << *targetType << '\n';
+                        if (targetType->isPointerTy()) continue;
+                        argPtrBaseTypeMap[arg] = targetType;
+                        errs() << "[clone function's arg store type] "<< *Store << ':' << *targetType << '\n';
                         auto *storeTo = Store->getOperand(1);
                         changeAllocaInst(findOriginalAlloca(storeTo), targetType);
 
                         // Store已自动变换为targetType，将变换传入到所有user
-                        for (auto *user : storeTo->users())
-                            repairUserType(user, targetType);
+                        if (auto *dstOp = dyn_cast<Instruction>(storeTo))
+                            for (auto *user : dstOp->users())
+                                repairUserType(dstOp, user, targetType);
                     }
                 }
             } else if (auto *ret = dyn_cast<ReturnInst>(&I)) {
@@ -1665,7 +1831,7 @@ void ChangeVariableDecl::updateCallInst(CallInst *call, Function &newFunc, std::
     newCall->takeName(call);
     replaceMultiOperandInst(call, newCall);
     for (auto *user : newCall->users())
-        repairUserType(user);
+        repairUserType(newCall, user);
     // errs() << "[update caller] " << *call << " -> " << *newCall << "\n";
 }
 
@@ -1850,6 +2016,7 @@ bool ChangeVariableDecl::runOnModule(Module &module) {
         }
     }
 
+    initBaseTypeMaps(module);
     DIB = new DIBuilder(module);
     changeStructDeclarations(module);
     changeGlobalDeclarations(module);
