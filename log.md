@@ -595,3 +595,7 @@
 
 * fix store type when mix-precison inter-pointer assign , A(i) = B(j).
 * TODO: GV & constant repairStore.
+
+### 31
+
+* feat: support -skip-scan src files to reduce search space size.

@@ -18,7 +18,7 @@ If you want to use -mxp option, install mxp version of LLVM, then build LLVM. ht
 cmake -G Ninja \
   -S llvm -B build \
   -DCMAKE_BUILD_TYPE=Release \
-  -DLLVM_TARGETS_TO_BUILD="host;PowerPC" \
+  -DLLVM_TARGETS_TO_BUILD="host" \
   -DLLVM_ENABLE_PROJECTS="clang" \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DLLVM_BUILD_UTILS=ON \
@@ -27,7 +27,7 @@ cmake -G Ninja \
   -DLLVM_ENABLE_ASSERTIONS=OFF
 
 cmake --build build -j8
-cmake --install build --prefix /path/to/install
+cmake --install build --prefix /usr/local
 ```
 
 ## Add Environment Variable

@@ -1,6 +1,7 @@
 // @Author: Guocheng - NUDT
 // Usage: Search declared variables' type.
 // --mxp: if true, only search __autofp vars or vars in #pragma region.
+// --skip-scan=[.c]: variables in these files won't be scanned
 // Output: config.json
 
 #include "PrintConfig.h"
@@ -23,6 +24,7 @@ using namespace llvm;
 
 
 cl::opt<bool> EnableMXP("mxp", cl::value_desc("enable pragma & autofp"), cl::desc("true or false"), cl::init(false));
+cl::opt<string> SkipScan("skip-scan", cl::value_desc(".c skipped to scan"), cl::desc("comma separated src files"), cl::init(""));
 
 
 // Find Local vars and local static vars
@@ -297,8 +299,10 @@ void PrintConfig::findGlobalVariables(Module &M) {
         if (!GVDebug) continue;
         unsigned lineNo = GVDebug->getLine();
         DIFile *file = GVDebug->getFile();
+        string fileName = file->getFilename().str();
+        if (!needScan(fileName)) continue;
         globalVar["line"] = lineNo;
-        globalVar["file"] = file->getFilename().str();
+        globalVar["file"] = fileName;
         auto typeName = parseDITypeName(GVDebug->getType());
         DICompositeType *structType = nullptr;
         std::string structName = "";
@@ -413,14 +417,43 @@ bool PrintConfig::runOnFunction(Function &F) {
     return false;
 }
 
+bool PrintConfig::needScan(std::string fileName) {
+    // Check function-level DI info (subprogram file). If matches skipFiles, skip.
+    for (const auto &s : skipFiles)
+        if (s.find(fileName) != std::string::npos)
+            return false;
+    return true;
+}
+
 bool PrintConfig::runOnModule(Module &module) {
+    // Parse comma-separated `SkipScan` into `skipFiles`
+    std::string raw = SkipScan;
+    size_t pos = 0;
+    while (pos < raw.size()) {
+        size_t comma = raw.find(',', pos);
+        std::string token;
+        if (comma == std::string::npos) {
+            token = raw.substr(pos);
+            pos = raw.size();
+        } else {
+            token = raw.substr(pos, comma - pos);
+            pos = comma + 1;
+        }
+        skipFiles.push_back(token);
+    }
+    
     findGlobalVariables(module);
 
-    for(auto &f : module) {
-        string name = f.getName().str();
-        if(!f.isDeclaration() && (name == "main" || !f.use_empty())) {
-            runOnFunction(f);
-        }
+    for(auto &F : module) {
+        string name = F.getName().str();
+        if (F.isDeclaration()) continue;
+
+        if (auto *SP = F.getSubprogram())
+            if (auto *df = SP->getFile())
+                if (!needScan(df->getFilename().str())) continue;
+
+        if(name == "main" || !F.use_empty())
+            runOnFunction(F);
     }
 
     std::error_code errorInfo; 

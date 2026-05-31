@@ -38,6 +38,10 @@ private:
     void dumpStructDecl(DICompositeType* structType, std::string structName);
 
     void findFunctionCalls(Function &F);
+
+    bool needScan(std::string fileName);
+
+    vector<string> skipFiles;
     
     set<string> globalVariables;
 

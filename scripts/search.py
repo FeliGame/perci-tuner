@@ -175,6 +175,7 @@ def main():
     # change_set keep those need to change precision and available precisions
     change_set = config_utils.parse_config(algorithm_utils.original_conf, shuffled)
 
+    print(">>> Perci-Tuner search start at " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     print(f"  Compiler: {args['-compiler']}")
     print(f"  IR file: {args['-ir']}")
     print(f"  Config file: {args['-config']}")
