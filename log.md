@@ -599,3 +599,7 @@
 ### 31
 
 * feat: support -skip-scan src files to reduce search space size.
+
+## Jun, 2026
+
+* feat: mix-binop option to enable mixed precision binop for double & double-double operand. --enable-mix-binop in opt option.

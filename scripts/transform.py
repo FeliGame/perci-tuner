@@ -18,6 +18,7 @@ ARCH = platform.machine()
 PERCI_TUNER_PATH = os.path.join(os.getenv("PERCI_TUNER"), "build/PerciTuner.so")
 PASSES = "change_math_call,change_variable_decl"
 FP128_TO_DD = False
+MIX_BINOP = True
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
 TIMEOUT_THRESHOLD = 60.0  # 超时阈值（秒）
@@ -75,6 +76,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                "-passes=" + PASSES + 
                (",record_result" if is_mxp else "") + ",remove_pragma" + 
                (",fp128_to_dd" if ((run_id > 1 or ARCH == "x86_64") and FP128_TO_DD) else ""),
+               "--enable-mix-binop=" + str(MIX_BINOP),
             #    "--print-dd=" + str(FP128_TO_DD),
                "--variable-config=" + CURRENT_CONFIG_NAME, 
                "--function-config=" + CURRENT_CONFIG_NAME, 

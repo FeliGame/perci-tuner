@@ -20,6 +20,7 @@ def parse_arguments():
         '-shuffled': False,
         '-partition': 'sorted_partition.json',
         '-fp128todd': False,
+        '-mix-binop': True,
         '-link-libs': [],
         '-link-dirs': [],
         '-rpath': [],
@@ -60,6 +61,8 @@ def parse_arguments():
                     params[key] = value.lower() in ('true', '1', 'yes')
                 elif key == '-fp128todd':
                     params[key] = value.lower() in ('true', '1', 'yes')
+                elif key == '-mix-binop':
+                    params[key] = value
                 elif key == '-threads':
                     params[key] = int(value)
                 elif key == '-base-time' and value != '':
@@ -158,12 +161,17 @@ def main():
     transform.TIMEOUT_THRESHOLD = args['-timeout']
     shuffled = args['-shuffled']
     transform.FP128_TO_DD = args['-fp128todd']
+    transform.MIX_BINOP = args['-mix-binop']
     transform.LINK_LIBS = args['-link-libs']
     transform.LINK_DIRS = args['-link-dirs']
     transform.RUNTIME_LIB_DIRS = args['-rpath']
     transform.CFLAGS = args['-cflags']
     transform.RUN_ARGS = args['-run-args']
     algorithm_utils.is_mxp = args['-mxp']
+    
+    if transform.MIX_BINOP and not transform.FP128_TO_DD:
+        print("Warning: mix-binop enabled without fp128todd, mix-binop will be disabled.")
+        transform.MIX_BINOP = False
 
     start_time = time.perf_counter()
     data_utils.delete_data()
@@ -187,6 +195,7 @@ def main():
     print(f"  Shuffled: {args['-shuffled']}")
     print(f"  Threads: {args['-threads']}")
     print(f"  FP128 to DD: {args['-fp128todd']}")
+    print(f"  Double-Double & double mix BinOp: {args['-mix-binop']}")
     print(f"  Link libs: {args['-link-libs']}")
     print(f"  Link dirs: {args['-link-dirs']}")
     print(f"  Runtime lib dirs: {args['-rpath']}")

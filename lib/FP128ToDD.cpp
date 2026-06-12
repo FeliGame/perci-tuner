@@ -16,6 +16,9 @@
 #include <llvm/Support/raw_ostream.h>
 #include <set>
 
+// double-double & double 混合精度运算
+cl::opt<bool> EnableMixBinOp("enable-mix-binop", cl::value_desc("true or false"), cl::desc("Enable double-double & double binOp"), cl::init(true));
+
 #define CF1(I, s) ChangeInstToCall(I, s, {I->getOperand(0)}, I->getType())
 #define CF2(I, s)                                                              \
   ChangeInstToCall(I, s, {I->getOperand(0), I->getOperand(1)}, I->getType())
@@ -213,7 +216,7 @@ bool FP128ToDD::runOnModule(Module &M) {
             string suffix="";
             Value* originalOps[2];
             for (unsigned i = 0; i < BinOp->getNumOperands(); ++i) {
-              auto *originalOp = getDoubleSrcOperand(BinOp->getOperand(i));
+              auto *originalOp = EnableMixBinOp ? getDoubleSrcOperand(BinOp->getOperand(i)) : BinOp->getOperand(i);
               originalOps[i] = originalOp;
               if (originalOp->getType()->isFP128Ty()) {
                 suffix += "2";
@@ -286,7 +289,7 @@ bool FP128ToDD::runOnModule(Module &M) {
                 std::string suffix = "";
                 Value* originalOps[3];
                 for (unsigned i = 0; i < FCall->getNumOperands(); ++i) {
-                  auto *originalOp = getDoubleSrcOperand(FCall->getOperand(i));
+                  auto *originalOp = EnableMixBinOp ? getDoubleSrcOperand(FCall->getOperand(i)) : FCall->getOperand(i);
                   originalOps[i] = originalOp;
                   if (originalOp->getType()->isFP128Ty()) {
                     suffix += "2";

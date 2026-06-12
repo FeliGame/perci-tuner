@@ -43,6 +43,8 @@ BASELINE_RESULT=""
 
 # convert fp128 to double-double
 DD_FLAG=false
+# 是否启用double-double和double混合精度运算（默认启用）
+MIX_BINOP_FLAG=true
 
 # change mode option
 TARGET_CONFIG=changed_config.json
@@ -109,6 +111,8 @@ do
         SKIP_SCAN="${arg#-skip-scan=}"
     elif test "${arg#-algorithm=}" != "$arg"; then
         RUN_ALGORITHM="${arg#-algorithm=}"
+    elif test "${arg#-mix-binop=}" != "$arg"; then
+        MIX_BINOP_FLAG="${arg#-mix-binop=}"
     elif test "$arg" = "-shuffled"; then
         SHUFFLED_FLAG=true
     elif test "$arg" = "-history"; then
@@ -171,9 +175,10 @@ do
         echo "  -arg=<arg>                  (search-optimize) arguments for executable, should be input in order"
         echo "  -base-time=<time>           (search-optimize) Manually set baseline running time (skip first run_config)"
         echo "  -base-result=<result>       (search-optimize) Manually set baseline result value (skip first run_config)"
-        echo "  -skip-scan=<file1,file2>    (generate-config & search-optimize) Comma-separated file list to skip scanning, reduce search space and speed up searching"
+        echo "  -skip-scan=<file1,file2>    (all modes) Comma-separated file list to skip scanning, reduce search space and speed up searching"
         echo "  -check-result               (all modes) Print relative error in exec"
         echo "  -fp128todd                  (all modes) fp128 regarded as double-double. On x86_64, must use printf("%Qa", result)!"
+        echo "  -mix-binop=<true>           (all modes, must enable -fp128todd) Enable mixed precision binop for double & double-double operand"
         echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables, will auto enable -check-result"
         echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp & -check-result"
         echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
@@ -267,7 +272,7 @@ if test $MODE_FLAG = "change-by-config"; then
             DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
         fi
     fi
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG  output.bc -o changed_output.bc
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG --skip-scan=$SKIP_SCAN --enable-mix-binop=$MIX_BINOP_FLAG output.bc -o changed_output.bc
     clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 else
@@ -291,14 +296,14 @@ else
             DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
         fi
     fi
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --mxp=$MXP_FLAG --skip-scan=$SKIP_SCAN output.bc -o output.bc
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --mxp=$MXP_FLAG --skip-scan=$SKIP_SCAN --enable-mix-binop=$MIX_BINOP_FLAG output.bc -o output.bc
     clang $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
     echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi
 
 if test $MODE_FLAG = "search-optimize"; then
     # 动态搜索降精配置
-    python3 -u $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc -arg=$RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS -base-time=$BASELINE_TIME -base-result=$BASELINE_RESULT
+    python3 -u $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc -mix-binop=$MIX_BINOP_FLAG -arg=$RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS -base-time=$BASELINE_TIME -base-result=$BASELINE_RESULT
 fi
 
 if test $MODE_FLAG = "multi-version"; then
@@ -313,7 +318,7 @@ if test $MODE_FLAG = "multi-version"; then
     export PERCI_TUNER_ORIGINAL_VERSION=$ORIGINAL_VERSION_FLAG 
     clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC output+mvselect.bc -o merged.bc
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC --skip-scan=$SKIP_SCAN --enable-mix-binop=$MIX_BINOP_FLAG output+mvselect.bc -o merged.bc
     clang $CFLAGS -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi
