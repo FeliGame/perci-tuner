@@ -19,6 +19,7 @@ using namespace std;
 
 namespace llvm {
 
+class DIFile;
 
 class PrintConfig : public PassInfoMixin<PrintConfig> {
 public:
@@ -39,9 +40,15 @@ private:
 
     void findFunctionCalls(Function &F);
 
-    bool needScan(std::string fileName);
+    void parseSkipLists();
+
+    bool needScanFile(DIFile *file);
+
+    bool needScanFunction(Function &F);
 
     vector<string> skipFiles;
+
+    vector<string> skipFuncs;
     
     set<string> globalVariables;
 

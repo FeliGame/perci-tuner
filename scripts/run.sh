@@ -27,8 +27,9 @@ MXP_FLAG=false  # check pragma precision & autofp vars if true, or search all va
 FPE_FLAG=false
 CHECK_RESULT_FLAG=false  # 是否插桩相对误差输出（适用double-double，更精准）
 
-# generate-config & search-optimize mode option
-SKIP_SCAN=""  # 逗号分隔的文件列表，指定不扫描的源文件，压缩搜索空间
+# filters
+SKIP_FILE=""  # 逗号分隔的文件列表或通配符，指定不扫描的源文件
+SKIP_FUNC=""  # 逗号分隔的函数名或通配符，指定不扫描函数体内变量
 
 # search/multi-version mode option, default value as below
 RUN_ALGORITHM=dd
@@ -107,8 +108,10 @@ do
         fi
     elif test "$arg" = "generate-config" -o "$arg" = "search-optimize" -o "$arg" = "change-by-config" -o "$arg" = "multi-version"; then
         MODE_FLAG="$arg"
-    elif test "${arg#-skip-scan=}" != "$arg"; then
-        SKIP_SCAN="${arg#-skip-scan=}"
+    elif test "${arg#-skip-file=}" != "$arg"; then
+        SKIP_FILE="${arg#-skip-file=}"
+    elif test "${arg#-skip-func=}" != "$arg"; then
+        SKIP_FUNC="${arg#-skip-func=}"
     elif test "${arg#-algorithm=}" != "$arg"; then
         RUN_ALGORITHM="${arg#-algorithm=}"
     elif test "${arg#-mix-binop=}" != "$arg"; then
@@ -175,7 +178,8 @@ do
         echo "  -arg=<arg>                  (search-optimize) arguments for executable, should be input in order"
         echo "  -base-time=<time>           (search-optimize) Manually set baseline running time (skip first run_config)"
         echo "  -base-result=<result>       (search-optimize) Manually set baseline result value (skip first run_config)"
-        echo "  -skip-scan=<file1,file2>    (all modes) Comma-separated file list to skip scanning, reduce search space and speed up searching"
+        echo "  -skip-file=<file1,pat*>     (all modes) Comma-separated file paths to skip scanning"
+        echo "  -skip-func=<func1,pat*>     (all modes) Comma-separated function names to skip scanning"
         echo "  -check-result               (all modes) Print relative error in exec"
         echo "  -fp128todd                  (all modes) fp128 regarded as double-double. On x86_64, must use printf("%Qa", result)!"
         echo "  -mix-binop=<true>           (all modes, must enable -fp128todd) Enable mixed precision binop for double & double-double operand"
@@ -272,7 +276,7 @@ if test $MODE_FLAG = "change-by-config"; then
             DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
         fi
     fi
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG --skip-scan=$SKIP_SCAN --enable-mix-binop=$MIX_BINOP_FLAG output.bc -o changed_output.bc
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG --skip-file="$SKIP_FILE" --skip-func="$SKIP_FUNC" --enable-mix-binop=$MIX_BINOP_FLAG output.bc -o changed_output.bc
     clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
     echo "[Changed] IR: changed_output.bc, Executable: changed_output"
 else
@@ -296,7 +300,7 @@ else
             DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
         fi
     fi
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --mxp=$MXP_FLAG --skip-scan=$SKIP_SCAN --enable-mix-binop=$MIX_BINOP_FLAG output.bc -o output.bc
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --mxp=$MXP_FLAG --skip-file="$SKIP_FILE" --skip-func="$SKIP_FUNC" --enable-mix-binop=$MIX_BINOP_FLAG output.bc -o output.bc
     clang $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
     echo "[Original] Config: config.json, IR: output.bc, Executable: output"
 fi
@@ -318,7 +322,7 @@ if test $MODE_FLAG = "multi-version"; then
     export PERCI_TUNER_ORIGINAL_VERSION=$ORIGINAL_VERSION_FLAG 
     clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC --skip-scan=$SKIP_SCAN --enable-mix-binop=$MIX_BINOP_FLAG output+mvselect.bc -o merged.bc
+    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC --skip-file="$SKIP_FILE" --skip-func="$SKIP_FUNC" --enable-mix-binop=$MIX_BINOP_FLAG output+mvselect.bc -o merged.bc
     clang $CFLAGS -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     echo "[Merged] IR: merged.bc, Executable: merged"
 fi

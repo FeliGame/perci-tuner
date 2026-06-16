@@ -1,12 +1,14 @@
 // @Author: Guocheng - NUDT
 // Usage: Search declared variables' type.
 // --mxp: if true, only search __autofp vars or vars in #pragma region.
-// --skip-scan=[.c]: variables in these files won't be scanned
+// --skip-file=[.c]: these files won't be scanned
+// --skip-func=[func]: these functions won't be scanned
 // Output: config.json
 
 #include "PrintConfig.h"
 #include "utils/ParseTypeName.hpp"
 #include "utils/ParseMetaDataNode.hpp"
+#include "utils/GlobMatch.hpp"
 
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
@@ -24,7 +26,8 @@ using namespace llvm;
 
 
 cl::opt<bool> EnableMXP("mxp", cl::value_desc("enable pragma & autofp"), cl::desc("true or false"), cl::init(false));
-cl::opt<string> SkipScan("skip-scan", cl::value_desc(".c skipped to scan"), cl::desc("comma separated src files"), cl::init(""));
+cl::opt<string> SkipFile("skip-file", cl::value_desc("files skipped to scan"), cl::desc("comma separated src files"), cl::init(""));
+cl::opt<string> SkipFunc("skip-func", cl::value_desc("functions skipped to scan"), cl::desc("comma separated function names"), cl::init(""));
 
 
 // Find Local vars and local static vars
@@ -300,7 +303,7 @@ void PrintConfig::findGlobalVariables(Module &M) {
         unsigned lineNo = GVDebug->getLine();
         DIFile *file = GVDebug->getFile();
         string fileName = file->getFilename().str();
-        if (!needScan(fileName)) continue;
+        if (!needScanFile(file)) continue;
         globalVar["line"] = lineNo;
         globalVar["file"] = fileName;
         auto typeName = parseDITypeName(GVDebug->getType());
@@ -412,35 +415,60 @@ void PrintConfig::findFunctionCalls(Function &F) {
 }
 
 bool PrintConfig::runOnFunction(Function &F) {
+    if (!needScanFunction(F)) {
+        autoFPRange.clear();
+        return false;
+    }
+
     findLocalVariables(F);
     findFunctionCalls(F);
     return false;
 }
 
-bool PrintConfig::needScan(std::string fileName) {
-    // Check function-level DI info (subprogram file). If matches skipFiles, skip.
-    for (const auto &s : skipFiles)
-        if (s.find(fileName) != std::string::npos)
-            return false;
-    return true;
+void PrintConfig::parseSkipLists() {
+    auto parseCommaList = [](std::string raw) {
+        vector<string> items;
+        size_t pos = 0;
+        while (pos < raw.size()) {
+            size_t comma = raw.find(',', pos);
+            std::string token;
+            if (comma == std::string::npos) {
+                token = raw.substr(pos);
+                pos = raw.size();
+            } else {
+                token = raw.substr(pos, comma - pos);
+                pos = comma + 1;
+            }
+            size_t begin = token.find_first_not_of(" \t\n\r");
+            size_t end = token.find_last_not_of(" \t\n\r");
+            if (begin != std::string::npos)
+                items.push_back(token.substr(begin, end - begin + 1));
+        }
+        return items;
+    };
+
+    skipFiles.clear();
+    skipFuncs.clear();
+
+    skipFiles = parseCommaList(SkipFile);
+    skipFuncs = parseCommaList(SkipFunc);
+}
+
+bool PrintConfig::needScanFile(DIFile *file) {
+    if (!file) return true;
+    std::string fileName = file->getFilename().str();
+    std::string dir = file->getDirectory().str();
+    std::string path = dir.empty() ? fileName : dir + "/" + fileName;
+    return !matchAnyPattern(skipFiles, {fileName, path});
+}
+
+bool PrintConfig::needScanFunction(Function &F) {
+    auto funcName = demangle(F.getName());
+    return !matchAnyPattern(skipFuncs, {funcName, F.getName().str()});
 }
 
 bool PrintConfig::runOnModule(Module &module) {
-    // Parse comma-separated `SkipScan` into `skipFiles`
-    std::string raw = SkipScan;
-    size_t pos = 0;
-    while (pos < raw.size()) {
-        size_t comma = raw.find(',', pos);
-        std::string token;
-        if (comma == std::string::npos) {
-            token = raw.substr(pos);
-            pos = raw.size();
-        } else {
-            token = raw.substr(pos, comma - pos);
-            pos = comma + 1;
-        }
-        skipFiles.push_back(token);
-    }
+    parseSkipLists();
     
     findGlobalVariables(module);
 
@@ -449,8 +477,7 @@ bool PrintConfig::runOnModule(Module &module) {
         if (F.isDeclaration()) continue;
 
         if (auto *SP = F.getSubprogram())
-            if (auto *df = SP->getFile())
-                if (!needScan(df->getFilename().str())) continue;
+            if (!needScanFile(SP->getFile())) continue;
 
         if(name == "main" || !F.use_empty())
             runOnFunction(F);

@@ -602,4 +602,10 @@
 
 ## Jun, 2026
 
+### 12
+
 * feat: mix-binop option to enable mixed precision binop for double & double-double operand. --enable-mix-binop in opt option.
+
+### 16
+
+* feat: rename -skip-scan to -skip-file, -skip-func specifies funcs to skip scanning.
