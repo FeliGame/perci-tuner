@@ -609,3 +609,7 @@
 ### 16
 
 * feat: rename -skip-scan to -skip-file, -skip-func specifies funcs to skip scanning.
+
+### 19
+
+* fix: x86_fp80 ret. seemed as 'long double'.

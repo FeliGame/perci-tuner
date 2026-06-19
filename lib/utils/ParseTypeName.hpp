@@ -46,7 +46,7 @@ inline string parseTypeName(Type* type) {
     } else if (llvm::dyn_cast<llvm::PointerType>(type)) {
         // TODO: can't parse pointer type
         result = "*";
-    } else if (type->getTypeID() == Type::FP128TyID) {
+    } else if (type->getTypeID() == Type::FP128TyID || type->getTypeID() == Type::X86_FP80TyID) {
         result = "long double";
     } else {
         // Other basic types
