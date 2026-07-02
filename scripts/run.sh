@@ -1,333 +1,551 @@
-#!/bin/bash
+#!/bin/sh
 
-# @Author: Guocheng —— NUDT
+# @Author: Guocheng -- NUDT
+#
+# Build and run Perci-Tuner from one entry point.
+# The script is intentionally POSIX-sh compatible because project examples call
+# it as `sh scripts/run.sh ...`, which ignores the shebang.
 
-####################################
-# Build PerciTuner automatically   #
-####################################
+set -e
 
-cd $PERCI_TUNER
-# rm -rf build
-if [ ! -d "build" ]; then
-    mkdir build
-fi
-cd build
-cmake ..
-make -j$(nproc)
-cd $PERCI_TUNER
-
-################################################################################
-# Run PerciTuner automatically
-################################################################################
+###############################################################################
+# Defaults
+###############################################################################
 
 MODE_FLAG=""
 SOURCE_FILES=""
+RUN_ARGS=""
 
-MXP_FLAG=false  # check pragma precision & autofp vars if true, or search all vars
+# Precision / instrumentation flags.
+MXP_FLAG=false
 FPE_FLAG=false
-CHECK_RESULT_FLAG=false  # 是否插桩相对误差输出（适用double-double，更精准）
+CHECK_RESULT_FLAG=false
+DD_FLAG=false
+MIX_BINOP_FLAG=true
 
-# filters
-SKIP_FILE=""  # 逗号分隔的文件列表或通配符，指定不扫描的源文件
-SKIP_FUNC=""  # 逗号分隔的函数名或通配符，指定不扫描函数体内变量
+# Filters.
+SKIP_FILE=""
+SKIP_FUNC=""
 
-# search/multi-version mode option, default value as below
-RUN_ALGORITHM=dd
-THRESHOLD=1e-6
-REPEAT_TIMES=1
-TIMEOUT=60.0
+# Search / multi-version options.
+RUN_ALGORITHM="dd"
+THRESHOLD="1e-6"
+REPEAT_TIMES="1"
+TIMEOUT="60.0"
 HISTORY_FLAG=true
 SHUFFLED_FLAG=false
-THREADS=1
+THREADS="1"
 BASELINE_TIME=""
 BASELINE_RESULT=""
 
-# convert fp128 to double-double
-DD_FLAG=false
-# 是否启用double-double和double混合精度运算（默认启用）
-MIX_BINOP_FLAG=true
+# Change-by-config options.
+TARGET_CONFIG="changed_config.json"
 
-# change mode option
-TARGET_CONFIG=changed_config.json
-
-# multi-version mode option
+# Multi-version options.
 MULTI_VERSION_IR=""
 MULTI_VERSION_FUNC=""
 ORIGINAL_VERSION_FLAG=false
 
+# Compiler/linker options.
 BCS=""
 HALF_PRECISION_SUPPORT="-Xclang -fnative-half-type"
+FP128_SUPPORT=""
+DD_SUPPORT=""
 
 LINK_LIBS=""
 LINK_DIRS=""
 RUNTIME_LIB_DIRS=""
 INCLUDE_DIRS=""
-CFLAGS="" # -fno-builtin 防止不同优化等级导致的结果差异
+CFLAGS="" # Example: -O2. Beware that optimization may change results.
 
-# 遍历目录获取 .c 和 .cpp 文件
-get_source_files_from_dir() {
-    local dir="$1"
-    if [ -d "$dir" ]; then
-        find "$dir" -type f \( -name "*.c" -o -name "*.cpp" \) -print0 | xargs -0 printf "%s " >> /tmp/source_files.txt
-        SOURCE_FILES="$SOURCE_FILES $(cat /tmp/source_files.txt)"
-        rm /tmp/source_files.txt
-    fi
+PERCI_TUNER_ROOT="${PERCI_TUNER:-}"
+
+###############################################################################
+# Small helpers
+###############################################################################
+
+die() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+info() {
+    printf '%s\n' "$*"
+}
+
+append_source_file() {
+    SOURCE_FILES="${SOURCE_FILES:+$SOURCE_FILES }$1"
+}
+
+append_bitcode_file() {
+    BCS="${BCS:+$BCS }$1"
+}
+
+append_run_arg() {
+    RUN_ARGS="${RUN_ARGS:+$RUN_ARGS }$1"
+}
+
+append_link_lib() {
+    LINK_LIBS="${LINK_LIBS:+$LINK_LIBS }$1"
+}
+
+append_link_dir() {
+    LINK_DIRS="${LINK_DIRS:+$LINK_DIRS }$1"
+}
+
+append_runtime_lib_dir() {
+    RUNTIME_LIB_DIRS="${RUNTIME_LIB_DIRS:+$RUNTIME_LIB_DIRS }$1"
+}
+
+append_include_dir() {
+    INCLUDE_DIRS="${INCLUDE_DIRS:+$INCLUDE_DIRS }$1"
 }
 
 is_x86_64() {
     [ "$(uname -m)" = "x86_64" ]
 }
 
-for arg in "$@"
-do
-    # 检查参数是否包含斜杠，若包含则视为目录
-    if test "$arg" != "${arg#*/}"; then
-        get_source_files_from_dir "$arg"
+cpu_count() {
+    if command -v nproc >/dev/null 2>&1; then
+        nproc
+    elif command -v sysctl >/dev/null 2>&1; then
+        sysctl -n hw.ncpu
+    else
+        printf '1\n'
     fi
-    # 只处理以文件路径形式传入且不是以 '-' 开头的 .c/.cpp/.h/.hpp 文件
-    if [ "${arg#-}" = "$arg" ] && [ -f "$arg" ] && { [ "${arg##*.}" = "c" ] || [ "${arg##*.}" = "cpp" ] || [ "${arg##*.}" = "h" ] || [ "${arg##*.}" = "hpp" ]; }; then
-        SOURCE_FILES="$SOURCE_FILES $arg"
-    elif test "${arg#-arg}" != "$arg"; then
-        RUN_ARGS="$RUN_ARGS $arg"
-    # 识别以 -l 开头的参数并添加到 LINK_LIBS 中
-    elif test "${arg#-l}" != "$arg"; then
-        LINK_LIBS="$LINK_LIBS $arg"
-    elif test "${arg#-L}" != "$arg"; then
-        LINK_DIRS="$LINK_DIRS $arg"
-    elif test "${arg#-I}" != "$arg"; then
-        INCLUDE_DIRS="$INCLUDE_DIRS $arg"
-    elif test "${arg#-O}" != "$arg"; then
-        CFLAGS="$arg"
-    elif test "${arg#-j}" != "$arg"; then
-        # 提取-j后的数字部分
-        THREADS="${arg#-j}"
-        # 验证是否为正整数（非空且为大于0的数字）
-        if test -z "$THREADS" || ! test "$THREADS" -gt 0 2>/dev/null; then
-            echo "Error: -j requires a positive integer argument, got '$THREADS'" >&2
-            exit 1
+}
+
+is_source_like_file() {
+    case "$1" in
+        *.c|*.cpp|*.h|*.hpp) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+collect_source_files_from_dir() {
+    dir="$1"
+
+    [ -d "$dir" ] || return 0
+
+    # The rest of this script follows the original whitespace-split behavior for
+    # option lists, so paths containing spaces are still not supported.
+    for found_file in $(find "$dir" -type f \( -name "*.c" -o -name "*.cpp" \) -print); do
+        append_source_file "$found_file"
+    done
+}
+
+require_perci_tuner_root() {
+    [ -n "$PERCI_TUNER_ROOT" ] || die "PERCI_TUNER is not set"
+    [ -d "$PERCI_TUNER_ROOT" ] || die "PERCI_TUNER does not point to a directory: $PERCI_TUNER_ROOT"
+}
+
+show_help() {
+    cat <<'EOF'
+Usage:
+  run.sh [mode] [options] src_files -l<library> -L<lib_path> -I<include_path> -O<level>
+
+Without a mode, run.sh calls clang directly.
+
+Available modes:
+  generate-config   Generate config file (config.json) and executable
+  search-optimize   Search for optimized config (run generate-config first)
+  change-by-config  Modify source code precision according to target config
+  multi-version     Generate multi-version executable
+
+Search options:
+  -algorithm=exhaust/dd/pedd  Select search algorithm (default dd)
+  -thres=<1e-6>               Set error threshold (default 1e-6)
+  -repeat=<1>                 Set repeat count (default 1)
+  -timeout=<60.0>             Set run-time timeout seconds (default 60.0)
+  -shuffled                   Shuffle searched variables (default false)
+  -j<threads>                 Set thread count for dd-algorithm (default 1)
+  -history                    Keep search history (default true)
+  -arg=<arg>                  Add one executable argument, in order
+  -base-time=<time>           Manually set baseline running time
+  -base-result=<result>       Manually set baseline result value
+
+Common options:
+  -skip-file=<file1,pat*>     Comma-separated source files to skip scanning
+  -skip-func=<func1,pat*>     Comma-separated function names to skip scanning
+  -check-result               Print relative error in executable
+  -fp128todd                  Treat fp128 as double-double
+  -mix-binop=<true>           Enable mixed double/double-double binary operators
+  -mxp                        Only include pragma precision and __autofp variables
+  -fpe                        Print Floating-Point Exception, enables -mxp and -check-result
+
+Change-by-config options:
+  -target=<config>            Set target config file (default changed_config.json)
+
+Multi-version options:
+  -original-version           Use original version in multi-version mode (default false)
+  -multi-ir=<ir>              Set another version IR
+  -multi-func=<function>      Set multi-version function name
+
+Examples:
+  run.sh generate-config -mxp src.c -lm
+  run.sh search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas
+  run.sh change-by-config -target=config.json src.c
+  run.sh multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c
+
+__autofp usage (available with -mxp):
+  __autofp is a flexible floating type for variable declarations. The actual
+  precision is decided by the optimized result from search-optimize mode.
+  Precision range: [fp16, float, double, long double]
+  Example: __autofp var1, var2[100];
+
+#pragma usage (available with -mxp):
+  1. #pragma precision region
+     Only variables and function calls in the following block are optimized.
+
+  2. #pragma precision error result_var(1e-6)
+     Specify the relative-error threshold for result_var while searching.
+     This must be inserted in result_var's declaration scope.
+
+  3. #pragma precision range(precisions0), var1(precisions1), var2(precisions2)
+     Specify available precisions in a precision region.
+     Available values: [__float128, double, float, __fp16]
+
+  Example:
+    void fun()
+    {
+        long double fun_result = 0.0;
+        double t1, t2, s1;
+        #pragma precision error fun_result(2.1e-7)
+        #pragma precision region
+        {
+            #pragma precision range(__float128, double, float, __fp16), t2(double, float)
+            t2 += 1.0;
+            s1 = s1 + sqrt(h*h + (t2 - t1)*(t2 - t1));
+            t1 = t2;
+        }
+        fun_result = t1;
+    }
+EOF
+}
+
+###############################################################################
+# Build and preparation
+###############################################################################
+
+build_perci_tuner() {
+    info "Build Perci-Tuner..."
+
+    cd "$PERCI_TUNER_ROOT"
+    mkdir -p build
+    cd build
+    cmake ..
+    make -j"$(cpu_count)"
+    cd "$PERCI_TUNER_ROOT"
+}
+
+prepare_runtime_options() {
+    if [ "$CHECK_RESULT_FLAG" = true ]; then
+        append_link_dir "-L$PERCI_TUNER_ROOT/lib/check_result"
+        append_link_lib "-lcheck_result"
+        append_runtime_lib_dir "-Wl,-rpath=$PERCI_TUNER_ROOT/lib/check_result"
+    fi
+
+    if is_x86_64 && [ "$DD_FLAG" = true ]; then
+        append_link_lib "-lquadmath"
+        info "Link quadmath for x86_64 double-double support"
+    fi
+
+    if is_x86_64 && [ "$DD_FLAG" = true ]; then
+        FP128_SUPPORT="-mlong-double-128"
+        info "Enable float128 support for x86_64"
+    fi
+}
+
+select_double_double_support_archive() {
+    if is_x86_64; then
+        DD_SUPPORT="$PERCI_TUNER_ROOT/lib/dd_real/libautop-x86.a"
+    else
+        DD_SUPPORT="$PERCI_TUNER_ROOT/lib/dd_real/libautop.a"
+    fi
+}
+
+compile_sources_to_bitcode() {
+    if [ -z "$SOURCE_FILES" ]; then
+        if [ -f output.bc ]; then
+            info "No source files supplied; reuse existing output.bc"
+            return 0
         fi
-    elif test "$arg" = "generate-config" -o "$arg" = "search-optimize" -o "$arg" = "change-by-config" -o "$arg" = "multi-version"; then
-        MODE_FLAG="$arg"
-    elif test "${arg#-skip-file=}" != "$arg"; then
-        SKIP_FILE="${arg#-skip-file=}"
-    elif test "${arg#-skip-func=}" != "$arg"; then
-        SKIP_FUNC="${arg#-skip-func=}"
-    elif test "${arg#-algorithm=}" != "$arg"; then
-        RUN_ALGORITHM="${arg#-algorithm=}"
-    elif test "${arg#-mix-binop=}" != "$arg"; then
-        MIX_BINOP_FLAG="${arg#-mix-binop=}"
-    elif test "$arg" = "-shuffled"; then
-        SHUFFLED_FLAG=true
-    elif test "$arg" = "-history"; then
-        HISTORY_FLAG=true
-    elif test "$arg" = "-check-result"; then
-        CHECK_RESULT_FLAG=true
-        LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -lcheck_result"
-        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
-    elif test "$arg" = "-mxp"; then
-        MXP_FLAG=true
-        CHECK_RESULT_FLAG=true
-        LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -lcheck_result"
-        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
-    elif test "$arg" = "-fp128todd"; then
-        DD_FLAG=true
-    elif test "$arg" = "-fpe"; then
-        FPE_FLAG=true
-        MXP_FLAG=true
-        CHECK_RESULT_FLAG=true
-        LINK_DIRS="$LINK_DIRS -L$PERCI_TUNER/lib/check_result"
-        LINK_LIBS="$LINK_LIBS -lcheck_result"
-        RUNTIME_LIB_DIRS="-Wl,-rpath=$PERCI_TUNER/lib/check_result"
-    elif test "$arg" = "-original-version"; then
-        ORIGINAL_VERSION_FLAG=true
-    elif test "${arg#-target=}" != "$arg"; then
-        TARGET_CONFIG="${arg#-target=}"
-    elif test "${arg#-multi-ir=}" != "$arg"; then
-        MULTI_VERSION_IR="${arg#-multi-ir=}"
-    elif test "${arg#-multi-func=}" != "$arg"; then
-        MULTI_VERSION_FUNC="${arg#-multi-func=}"
-    elif test "${arg#-thres=}" != "$arg"; then
-        THRESHOLD="${arg#-thres=}"
-    elif test "${arg#-repeat=}" != "$arg"; then
-        REPEAT_TIMES="${arg#-repeat=}"
-    elif test "${arg#-timeout=}" != "$arg"; then
-        TIMEOUT="${arg#-timeout=}"
-    elif test "${arg#-base-time=}" != "$arg"; then
-        BASELINE_TIME="${arg#-base-time=}"
-    elif test "${arg#-base-result=}" != "$arg"; then
-        BASELINE_RESULT="${arg#-base-result=}"
-    elif test "$arg" = "-h" -o "$arg" = "--help"; then 
-        echo "Usage: run.sh [options] src_files -l<library> -L<lib_path> -I<include_path> -O<optimize level, such as -O2, WARNING: may cause unexpected result!>"
-        echo "Without modes option below, run.sh calls clang directly"
-        echo "Available modes:"
-        echo "  generate-config   Generate config file (config.json) and executable"
-        echo "  search-optimize   Search for optimized config (run generate-config first)"
-        echo "  change-by-config  Modify source code precision according to target config"
-        echo "  multi-version     Generate multi-version executable"
-        echo ""
-        echo "Options for different mode:"
-        echo "  -algorithm=exhaust/dd/pedd  (search-optimize) Select search algorithm (default dd)"
-        echo "  -thres=<1e-6>               (search-optimize) Set error threshold (default 1e-6)"
-        echo "  -repeat=<1>                 (search-optimize) Set repeat count (default 1)"
-        echo "  -timeout=<60.0>             (search-optimize) Set run-time timeout seconds(default 60.0sec)"
-        echo "  -shuffled                   (search-optimize) Shuffle searched variables (default false)"
-        echo "  -j<threads>                 (search-optimize) Set threads count for dd-algorithm(default 1)"
-        echo "  -history                    (search-optimize) Keep search history (default false)"
-        echo "  -arg=<arg>                  (search-optimize) arguments for executable, should be input in order"
-        echo "  -base-time=<time>           (search-optimize) Manually set baseline running time (skip first run_config)"
-        echo "  -base-result=<result>       (search-optimize) Manually set baseline result value (skip first run_config)"
-        echo "  -skip-file=<file1,pat*>     (all modes) Comma-separated file paths to skip scanning"
-        echo "  -skip-func=<func1,pat*>     (all modes) Comma-separated function names to skip scanning"
-        echo "  -check-result               (all modes) Print relative error in exec"
-        echo "  -fp128todd                  (all modes) fp128 regarded as double-double. On x86_64, must use printf("%Qa", result)!"
-        echo "  -mix-binop=<true>           (all modes, must enable -fp128todd) Enable mixed precision binop for double & double-double operand"
-        echo "  -mxp                        (all modes) Config only includes pragma precision and autofp variables, will auto enable -check-result"
-        echo "  -fpe                        (all modes) Print Floating-Point Exception, will auto enable -mxp & -check-result"
-        echo "  -target                     (change-by-config) Set target config file (default changed_config.json)"
-        echo "  -original-version           (multi-version) Use original version in multi-version mode (default false)"
-        echo "  -multi-ir                   (multi-version) Set another version IR"
-        echo "  -multi-func                 (multi-version) Set multi-version function name"
-        echo ""
-        echo "Examples:"
-        echo "  run.sh generate-config -mxp src.c -lm"
-        echo "  run.sh search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas"
-        echo "  run.sh change-by-config -target=config.json src.c"
-        echo "  run.sh multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c"
-        echo ""
-        echo "__autofp Usage (available while -mxp on):"
-        echo "  An flexible floating-type for var declaration, var's actual precision is up to optimized result (driven by search-optimize mode)"
-        echo "  Precision range: [fp16, float, double, long double]"
-        echo "  Code example: __autofp var1, var2[100];"
-        echo ""
-        echo "#pragma Usage (available while -mxp on):"
-        echo "  1. #pragma precision region: Only vars & func calls in {} region will be optimized"
-        echo "  2. #pragma precision error result_var(1e-6): Specify relative-error threshold 1e-6 for result_var while search optimized config (driven by search-optimize mode)"
-        echo "      must be inserted in result_var's decl scope"
-        echo "  3. #pragma precision range(precisions0), var1(precisions1), var2(precisions2)...: Specify precision range for vars in region, precisions0 is default precision range, precisons1 is precision range for var1..."
-        echo "      must be inserted inside #pragma precision region"
-        echo "      Available Precision values: [__float128, double, float, __fp16], __float128 is long double in C/C++"
-        echo "  Code example:  
-                void fun()
-                {
-                    long double fun_result = 0.0;
-                    double t1, t2, s1;
-                    #pragma precision error fun_result(2.1e-7)
-                    #pragma precision region
-                    {
-                        #pragma precision range(__float128, double, float, __fp16), t2(double, float)
-                        t2 += 1.0;
-                        s1 = s1 + sqrt (h*h + (t2 - t1)*(t2 - t1));
-                        t1 = t2; 
-                    }
-                    fun_result = t1;
-                }
-            "
-        exit 0
+
+        die "no source files supplied and output.bc does not exist"
     fi
+
+    for src_file in $SOURCE_FILES; do
+        [ -f "$src_file" ] || die "file not found: $src_file"
+
+        if [ "$FPE_FLAG" = true ]; then
+            clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe \
+                "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
+                -fno-discard-value-names -o "$src_file.bc"
+        else
+            clang -g -emit-llvm -c \
+                "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
+                -fno-discard-value-names -o "$src_file.bc"
+        fi
+
+        append_bitcode_file "$src_file.bc"
+    done
+
+    llvm-link $BCS -o output.bc
+}
+
+###############################################################################
+# Mode implementations
+###############################################################################
+
+run_change_by_config() {
+    opt output.bc -o output.bc
+
+    PASSES="change_math_call,change_variable_decl"
+    if [ "$DD_FLAG" = true ]; then
+        PASSES="$PASSES,fp128_to_dd"
+        select_double_double_support_archive
+    fi
+
+    opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
+        -passes="$PASSES" \
+        --variable-config="$TARGET_CONFIG" \
+        --function-config="$TARGET_CONFIG" \
+        --skip-file="$SKIP_FILE" \
+        --skip-func="$SKIP_FUNC" \
+        --enable-mix-binop="$MIX_BINOP_FLAG" \
+        output.bc -o changed_output.bc
+
+    clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
+    info "[Changed] IR: changed_output.bc, Executable: changed_output"
+}
+
+generate_config_and_original_executable() {
+    if [ "$CHECK_RESULT_FLAG" = true ]; then
+        opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
+            -passes="record_result,remove_pragma" \
+            --is-original=true \
+            output.bc -o mxp.bc
+
+        clang $CFLAGS -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+        rm mxp.bc
+
+        LAST_LINE=$(./output | tail -n 1)
+        export PERCI_TUNER_ORIGINAL_RESULT="$LAST_LINE"
+        info "Set PERCI_TUNER_ORIGINAL_RESULT=$PERCI_TUNER_ORIGINAL_RESULT"
+    fi
+
+    PASSES="print_config,remove_pragma"
+    if [ "$DD_FLAG" = true ] && [ "$MODE_FLAG" = "generate-config" ]; then
+        PASSES="$PASSES,fp128_to_dd"
+        select_double_double_support_archive
+    fi
+
+    opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
+        -passes="$PASSES" \
+        --mxp="$MXP_FLAG" \
+        --skip-file="$SKIP_FILE" \
+        --skip-func="$SKIP_FUNC" \
+        --enable-mix-binop="$MIX_BINOP_FLAG" \
+        output.bc -o output.bc
+
+    clang $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
+    info "[Original] Config: config.json, IR: output.bc, Executable: output"
+}
+
+run_search_optimize() {
+    python3 -u "$PERCI_TUNER_ROOT/scripts/search.py" \
+        -algorithm="$RUN_ALGORITHM" \
+        -thres="$THRESHOLD" \
+        -repeat="$REPEAT_TIMES" \
+        -timeout="$TIMEOUT" \
+        -history="$HISTORY_FLAG" \
+        -shuffled="$SHUFFLED_FLAG" \
+        -threads="$THREADS" \
+        -mxp="$MXP_FLAG" \
+        -fp128todd="$DD_FLAG" \
+        output.bc \
+        -mix-binop="$MIX_BINOP_FLAG" \
+        $RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS \
+        -base-time="$BASELINE_TIME" \
+        -base-result="$BASELINE_RESULT"
+}
+
+run_multi_version() {
+    if [ -z "$MULTI_VERSION_IR" ] || [ -z "$MULTI_VERSION_FUNC" ]; then
+        die "multi-version mode requires -multi-ir=<ir_file> and -multi-func=<function_name>"
+    fi
+
+    export PERCI_TUNER_ORIGINAL_VERSION="$ORIGINAL_VERSION_FLAG"
+
+    clang -S -emit-llvm -fno-discard-value-names \
+        -o mvselect.bc "$PERCI_TUNER_ROOT/lib/mvselect.c"
+
+    llvm-link output.bc mvselect.bc -o output+mvselect.bc
+
+    opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
+        -passes="merge_multi" \
+        --ir-multi="$MULTI_VERSION_IR" \
+        --function-multi="$MULTI_VERSION_FUNC" \
+        --skip-file="$SKIP_FILE" \
+        --skip-func="$SKIP_FUNC" \
+        --enable-mix-binop="$MIX_BINOP_FLAG" \
+        output+mvselect.bc -o merged.bc
+
+    clang $CFLAGS -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+    info "[Merged] IR: merged.bc, Executable: merged"
+}
+
+run_fpe_postprocess() {
+    [ "$FPE_FLAG" = true ] || return 0
+
+    clang $CFLAGS -o fpe_opt -rdynamic -funwind-tables optimized_output.bc \
+        -lm $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+}
+
+###############################################################################
+# Argument parsing
+###############################################################################
+
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        generate-config|search-optimize|change-by-config|multi-version)
+            MODE_FLAG="$arg"
+            ;;
+        -skip-file=*)
+            SKIP_FILE="${arg#-skip-file=}"
+            ;;
+        -skip-func=*)
+            SKIP_FUNC="${arg#-skip-func=}"
+            ;;
+        -algorithm=*)
+            RUN_ALGORITHM="${arg#-algorithm=}"
+            ;;
+        -mix-binop=*)
+            MIX_BINOP_FLAG="${arg#-mix-binop=}"
+            ;;
+        -shuffled)
+            SHUFFLED_FLAG=true
+            ;;
+        -history)
+            HISTORY_FLAG=true
+            ;;
+        -check-result)
+            CHECK_RESULT_FLAG=true
+            ;;
+        -mxp)
+            MXP_FLAG=true
+            CHECK_RESULT_FLAG=true
+            ;;
+        -fp128todd)
+            DD_FLAG=true
+            ;;
+        -fpe)
+            FPE_FLAG=true
+            MXP_FLAG=true
+            CHECK_RESULT_FLAG=true
+            ;;
+        -original-version)
+            ORIGINAL_VERSION_FLAG=true
+            ;;
+        -target=*)
+            TARGET_CONFIG="${arg#-target=}"
+            ;;
+        -multi-ir=*)
+            MULTI_VERSION_IR="${arg#-multi-ir=}"
+            ;;
+        -multi-func=*)
+            MULTI_VERSION_FUNC="${arg#-multi-func=}"
+            ;;
+        -thres=*)
+            THRESHOLD="${arg#-thres=}"
+            ;;
+        -repeat=*)
+            REPEAT_TIMES="${arg#-repeat=}"
+            ;;
+        -timeout=*)
+            TIMEOUT="${arg#-timeout=}"
+            ;;
+        -base-time=*)
+            BASELINE_TIME="${arg#-base-time=}"
+            ;;
+        -base-result=*)
+            BASELINE_RESULT="${arg#-base-result=}"
+            ;;
+        -arg*)
+            append_run_arg "$arg"
+            ;;
+        -l*)
+            append_link_lib "$arg"
+            ;;
+        -L*)
+            append_link_dir "$arg"
+            ;;
+        -I*)
+            append_include_dir "$arg"
+            ;;
+        -O*)
+            CFLAGS="$arg"
+            ;;
+        -j*)
+            THREADS="${arg#-j}"
+            case "$THREADS" in
+                ''|*[!0-9]*)
+                    die "-j requires a positive integer argument, got '$THREADS'"
+                    ;;
+                *)
+                    [ "$THREADS" -gt 0 ] || die "-j requires a positive integer argument, got '$THREADS'"
+                    ;;
+            esac
+            ;;
+        *)
+            if [ -d "$arg" ]; then
+                collect_source_files_from_dir "$arg"
+            elif [ -f "$arg" ] && is_source_like_file "$arg"; then
+                append_source_file "$arg"
+            fi
+            ;;
+    esac
 done
-# 如果不带有 -mode 参数，直接调用 clang
-if test -z "$MODE_FLAG"; then
-    echo "call clang..."
+
+###############################################################################
+# Entry point
+###############################################################################
+
+if [ -z "$MODE_FLAG" ]; then
+    info "call clang..."
     clang "$@"
     exit $?
 fi
 
-if is_x86_64 && [ "$DD_FLAG" = "true" ]; then
-    LINK_LIBS="$LINK_LIBS -lquadmath"
-    echo "Link quadmath for x86_64 double-double support"
-fi
+require_perci_tuner_root
+build_perci_tuner
+prepare_runtime_options
 
 clang --version
+compile_sources_to_bitcode
 
-# 统一处理源文件
-for src_file in $SOURCE_FILES; do
-    # 检查文件是否存在
-    if ! test -f "$src_file"; then
-        echo "Error: File not found: $src_file"
-        exit 1
-    fi
-    if is_x86_64 && [ "$DD_FLAG" = "true" ]; then
-        FP128_SUPPORT="-mlong-double-128"
-        echo "Enable float128 support for x86_64"
-    fi
-    if $FPE_FLAG; then
-        # FPE模式预处理
-        clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
-    else
-        # 其他模式正常处理
-        clang -g -emit-llvm -c "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -fno-discard-value-names -o "$src_file.bc"
-    fi
-    
-    BCS="$BCS $src_file.bc"
-done
+case "$MODE_FLAG" in
+    change-by-config)
+        run_change_by_config
+        ;;
+    generate-config|search-optimize|multi-version)
+        generate_config_and_original_executable
+        ;;
+    *)
+        die "unknown mode: $MODE_FLAG"
+        ;;
+esac
 
-llvm-link $BCS -o output.bc
-
-if test $MODE_FLAG = "change-by-config"; then
-    opt output.bc -o output.bc  # 人类可读形式
-    PASSES="change_math_call,change_variable_decl"
-    if $DD_FLAG; then
-        PASSES="$PASSES,fp128_to_dd"
-        if is_x86_64; then
-            DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop-x86.a"
-        else
-            DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
-        fi
-    fi
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --variable-config=$TARGET_CONFIG --function-config=$TARGET_CONFIG --skip-file="$SKIP_FILE" --skip-func="$SKIP_FUNC" --enable-mix-binop=$MIX_BINOP_FLAG output.bc -o changed_output.bc
-    clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
-    echo "[Changed] IR: changed_output.bc, Executable: changed_output"
-else
-    # 生成源程序的config，还能移除pragma和__autofp防止后端不识别报错
-    if $CHECK_RESULT_FLAG; then
-        # 第一次获取原始值
-        opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='record_result,remove_pragma' --is-original=true output.bc -o mxp.bc
-        clang $CFLAGS -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
-        rm mxp.bc
-        # 捕获最后一行输出并设置环境变量
-        LAST_LINE=$(./output | tail -n 1)
-        export PERCI_TUNER_ORIGINAL_RESULT="$LAST_LINE"
-        echo "Set PERCI_TUNER_ORIGINAL_RESULT=$PERCI_TUNER_ORIGINAL_RESULT"
-    fi
-    PASSES="print_config,remove_pragma"
-    if [ "$DD_FLAG" = "true" ] && [ "$MODE_FLAG" = "generate-config" ]; then
-        PASSES="$PASSES,fp128_to_dd"
-        if is_x86_64; then
-            DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop-x86.a"
-        else
-            DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
-        fi
-    fi
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes=$PASSES --mxp=$MXP_FLAG --skip-file="$SKIP_FILE" --skip-func="$SKIP_FUNC" --enable-mix-binop=$MIX_BINOP_FLAG output.bc -o output.bc
-    clang $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
-    echo "[Original] Config: config.json, IR: output.bc, Executable: output"
+if [ "$MODE_FLAG" = "search-optimize" ]; then
+    run_search_optimize
 fi
 
-if test $MODE_FLAG = "search-optimize"; then
-    # 动态搜索降精配置
-    python3 -u $PERCI_TUNER/scripts/search.py -algorithm=$RUN_ALGORITHM -thres=$THRESHOLD -repeat=$REPEAT_TIMES -timeout=$TIMEOUT -history=$HISTORY_FLAG -shuffled=$SHUFFLED_FLAG -threads=$THREADS -mxp=$MXP_FLAG -fp128todd=$DD_FLAG output.bc -mix-binop=$MIX_BINOP_FLAG -arg=$RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS -base-time=$BASELINE_TIME -base-result=$BASELINE_RESULT
+if [ "$MODE_FLAG" = "multi-version" ]; then
+    run_multi_version
 fi
 
-if test $MODE_FLAG = "multi-version"; then
-    # 合并原始程序和优化后的程序
-    if test -z "$MULTI_VERSION_IR" -o -z "$MULTI_VERSION_FUNC"; then
-        echo $MULTI_VERSION_IR
-        echo $MULTI_VERSION_FUNC
-        echo "Error: multi-version mode requires both -multi-ir and -multi-func options"
-        echo "Usage: -multi-ir=<another_ir_file> -multi-func=<function_name>"
-        exit 1
-    fi
-    export PERCI_TUNER_ORIGINAL_VERSION=$ORIGINAL_VERSION_FLAG 
-    clang -S -emit-llvm -fno-discard-value-names -o mvselect.bc $PERCI_TUNER/lib/mvselect.c
-    llvm-link output.bc mvselect.bc -o output+mvselect.bc
-    opt -load-pass-plugin $PERCI_TUNER/build/PerciTuner.so -S -passes='merge_multi' --ir-multi=$MULTI_VERSION_IR --function-multi=$MULTI_VERSION_FUNC --skip-file="$SKIP_FILE" --skip-func="$SKIP_FUNC" --enable-mix-binop=$MIX_BINOP_FLAG output+mvselect.bc -o merged.bc
-    clang $CFLAGS -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
-    echo "[Merged] IR: merged.bc, Executable: merged"
-fi
-
-if $FPE_FLAG; then
-    # 处理fp异常（需要mxp版本LLVM）- 生成可执行文件
-    clang $CFLAGS -o fpe_opt -rdynamic -funwind-tables optimized_output.bc -lm $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
-fi
+run_fpe_postprocess

@@ -613,3 +613,9 @@
 ### 19
 
 * fix: x86_fp80 ret. seemed as 'long double'.
+
+## Jul, 2026
+
+### 1
+
+* GPT-5.5 fix: reimplement scripts/run.sh.
