@@ -619,3 +619,7 @@
 ### 1
 
 * GPT-5.5 fix: reimplement scripts/run.sh.
+
+### 3
+
+* GPT fix: typedef struct won't be recognized correctly in PrintConfig.

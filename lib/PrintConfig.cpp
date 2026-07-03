@@ -124,8 +124,9 @@ void PrintConfig::findLocalVariables(Function &F) {
                                     if (auto *baseComposite = dyn_cast<DICompositeType>(baseType)) {
                                         if (baseComposite->getTag() == dwarf::DW_TAG_structure_type) {
                                             structType = baseComposite;
-                                            // 获取原始结构体名称
                                             structName = baseComposite->getName().str();
+                                            if (structName.empty())
+                                                structName = derivedType->getName().str();
                                         }
                                     }
                                 }
@@ -318,8 +319,9 @@ void PrintConfig::findGlobalVariables(Module &M) {
                     if (auto *baseComposite = dyn_cast<DICompositeType>(baseType)) {
                         if (baseComposite->getTag() == dwarf::DW_TAG_structure_type) {
                             structType = baseComposite;
-                            // 获取原始结构体名称
                             structName = baseComposite->getName().str();
+                            if (structName.empty())
+                                structName = derivedType->getName().str();
                         }
                     }
                 }
@@ -358,6 +360,7 @@ void PrintConfig::findGlobalVariables(Module &M) {
 }
 
 void PrintConfig::dumpStructDecl(DICompositeType* structType, std::string structName) {
+    if (structName.empty()) return;
     nlohmann::json structDecl;
     unsigned i = 0;
     for (auto *element : structType->getElements()) {
