@@ -40,16 +40,15 @@ private:
 
     void findFunctionCalls(Function &F);
 
-    void parseSkipLists();
+    void parseIncludeAndExcludeLists();
 
     bool needScanFile(DIFile *file);
-
     bool needScanFunction(Function &F);
+    vector<string> excludeFiles;
+    vector<string> excludeFuncs;
+    vector<string> includeFiles;
+    vector<string> includeFuncs;
 
-    vector<string> skipFiles;
-
-    vector<string> skipFuncs;
-    
     set<string> globalVariables;
 
     DenseSet<Instruction*> instToErase;

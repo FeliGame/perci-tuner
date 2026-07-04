@@ -1,8 +1,8 @@
 // @Author: Guocheng - NUDT
 // Usage: Search declared variables' type.
 // --mxp: if true, only search __autofp vars or vars in #pragma region.
-// --skip-file=[.c]: these files won't be scanned
-// --skip-func=[func]: these functions won't be scanned
+// --exclude-file=[.c]: these files won't be scanned
+// --exclude-func=[func]: these functions won't be scanned
 // Output: config.json
 
 #include "PrintConfig.h"
@@ -26,8 +26,10 @@ using namespace llvm;
 
 
 cl::opt<bool> EnableMXP("mxp", cl::value_desc("enable pragma & autofp"), cl::desc("true or false"), cl::init(false));
-cl::opt<string> SkipFile("skip-file", cl::value_desc("files skipped to scan"), cl::desc("comma separated src files"), cl::init(""));
-cl::opt<string> SkipFunc("skip-func", cl::value_desc("functions skipped to scan"), cl::desc("comma separated function names"), cl::init(""));
+cl::opt<string> ExcludeFiles("exclude-file", cl::value_desc("files skipped to scan"), cl::desc("comma separated src files"), cl::init(""));
+cl::opt<string> ExcludeFuncs("exclude-func", cl::value_desc("functions skipped to scan"), cl::desc("comma separated function names"), cl::init(""));
+cl::opt<string> IncludeFiles("include-file", cl::value_desc("files included to scan"), cl::desc("comma separated src files"), cl::init(""));
+cl::opt<string> IncludeFuncs("include-func", cl::value_desc("functions included to scan"), cl::desc("comma separated function names"), cl::init(""));
 
 
 // Find Local vars and local static vars
@@ -428,7 +430,7 @@ bool PrintConfig::runOnFunction(Function &F) {
     return false;
 }
 
-void PrintConfig::parseSkipLists() {
+void PrintConfig::parseIncludeAndExcludeLists() {
     auto parseCommaList = [](std::string raw) {
         vector<string> items;
         size_t pos = 0;
@@ -450,11 +452,15 @@ void PrintConfig::parseSkipLists() {
         return items;
     };
 
-    skipFiles.clear();
-    skipFuncs.clear();
+    excludeFiles.clear();
+    excludeFuncs.clear();
+    includeFiles.clear();
+    includeFuncs.clear();
 
-    skipFiles = parseCommaList(SkipFile);
-    skipFuncs = parseCommaList(SkipFunc);
+    excludeFiles = parseCommaList(ExcludeFiles);
+    excludeFuncs = parseCommaList(ExcludeFuncs);
+    includeFiles = parseCommaList(IncludeFiles);
+    includeFuncs = parseCommaList(IncludeFuncs);
 }
 
 bool PrintConfig::needScanFile(DIFile *file) {
@@ -462,16 +468,18 @@ bool PrintConfig::needScanFile(DIFile *file) {
     std::string fileName = file->getFilename().str();
     std::string dir = file->getDirectory().str();
     std::string path = dir.empty() ? fileName : dir + "/" + fileName;
-    return !matchAnyPattern(skipFiles, {fileName, path});
+    return (includeFiles.size() < 1 || matchAnyPattern(includeFiles, {fileName, path})) && 
+           !matchAnyPattern(excludeFiles, {fileName, path});
 }
 
 bool PrintConfig::needScanFunction(Function &F) {
     auto funcName = demangle(F.getName());
-    return !matchAnyPattern(skipFuncs, {funcName, F.getName().str()});
+    return (includeFuncs.size() < 1 || matchAnyPattern(includeFuncs, {funcName, F.getName().str()})) && 
+           !matchAnyPattern(excludeFuncs, {funcName, F.getName().str()});
 }
 
 bool PrintConfig::runOnModule(Module &module) {
-    parseSkipLists();
+    parseIncludeAndExcludeLists();
     
     findGlobalVariables(module);
 

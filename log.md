@@ -623,3 +623,8 @@
 ### 3
 
 * GPT fix: typedef struct won't be recognized correctly in PrintConfig.
+
+### 4
+
+* fix: use -O2, rename skip-func/skip-file to exclude-func/exclude-file
+* feat: include-func/include-file, default scan all

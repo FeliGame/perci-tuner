@@ -24,8 +24,10 @@ DD_FLAG=false
 MIX_BINOP_FLAG=true
 
 # Filters.
-SKIP_FILE=""
-SKIP_FUNC=""
+INCLUDE_FILE=""
+INCLUDE_FUNC=""
+EXCLUDE_FILE=""
+EXCLUDE_FUNC=""
 
 # Search / multi-version options.
 RUN_ALGORITHM="dd"
@@ -165,8 +167,10 @@ Search options:
   -base-result=<result>       Manually set baseline result value
 
 Common options:
-  -skip-file=<file1,pat*>     Comma-separated source files to skip scanning
-  -skip-func=<func1,pat*>     Comma-separated function names to skip scanning
+  -include-file=<file1,pat*>     Comma-separated source files to scan (default scan all)
+  -include-func=<func1,pat*>     Comma-separated function names to scan (default scan all)
+  -exclude-file=<file1,pat*>     Comma-separated source files to skip scanning
+  -exclude-func=<func1,pat*>     Comma-separated function names to skip scanning
   -check-result               Print relative error in executable
   -fp128todd                  Treat fp128 as double-double
   -mix-binop=<true>           Enable mixed double/double-double binary operators
@@ -310,8 +314,10 @@ run_change_by_config() {
         -passes="$PASSES" \
         --variable-config="$TARGET_CONFIG" \
         --function-config="$TARGET_CONFIG" \
-        --skip-file="$SKIP_FILE" \
-        --skip-func="$SKIP_FUNC" \
+        --include-file="$INCLUDE_FILE" \
+        --include-func="$INCLUDE_FUNC" \
+        --exclude-file="$EXCLUDE_FILE" \
+        --exclude-func="$EXCLUDE_FUNC" \
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output.bc -o changed_output.bc
 
@@ -343,8 +349,10 @@ generate_config_and_original_executable() {
     opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
         -passes="$PASSES" \
         --mxp="$MXP_FLAG" \
-        --skip-file="$SKIP_FILE" \
-        --skip-func="$SKIP_FUNC" \
+        --include-file="$INCLUDE_FILE" \
+        --include-func="$INCLUDE_FUNC" \
+        --exclude-file="$EXCLUDE_FILE" \
+        --exclude-func="$EXCLUDE_FUNC" \
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output.bc -o output.bc
 
@@ -386,8 +394,10 @@ run_multi_version() {
         -passes="merge_multi" \
         --ir-multi="$MULTI_VERSION_IR" \
         --function-multi="$MULTI_VERSION_FUNC" \
-        --skip-file="$SKIP_FILE" \
-        --skip-func="$SKIP_FUNC" \
+        --include-file="$INCLUDE_FILE" \
+        --include-func="$INCLUDE_FUNC" \
+        --exclude-file="$EXCLUDE_FILE" \
+        --exclude-func="$EXCLUDE_FUNC" \
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output+mvselect.bc -o merged.bc
 
@@ -415,11 +425,17 @@ for arg in "$@"; do
         generate-config|search-optimize|change-by-config|multi-version)
             MODE_FLAG="$arg"
             ;;
-        -skip-file=*)
-            SKIP_FILE="${arg#-skip-file=}"
+        -include-file=*)
+            INCLUDE_FILE="${arg#-include-file=}"
             ;;
-        -skip-func=*)
-            SKIP_FUNC="${arg#-skip-func=}"
+        -include-func=*)
+            INCLUDE_FUNC="${arg#-include-func=}"
+            ;;
+        -exclude-file=*)
+            EXCLUDE_FILE="${arg#-exclude-file=}"
+            ;;
+        -exclude-func=*)
+            EXCLUDE_FUNC="${arg#-exclude-func=}"
             ;;
         -algorithm=*)
             RUN_ALGORITHM="${arg#-algorithm=}"
