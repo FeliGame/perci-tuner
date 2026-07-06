@@ -1700,6 +1700,7 @@ Function* ChangeVariableDecl::cloneFunction(Function *oldFunc, std::map<int, Typ
 
     SmallVector<ReturnInst*, 8> Returns;  
     CloneFunctionInto(newFunc, oldFunc, VMap, CloneFunctionChangeType::LocalChangesOnly, Returns);
+    cloneCache[key] = newFunc;
 
     // Copy local base-type mappings from original allocas to cloned allocas
     for (auto &BB : *oldFunc) {
@@ -1770,20 +1771,19 @@ Function* ChangeVariableDecl::cloneFunction(Function *oldFunc, std::map<int, Typ
 
                         if (baseType && baseType->isFloatingPointTy())
                             innerArgBaseTypes[ai] = baseType;
-
-                        bool innerNeedsClone = !innerArgBaseTypes.empty() ||
-                                               (funcRetTypeMap.count(callee) &&
-                                                funcRetTypeMap[callee] != callee->getReturnType());
-                        if (innerNeedsClone)
-                            if (auto *innerNewFunc = cloneFunction(callee, innerArgBaseTypes))
-                                updateCallInst(call, *innerNewFunc, innerArgBaseTypes);
                     }
+
+                    bool innerNeedsClone = !innerArgBaseTypes.empty() ||
+                                           (funcRetTypeMap.count(callee) &&
+                                            funcRetTypeMap[callee] != callee->getReturnType());
+                    if (innerNeedsClone)
+                        if (auto *innerNewFunc = cloneFunction(callee, innerArgBaseTypes))
+                            updateCallInst(call, *innerNewFunc, innerArgBaseTypes);
                 }
             }
         }
     }
 
-    cloneCache[key] = newFunc;
     return newFunc;
 }
 
@@ -1906,29 +1906,14 @@ DIType* ChangeVariableDecl::createDIType(Type* type, DIScope* scope, DIBuilder* 
     return nullptr;
 }
 
-void ChangeVariableDecl::updateCallGraph(CallGraphNode* root) {
-    if (!root) return;
+void ChangeVariableDecl::updateCallGraph(CallGraphNode* node) {
+    if (!node) return;
+    for (auto &entry : node->children) {
+        auto *callInst = entry.first;
+        auto *childNode = entry.second;
+        // 如果我只更新root，后面的让它沿着updateCallInst自动更新？是否就不需要CallGraph了？
 
-    // collect initial worklist from template tree
-    SmallVector<std::tuple<Function*, CallInst*, CallGraphNode*>, 64> worklist;
-    std::function<void(CallGraphNode*)> collect = [&](CallGraphNode* node) {
-        if (!node) return;
-        for (auto &entry : node->children) {
-            CallInst *call = entry.first;
-            CallGraphNode *childNode = entry.second;
-            worklist.emplace_back(node->func, call, childNode);
-            collect(childNode);
-        }
-    };
-    collect(root);
-
-    for (size_t idx = 0; idx < worklist.size(); ++idx) {
-        Function *callerFunc;
-        CallInst *callInst;
-        CallGraphNode *childTemplate;
-        std::tie(callerFunc, callInst, childTemplate) = worklist[idx];
-
-        Function *origCallee = childTemplate ? childTemplate->func : nullptr;
+        Function *origCallee = childNode ? childNode->func : nullptr;
         if (!origCallee) continue;
 
         // compute arg base types for this call
@@ -1952,11 +1937,13 @@ void ChangeVariableDecl::updateCallGraph(CallGraphNode* root) {
 
         // decide whether cloning is required
         bool needsClone = !argBaseTypes.empty() ||
-                          (funcRetTypeMap.count(origCallee) &&
-                           funcRetTypeMap[origCallee] != origCallee->getReturnType());
+                        (funcRetTypeMap.count(origCallee) &&
+                        funcRetTypeMap[origCallee] != origCallee->getReturnType());
         if (needsClone)
             if (auto *targetCallee = cloneFunction(origCallee, argBaseTypes))
                 updateCallInst(callInst, *targetCallee, argBaseTypes);
+
+        updateCallGraph(childNode);
     }
 }
 

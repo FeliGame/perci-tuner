@@ -626,5 +626,11 @@
 
 ### 4
 
-* fix: use -O2, rename skip-func/skip-file to exclude-func/exclude-file
-* feat: include-func/include-file, default scan all
+* fix: use -O2, rename skip-func/skip-file to exclude-func/exclude-file.
+* feat: include-func/include-file, default scan all.
+
+### 6
+
+* fix ChangeVariableDecl: improve function specialization performance.
+* feat: -refresh-config option.
+* developing: PerciAST to analyze config.

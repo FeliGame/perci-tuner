@@ -60,7 +60,10 @@ RUNTIME_LIB_DIRS=""
 INCLUDE_DIRS=""
 CFLAGS="" # Example: -O2. Beware that optimization may change results.
 
-PERCI_TUNER_ROOT="${PERCI_TUNER:-}"
+# run generate-config before search
+REFRESH_CONFIG=true
+
+# PERCI_ANALYSIS_OPTIONS="-Xclang -load -Xclang $PERCI_TUNER/build/libPerciAST.so -Xclang -plugin -Xclang perci-analysis "
 
 ###############################################################################
 # Small helpers
@@ -137,8 +140,8 @@ collect_source_files_from_dir() {
 }
 
 require_perci_tuner_root() {
-    [ -n "$PERCI_TUNER_ROOT" ] || die "PERCI_TUNER is not set"
-    [ -d "$PERCI_TUNER_ROOT" ] || die "PERCI_TUNER does not point to a directory: $PERCI_TUNER_ROOT"
+    [ -n "$PERCI_TUNER" ] || die "PERCI_TUNER is not set"
+    [ -d "$PERCI_TUNER" ] || die "PERCI_TUNER does not point to a directory: $PERCI_TUNER"
 }
 
 show_help() {
@@ -165,6 +168,7 @@ Search options:
   -arg=<arg>                  Add one executable argument, in order
   -base-time=<time>           Manually set baseline running time
   -base-result=<result>       Manually set baseline result value
+  -refresh-config             Refresh initial config file (default true)
 
 Common options:
   -include-file=<file1,pat*>     Comma-separated source files to scan (default scan all)
@@ -234,19 +238,19 @@ EOF
 build_perci_tuner() {
     info "Build Perci-Tuner..."
 
-    cd "$PERCI_TUNER_ROOT"
+    cd "$PERCI_TUNER"
     mkdir -p build
     cd build
     cmake ..
     make -j"$(cpu_count)"
-    cd "$PERCI_TUNER_ROOT"
+    cd "$PERCI_TUNER"
 }
 
 prepare_runtime_options() {
     if [ "$CHECK_RESULT_FLAG" = true ]; then
-        append_link_dir "-L$PERCI_TUNER_ROOT/lib/check_result"
+        append_link_dir "-L$PERCI_TUNER/lib/check_result"
         append_link_lib "-lcheck_result"
-        append_runtime_lib_dir "-Wl,-rpath=$PERCI_TUNER_ROOT/lib/check_result"
+        append_runtime_lib_dir "-Wl,-rpath=$PERCI_TUNER/lib/check_result"
     fi
 
     if is_x86_64 && [ "$DD_FLAG" = true ]; then
@@ -262,9 +266,9 @@ prepare_runtime_options() {
 
 select_double_double_support_archive() {
     if is_x86_64; then
-        DD_SUPPORT="$PERCI_TUNER_ROOT/lib/dd_real/libautop-x86.a"
+        DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop-x86.a"
     else
-        DD_SUPPORT="$PERCI_TUNER_ROOT/lib/dd_real/libautop.a"
+        DD_SUPPORT="$PERCI_TUNER/lib/dd_real/libautop.a"
     fi
 }
 
@@ -282,11 +286,11 @@ compile_sources_to_bitcode() {
         [ -f "$src_file" ] || die "file not found: $src_file"
 
         if [ "$FPE_FLAG" = true ]; then
-            clang -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe \
+            clang $PERCI_ANALYSIS_OPTIONS -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe \
                 "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
                 -fno-discard-value-names -o "$src_file.bc"
         else
-            clang -g -emit-llvm -c \
+            clang $PERCI_ANALYSIS_OPTIONS -g -emit-llvm -c \
                 "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
                 -fno-discard-value-names -o "$src_file.bc"
         fi
@@ -310,7 +314,7 @@ run_change_by_config() {
         select_double_double_support_archive
     fi
 
-    opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
+    opt -load-pass-plugin "$PERCI_TUNER/build/PerciTuner.so" -S \
         -passes="$PASSES" \
         --variable-config="$TARGET_CONFIG" \
         --function-config="$TARGET_CONFIG" \
@@ -321,18 +325,18 @@ run_change_by_config() {
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output.bc -o changed_output.bc
 
-    clang $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
+    clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
     info "[Changed] IR: changed_output.bc, Executable: changed_output"
 }
 
 generate_config_and_original_executable() {
     if [ "$CHECK_RESULT_FLAG" = true ]; then
-        opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
+        opt -load-pass-plugin "$PERCI_TUNER/build/PerciTuner.so" -S \
             -passes="record_result,remove_pragma" \
             --is-original=true \
             output.bc -o mxp.bc
 
-        clang $CFLAGS -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+        clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
         rm mxp.bc
 
         LAST_LINE=$(./output | tail -n 1)
@@ -346,7 +350,7 @@ generate_config_and_original_executable() {
         select_double_double_support_archive
     fi
 
-    opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
+    opt -load-pass-plugin "$PERCI_TUNER/build/PerciTuner.so" -S \
         -passes="$PASSES" \
         --mxp="$MXP_FLAG" \
         --include-file="$INCLUDE_FILE" \
@@ -356,12 +360,12 @@ generate_config_and_original_executable() {
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output.bc -o output.bc
 
-    clang $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
+    clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
     info "[Original] Config: config.json, IR: output.bc, Executable: output"
 }
 
 run_search_optimize() {
-    python3 -u "$PERCI_TUNER_ROOT/scripts/search.py" \
+    python3 -u "$PERCI_TUNER/scripts/search.py" \
         -algorithm="$RUN_ALGORITHM" \
         -thres="$THRESHOLD" \
         -repeat="$REPEAT_TIMES" \
@@ -385,12 +389,12 @@ run_multi_version() {
 
     export PERCI_TUNER_ORIGINAL_VERSION="$ORIGINAL_VERSION_FLAG"
 
-    clang -S -emit-llvm -fno-discard-value-names \
-        -o mvselect.bc "$PERCI_TUNER_ROOT/lib/mvselect.c"
+    clang $PERCI_ANALYSIS_OPTIONS -S -emit-llvm -fno-discard-value-names \
+        -o mvselect.bc "$PERCI_TUNER/lib/mvselect.c"
 
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
 
-    opt -load-pass-plugin "$PERCI_TUNER_ROOT/build/PerciTuner.so" -S \
+    opt -load-pass-plugin "$PERCI_TUNER/build/PerciTuner.so" -S \
         -passes="merge_multi" \
         --ir-multi="$MULTI_VERSION_IR" \
         --function-multi="$MULTI_VERSION_FUNC" \
@@ -401,14 +405,14 @@ run_multi_version() {
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output+mvselect.bc -o merged.bc
 
-    clang $CFLAGS -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+    clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     info "[Merged] IR: merged.bc, Executable: merged"
 }
 
 run_fpe_postprocess() {
     [ "$FPE_FLAG" = true ] || return 0
 
-    clang $CFLAGS -o fpe_opt -rdynamic -funwind-tables optimized_output.bc \
+    clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o fpe_opt -rdynamic -funwind-tables optimized_output.bc \
         -lm $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
 }
 
@@ -424,6 +428,9 @@ for arg in "$@"; do
             ;;
         generate-config|search-optimize|change-by-config|multi-version)
             MODE_FLAG="$arg"
+            ;;
+        -refresh-config=*)
+            REFRESH_CONFIG="${arg#-refresh-config=}"
             ;;
         -include-file=*)
             INCLUDE_FILE="${arg#-include-file=}"
@@ -548,8 +555,13 @@ case "$MODE_FLAG" in
     change-by-config)
         run_change_by_config
         ;;
-    generate-config|search-optimize|multi-version)
+    generate-config)
         generate_config_and_original_executable
+        ;;
+    search-optimize|multi-version)
+        if [ "$REFRESH_CONFIG" = true ]; then
+            generate_config_and_original_executable
+        fi
         ;;
     *)
         die "unknown mode: $MODE_FLAG"
