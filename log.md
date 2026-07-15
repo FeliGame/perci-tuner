@@ -634,3 +634,7 @@
 * fix ChangeVariableDecl: improve function specialization performance.
 * feat: -refresh-config option.
 * developing: PerciAST to analyze config.
+
+### 16
+
+* fix ChangeVariableDecl: get correct result type from GEP.

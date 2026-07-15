@@ -1613,18 +1613,18 @@ Type* ChangeVariableDecl::getBasicType(Value *value) {
     };
     if (auto *argType = findOriginalArgType(value)) return argType;
 
+    auto stripArrayType = [](Type *type) -> Type* {
+        while (auto *arrayType = dyn_cast<ArrayType>(type))
+            type = arrayType->getElementType();
+        return type;
+    };
     // 尝试找到原始的AllocaInst
     if (auto *alloca = findOriginalAlloca(value)) {
         return localBaseTypeMap[alloca];
     } else if (auto *globalVar = dyn_cast<GlobalVariable>(value)) {
         return globalBaseTypeMap[globalVar];
     } else if (auto *gep = dyn_cast<GetElementPtrInst>(value)) {
-        return gep->getSourceElementType()->getArrayElementType();
-    } else if (auto *constant = dyn_cast<ConstantExpr>(value)) {
-        // 应对EP的vranlc: ptr getelementptr inbounds ([131072 x double], ptr @x.1, i64 -1)的右半部分
-        if (constant->getOpcode() == Instruction::GetElementPtr) {
-            return getBasicType(constant->getOperand(0));
-        }
+        return stripArrayType(gep->getResultElementType());
     }
     // TODO: 是否有其他情形？
     errs() <<"[Unhandled basic type]" << *value << '\n';
