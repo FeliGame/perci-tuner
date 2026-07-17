@@ -638,3 +638,7 @@
 ### 16
 
 * fix ChangeVariableDecl: get correct result type from GEP.
+
+### 17
+
+* fix ChangeVariableDecl: integer cast in insertCast().

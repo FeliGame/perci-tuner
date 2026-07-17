@@ -327,18 +327,14 @@ Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction 
 
     IRBuilder<> builder(insertBefore);
 
-    if (val->getType()->isFloatingPointTy() && targetType->isFloatingPointTy()) {
-        // errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
+    if (val->getType()->isFloatingPointTy() && targetType->isFloatingPointTy())
         return builder.CreateFPCast(val, targetType, "fp_cast");
-    }
-    if (val->getType()->isIntegerTy() && targetType->isFloatingPointTy()) {
-        // errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
+    if (val->getType()->isIntegerTy() && targetType->isFloatingPointTy())
         return builder.CreateSIToFP(val, targetType, "int_to_fp");
-    }
-    if (val->getType()->isFloatingPointTy() && targetType->isIntegerTy()) {
-        // errs() << "[insert cast] " << *val->getType() << "->" << *targetType << "\n";
+    if (val->getType()->isFloatingPointTy() && targetType->isIntegerTy())
         return builder.CreateFPToSI(val, targetType, "fp_to_int");
-    }
+    if (val->getType()->isIntegerTy() && targetType->isIntegerTy())
+        return builder.CreateIntCast(val, targetType, /*isSigned=*/true, "int_cast");
     
     // errs() << "[unsupported cast] " << *val->getType() << "->" << *targetType << "\n";
     return nullptr;
@@ -1818,6 +1814,7 @@ void ChangeVariableDecl::updateCallInst(CallInst *call, Function &newFunc, std::
                 newArgs.push_back(castedArg);
             } else {
                 // 转换失败，使用原参数
+                errs() << "[ERROR updateCallInst()] fail to cast old arg " << *oldArg << '\n';
                 newArgs.push_back(oldArg);
             }
         } else {
