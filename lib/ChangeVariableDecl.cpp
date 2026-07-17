@@ -21,6 +21,7 @@
 #include <llvm/ADT/APSInt.h>
 #include <llvm/ADT/Twine.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/Operator.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Config/llvm-config.h>
 
@@ -197,6 +198,20 @@ void ChangeVariableDecl::initBaseTypeMaps(Module &module) {
             }
         }
     }
+}
+
+Type* ChangeVariableDecl::stripArrayType(Type *type) {
+    while (auto *arrayType = dyn_cast<ArrayType>(type))
+        type = arrayType->getElementType();
+    return type;
+}
+
+Type* ChangeVariableDecl::replaceArrayBaseType(Type *type, Type *baseType) {
+    if (auto *arrayType = dyn_cast<ArrayType>(type)) {
+        auto *newElementType = replaceArrayBaseType(arrayType->getElementType(), baseType);
+        return ArrayType::get(newElementType, arrayType->getArrayNumElements());
+    }
+    return baseType;
 }
 
 Align ChangeVariableDecl::getAlign(Type* targetType) {
@@ -795,19 +810,7 @@ Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* tar
     for (auto& index : gep->indices()) {
         indices.push_back(index.get());
     }
-    // 降级到基类型保证正确性
-    while (auto *targetArrayType = dyn_cast<ArrayType>(targetType))
-        targetType = targetArrayType->getElementType();
-    
-    // 递归函数：保持数组维度，将最内层基类型替换为targetType
-    std::function<Type*(Type*)> getNewTypeWithBaseReplaced = [&](Type *type) -> Type * {
-        if (auto *arrayType = dyn_cast<ArrayType>(type)) {
-            Type *newElementType = getNewTypeWithBaseReplaced(arrayType->getElementType());
-            return ArrayType::get(newElementType, arrayType->getArrayNumElements());
-        }
-        return targetType;
-    };
-    Type *newSrcType = getNewTypeWithBaseReplaced(srcType);
+    auto *newSrcType = replaceArrayBaseType(srcType, stripArrayType(targetType));
 
     // 创建新的 GEP 指令
     auto* newGEP = GetElementPtrInst::CreateInBounds(
@@ -824,6 +827,37 @@ Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* tar
     // errs() << "[repair GEP] " << *gep << "->" << *newGEP << '\n';
 
     return newGEP;
+}
+
+Constant* ChangeVariableDecl::repairGEPConstantExpr(ConstantExpr *constant, Type* targetType) {
+    if (!targetType || constant->getOpcode() != Instruction::GetElementPtr)
+        return nullptr;
+
+    auto *gepOp = cast<GEPOperator>(constant);
+    auto *srcType = gepOp->getSourceElementType();
+    if (srcType->isPointerTy())
+        return constant;
+
+    auto *ptrOperand = dyn_cast<Constant>(constant->getOperand(0));
+    if (!ptrOperand)
+        return nullptr;
+
+    SmallVector<Value*, 4> indices;
+    for (auto index = gepOp->idx_begin(); index != gepOp->idx_end(); ++index)
+        indices.push_back(index->get());
+
+    auto *newSrcType = replaceArrayBaseType(srcType, stripArrayType(targetType));
+    auto *newConstant = ConstantExpr::getGetElementPtr(
+        newSrcType,
+        ptrOperand,
+        indices,
+        gepOp->isInBounds()
+    );
+
+    if (newConstant != constant)
+        constant->replaceAllUsesWith(newConstant);
+
+    return newConstant;
 }
 
 Instruction* ChangeVariableDecl::repairBitCastInst(BitCastInst* bitCast) {
@@ -912,6 +946,22 @@ Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {
 
 // Make inst operands type consistent
 void ChangeVariableDecl::repairUserType(Value* origin, User *user, Type* targetType, unsigned align) {
+    if (auto *constant = dyn_cast<ConstantExpr>(user)) {
+        auto *newConstant = repairGEPConstantExpr(constant, targetType);
+        if (newConstant && newConstant != constant) {
+            Type *nextTargetType = targetType;
+            if (auto *gepOp = dyn_cast<GEPOperator>(newConstant))
+                nextTargetType = gepOp->getResultElementType();
+
+            SmallVector<User*> users;
+            for (auto *constantUser : newConstant->users())
+                users.push_back(constantUser);
+            for (auto *constantUser : users)
+                repairUserType(newConstant, constantUser, nextTargetType, align);
+        }
+        return;
+    }
+
     if (!isa<Instruction>(user)) {
         // errs() << "[not an instruction]\n";
         return;
@@ -961,19 +1011,27 @@ void ChangeVariableDecl::repairUserType(Value* origin, User *user, Type* targetT
         newInst = inst;
 
     if (newInst) {
+        Type *nextTargetType = targetType;
+        if (auto *gep = dyn_cast<GetElementPtrInst>(newInst))
+            nextTargetType = gep->getResultElementType();
+
         // 防止修改迭代器导致无限递归
         SmallVector<User*> users;
         for (auto *user : newInst->users())
             users.push_back(user);
         for (auto *user : users)
-            repairUserType(newInst, user, targetType);
+            repairUserType(newInst, user, nextTargetType);
         users.clear();
     }
 }
 
 // Change global & static & local static to target type
 void ChangeVariableDecl::changeGlobalVariable(GlobalVariable *GV, Type* targetType) {
-    if (!targetType || targetType == GV->getValueType() || !GV->hasInitializer()) return;
+    if (!targetType || !GV->hasInitializer()) return;
+    if (GV->getValueType()->isArrayTy())
+        targetType = replaceArrayBaseType(GV->getValueType(), stripArrayType(targetType));
+    if (targetType == GV->getValueType()) return;
+
     auto *initializer = GV->getInitializer();
     auto *newInitializer = GV->getValueType()->isPointerTy() ? 
                             initializer : changeGVInitializer(initializer, targetType);
@@ -1012,10 +1070,14 @@ void ChangeVariableDecl::changeGlobalVariable(GlobalVariable *GV, Type* targetTy
     globalBaseTypeMap[newGV] = baseType;
     // errs() << "[GV base type] " << newGV->getName() << " -> " << *baseType << '\n';
 
-    repairGVUsers(newGV, targetType);  // TODO: use newGV cause inifinite user loop
-    if (initializer != newInitializer) {
+    SmallVector<User*> users;
+    for (auto *user : newGV->users())
+        users.push_back(user);
+    for (auto *user : users)
+        repairUserType(newGV, user, targetType);
+
+    if (initializer != newInitializer)
         GVToErase.insert(GV);
-    }
 }
 
 Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* targetType) {
@@ -1096,44 +1158,6 @@ Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* t
     return nullptr;
 }
 
-void ChangeVariableDecl::repairGVUsers(GlobalVariable *GV, Type* targetType) {
-    auto *GVType = GV->getValueType();
-    for (auto *user : GV->users()) {
-        if (isa<Instruction>(user)) {  // 数组索引为0
-            repairUserType(GV, user, targetType);
-        } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {
-            // 处理GEP常量表达式用户（数组索引>1）
-            // errs() << "[repair GEP constant expr] " << *constant << "->";
-            
-            // 获取原GEP的参数
-            SmallVector<Value*, 8> indices;
-            for (unsigned i = 1; i < constant->getNumOperands(); ++i) {
-                indices.push_back(constant->getOperand(i));
-            }
-
-            // 检查是否是inbounds GEP
-            bool isInBounds = constant->getRawSubclassOptionalData();
-            // 对于数组类型，应该使用数组元素类型作为源类型
-            Type *gepSourceType = GVType->isPointerTy() ? GVType : targetType;
-            // 如果是数组类型，提取元素类型
-            if (gepSourceType->isArrayTy())
-                gepSourceType = gepSourceType->getArrayElementType();
-            auto *newConstant = ConstantExpr::getGetElementPtr(
-                gepSourceType,
-                GV,
-                indices,
-                isInBounds
-            );
-            // errs() << *newConstant << '\n';
-            // 替换原常量表达式的所有使用
-            constant->replaceAllUsesWith(newConstant);
-            
-            for (auto *constantUser : newConstant->users()) {
-                repairUserType(newConstant, constantUser, targetType);
-            }
-        }
-    }
-}
 
 // Remove redundant & Replace wrong fpext/fptrunc insts
 void llvm::ChangeVariableDecl::repairCasts(Function &F)

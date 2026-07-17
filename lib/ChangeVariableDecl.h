@@ -4,6 +4,7 @@
 #define LLVM_CHANGE_VARIABLE_DECL_H
 
 #include <llvm/Pass.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -48,6 +49,8 @@ private:
     Type* typeNameToBasicType(std::string typeName, LLVMContext& context);
     AllocaInst* findOriginalAlloca(Value* value);
 
+    Type* stripArrayType(Type *type);
+    Type* replaceArrayBaseType(Type *type, Type *baseType);
     Type* getBasicType(Value *value);
     void initBaseTypeMaps(Module &module);
     DenseMap<GlobalVariable*, Type*> globalBaseTypeMap;  // Global variable to its base type
@@ -62,11 +65,11 @@ private:
     Instruction* repairCallInst(CallInst *call);
     Instruction* repairPHINode(PHINode *phi);
     Instruction* repairGEPInst(GetElementPtrInst* gep, Type* targetType);
+    Constant* repairGEPConstantExpr(ConstantExpr *constant, Type* targetType);
     Instruction* repairBitCastInst(BitCastInst* bitCast);
     Instruction* repairIntToFP(Instruction* castInst);
     void repairAllocaUsers(AllocaInst* alloca);
     void repairUserType(Value* origin, User *user, Type* targetType=nullptr, unsigned align=0);
-    void repairGVUsers(GlobalVariable *GV, Type* targetType);
     void repairCasts(Function &F);
 
     AllocaInst* changeAllocaInst(AllocaInst *alloca, Type *newType);

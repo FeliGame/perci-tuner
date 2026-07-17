@@ -642,3 +642,4 @@
 ### 17
 
 * fix ChangeVariableDecl: integer cast in insertCast().
+* fix ChangeVariableDecl: repair GEPConstantExpr, get base type correctly.
