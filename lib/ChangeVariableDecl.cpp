@@ -1906,7 +1906,11 @@ void ChangeVariableDecl::updateCallInst(CallInst *call, Function &newFunc, std::
     newCall->setDebugLoc(call->getDebugLoc());
     newCall->takeName(call);
     replaceMultiOperandInst(call, newCall);
+
+    SmallVector<User*, 8> users;
     for (auto *user : newCall->users())
+        users.push_back(user);
+    for (auto *user : users)
         repairUserType(newCall, user);
     // errs() << "[update caller] " << *call << " -> " << *newCall << "\n";
 }
@@ -1983,44 +1987,56 @@ DIType* ChangeVariableDecl::createDIType(Type* type, DIScope* scope, DIBuilder* 
 }
 
 void ChangeVariableDecl::updateCallGraph(CallGraphNode* node) {
-    if (!node) return;
-    for (auto &entry : node->children) {
-        auto *callInst = entry.first;
-        auto *childNode = entry.second;
-        // 如果我只更新root，后面的让它沿着updateCallInst自动更新？是否就不需要CallGraph了？
+    DenseSet<Function*> visited;
+    std::function<void(CallGraphNode*)> update = [&](CallGraphNode* currNode) {
+        if (!currNode || visited.count(currNode->func)) return;
+        visited.insert(currNode->func);
 
-        Function *origCallee = childNode ? childNode->func : nullptr;
-        if (!origCallee) continue;
+        SmallVector<std::pair<CallInst*, CallGraphNode*>, 16> children;
+        for (auto &entry : currNode->children)
+            children.push_back({entry.first, entry.second});
 
-        // compute arg base types for this call
-        std::map<int, Type*> argBaseTypes;
-        unsigned numArgs = callInst->arg_size();
-        for (unsigned i = 0; i < numArgs; ++i) {
-            Value *arg = callInst->getArgOperand(i);
-            Type *baseType = nullptr;
-            auto *argType = arg->getType();
-            if (argType->isPointerTy())
-                baseType = getBasicType(arg); // pointer base follows actual arg
-            else if (argType->isFloatingPointTy())
-                // consult declared desired param type if any (guarded access)
-                if (funcDeclTypeMap.count(origCallee) && funcDeclTypeMap[origCallee].count(i))
-                    if (argType != funcDeclTypeMap[origCallee][i])
-                        baseType = funcDeclTypeMap[origCallee][i];
+        for (auto &entry : children) {
+            auto *callInst = entry.first;
+            auto *childNode = entry.second;
+            // 如果我只更新root，后面的让它沿着updateCallInst自动更新？是否就不需要CallGraph了？
 
-            if (baseType && baseType->isFloatingPointTy())
-                argBaseTypes[i] = baseType;
+            Function *origCallee = childNode ? childNode->func : nullptr;
+            if (!callInst || !origCallee) continue;
+
+            // compute arg base types for this call
+            std::map<int, Type*> argBaseTypes;
+            unsigned numArgs = callInst->arg_size();
+            for (unsigned i = 0; i < numArgs; ++i) {
+                Value *arg = callInst->getArgOperand(i);
+                Type *baseType = nullptr;
+                auto *argType = arg->getType();
+                if (argType->isPointerTy())
+                    baseType = getBasicType(arg); // pointer base follows actual arg
+                else if (argType->isFloatingPointTy())
+                    // consult declared desired param type if any (guarded access)
+                    if (funcDeclTypeMap.count(origCallee) && funcDeclTypeMap[origCallee].count(i))
+                        if (argType != funcDeclTypeMap[origCallee][i])
+                            baseType = funcDeclTypeMap[origCallee][i];
+
+                if (baseType && baseType->isFloatingPointTy())
+                    argBaseTypes[i] = baseType;
+            }
+
+            // decide whether cloning is required
+            bool needsClone = !argBaseTypes.empty() ||
+                            (funcRetTypeMap.count(origCallee) &&
+                            funcRetTypeMap[origCallee] != origCallee->getReturnType());
+            if (needsClone)
+                if (auto *targetCallee = cloneFunction(origCallee, argBaseTypes))
+                    updateCallInst(callInst, *targetCallee, argBaseTypes);
         }
 
-        // decide whether cloning is required
-        bool needsClone = !argBaseTypes.empty() ||
-                        (funcRetTypeMap.count(origCallee) &&
-                        funcRetTypeMap[origCallee] != origCallee->getReturnType());
-        if (needsClone)
-            if (auto *targetCallee = cloneFunction(origCallee, argBaseTypes))
-                updateCallInst(callInst, *targetCallee, argBaseTypes);
+        for (auto &entry : children)
+            update(entry.second);
+    };
 
-        updateCallGraph(childNode);
-    }
+    update(node);
 }
 
 CallGraphNode* ChangeVariableDecl::buildCallGraph(Function* currFunc) {
