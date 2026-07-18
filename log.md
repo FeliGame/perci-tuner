@@ -648,3 +648,4 @@
 
 * fix ChangeVariableDecl::changeStructDecl. (benchmark: NPB_FT)
 * fix run_history: show nan/inf correctly.
+* feat: abort search when original result is nan/inf.

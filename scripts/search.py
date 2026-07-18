@@ -215,6 +215,9 @@ def main():
     else:
         data_utils.ORIGINAL_TIME = transform.current_run_time
         data_utils.ORIGINAL_RESULT = transform.current_run_result
+    if data_utils.is_non_finite(data_utils.ORIGINAL_TIME) or data_utils.is_non_finite(data_utils.ORIGINAL_RESULT):
+        print(">>> Perci-Tuner(Py) Error: baseline produced non-finite time/result, search aborted.")
+        sys.exit(1)
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
     
     # start searching
