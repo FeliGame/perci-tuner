@@ -1511,29 +1511,66 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
         }
         maxAlignTillNow[0] = maxAlign;  // IMPORTANT: load/store对于第一个成员使用最大对齐
 
+        auto containsStructType = [](Type *type, StructType *targetStruct) {
+            while (auto *arrayType = dyn_cast<ArrayType>(type))
+                type = arrayType->getElementType();
+            return type == targetStruct;
+        };
+
         // Replace global/static initializers
         for (auto &global : module.globals()) {
-            if (!global.hasInitializer() || global.getValueType() != sty) continue;
-            global.setAlignment(Align(maxAlign));
-            
-            // 更新全局变量的初始化器
-            auto *initializer = global.getInitializer();
-            auto *newInitializer = changeGVInitializer(initializer, sty);
-            if (newInitializer && newInitializer != initializer) {
-                global.setInitializer(newInitializer);
+            if (!global.hasInitializer() || !containsStructType(global.getValueType(), sty)) continue;
+            bool isDirectStructGlobal = global.getValueType() == sty;
+            if (isDirectStructGlobal) {
+                global.setAlignment(Align(maxAlign));
+                // 更新全局变量的初始化器
+                auto *initializer = global.getInitializer();
+                auto *newInitializer = changeGVInitializer(initializer, sty);
+                if (newInitializer && newInitializer != initializer) {
+                    global.setInitializer(newInitializer);
+                }
             }
             
             // 结构体全局变量的user替换
-            for (auto *user : global.users()) {
-                // 若为storeInst/loadInst，说明读写的是第一个成员，将memberNewTypes[0]的类型作为替换目标
+            SmallVector<User*, 4> users;
+            for (auto *user : global.users())
+                users.push_back(user);
+            for (auto *user : users) {
                 if (isa<Instruction>(user)) {
-                    repairUserType(&global, user, memberNewBaseTypes[0], maxAlign);
+                    bool directFirstMemberAccess = false;
+                    if (auto *load = dyn_cast<LoadInst>(user))
+                        directFirstMemberAccess = load->getPointerOperand() == &global;
+                    else if (auto *store = dyn_cast<StoreInst>(user))
+                        directFirstMemberAccess = store->getPointerOperand() == &global;
+
+                    // 直接load/store结构体地址时，LLVM IR省略了成员GEP，实际读写的是第一个成员。
+                    // 对结构体数组全局变量也会出现这种形式，例如NPB_FT中dcomplex u[NX]的u[0].real。
+                    if (directFirstMemberAccess)
+                        repairUserType(&global, user, memberNewBaseTypes[0], maxAlign);
+                    else
+                        repairUserType(&global, user, global.getValueType(), maxAlign);
                 } else if (auto *constant = dyn_cast<ConstantExpr>(user)) {  // 读写的是后续成员
-                    unsigned memberIndex = cast<ConstantInt>(constant->getOperand(constant->getNumOperands() - 1))->getZExtValue();
-                    // errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
-                    for (auto *user : constant->users()) {
-                        repairUserType(constant, user, memberNewBaseTypes[memberIndex], maxAlignTillNow[memberIndex]);
+                    auto *gepOp = dyn_cast<GEPOperator>(constant);
+                    if (!gepOp || gepOp->getSourceElementType() != sty || gepOp->getNumIndices() != 2) {
+                        repairUserType(&global, constant, global.getValueType(), maxAlign);
+                        continue;
                     }
+                    auto *memberIndexValue = dyn_cast<ConstantInt>((gepOp->idx_end() - 1)->get());
+                    if (!memberIndexValue) {
+                        repairUserType(&global, constant, global.getValueType(), maxAlign);
+                        continue;
+                    }
+                    unsigned memberIndex = memberIndexValue->getZExtValue();
+                    if (memberIndex >= memberNewBaseTypes.size()) {
+                        repairUserType(&global, constant, global.getValueType(), maxAlign);
+                        continue;
+                    }
+                    // errs() << "[repair struct member users] " << global.getName() << '.' << memberIndex << '\n';
+                    SmallVector<User*, 4> constantUsers;
+                    for (auto *user : constant->users())
+                        constantUsers.push_back(user);
+                    for (auto *user : constantUsers)
+                        repairUserType(constant, user, memberNewBaseTypes[memberIndex], maxAlignTillNow[memberIndex]);
                 } else {
                     errs() << "[TODO] unhandled struct's user: " << *user << '\n';
                 }
@@ -1564,10 +1601,26 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                         if (auto *originalAlloca = findOriginalAlloca(gep->getPointerOperand())) 
                             originalAlloca->setAlignment(Align(maxAlign));
 
-                        // 获取成员在结构体中的索引及其类型
-                        unsigned elementIndex = cast<ConstantInt>(gep->idx_end() - 1)->getZExtValue();
+                        SmallVector<User*, 4> users;
                         for (auto *user : newGEP->users())
-                            repairUserType(newGEP, user, memberNewBaseTypes[elementIndex], maxAlignTillNow[elementIndex]);
+                            users.push_back(user);
+
+                        // Only two-index GEPs select a field from this struct type here.
+                        // GEPs like "gep %struct, ptr %base, i64 %idx" index a struct array element;
+                        // keep the whole struct type for the following member GEP users.
+                        if (gep->getNumIndices() == 2) {
+                            if (auto *memberIndexValue = dyn_cast<ConstantInt>((gep->idx_end() - 1)->get())) {
+                                unsigned memberIndex = memberIndexValue->getZExtValue();
+                                if (memberIndex < memberNewBaseTypes.size()) {
+                                    for (auto *user : users)
+                                        repairUserType(newGEP, user, memberNewBaseTypes[memberIndex], maxAlignTillNow[memberIndex]);
+                                    continue;
+                                }
+                            }
+                        }
+
+                        for (auto *user : users)
+                            repairUserType(newGEP, user, sty, maxAlign);
                     }
                 }
             }
@@ -1644,6 +1697,8 @@ Type* ChangeVariableDecl::getBasicType(Value *value) {
     } else if (auto *globalVar = dyn_cast<GlobalVariable>(value)) {
         return globalBaseTypeMap[globalVar];
     } else if (auto *gep = dyn_cast<GetElementPtrInst>(value)) {
+        return stripArrayType(gep->getResultElementType());
+    } else if (auto *gep = dyn_cast<GEPOperator>(value)) {
         return stripArrayType(gep->getResultElementType());
     }
     // TODO: 是否有其他情形？

@@ -637,9 +637,14 @@
 
 ### 16
 
-* fix ChangeVariableDecl: get correct result type from GEP.
+* fix ChangeVariableDecl: get correct result type from GEP. (benchmark: AsianOption, BlackScholes, BarrierOption, Heston)
 
 ### 17
 
-* fix ChangeVariableDecl: integer cast in insertCast().
-* fix ChangeVariableDecl: repair GEPConstantExpr, get base type correctly.
+* fix ChangeVariableDecl: integer cast in insertCast(). (benchmark: Biquad, naive_gemm, LMS)
+* fix ChangeVariableDecl: repair GEPConstantExpr, get base type correctly. (benchmark: LU)
+
+### 18
+
+* fix ChangeVariableDecl::changeStructDecl. (benchmark: NPB_FT)
+* fix run_history: show nan/inf correctly.

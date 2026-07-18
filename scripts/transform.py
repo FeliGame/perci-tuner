@@ -11,6 +11,7 @@ import subprocess
 import config_utils
 import re
 import platform
+import math
 
 
 COMPILER = 'clang'
@@ -43,12 +44,16 @@ def read_result(text):
     match = re.search(pattern, text.strip(), re.IGNORECASE)  # 忽略大小写（处理0X、P等）
     if match:
         return match.group(1)  # 返回原始字符串（供后续判断十六进制格式）
-    # 处理nan/inf（忽略大小写）
-    lower_text = text.strip().lower()
-    if "nan" in lower_text or "inf" in lower_text:
-        return sys.maxsize
-    else:
-        return None
+    # 处理输出末尾的nan/inf（忽略大小写），保留为可读的非有限数值标记。
+    special_match = re.search(r"([-+]?(?:nan|inf(?:inity)?))\s*$", text.strip(), re.IGNORECASE)
+    if special_match:
+        special_value = special_match.group(1).lower()
+        if "nan" in special_value:
+            return "nan"
+        if special_value.startswith("-"):
+            return "-inf"
+        return "inf"
+    return None
 
 
 # run the current variable config and get the result
@@ -119,8 +124,11 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                 # output = output.splitlines()[-1]  # 取最后一行
                 output_text = output.decode()
                 output_val = read_result(output_text)
+                if output_val is None:
+                    return -4
                 if is_mxp:  # 如果是mxp模式，则output接收到的最后一行是误差值，不是结果值
-                    if float(output_val) > config_utils.thres:
+                    numeric_output_val = float(output_val)
+                    if not math.isfinite(numeric_output_val) or numeric_output_val > config_utils.thres:
                         satisfy_thres = False
                         current_run_result = output_val
                         current_run_time = float("nan")

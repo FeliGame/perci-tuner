@@ -3,7 +3,7 @@
 
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import os, csv, decimal
+import os, csv, decimal, math
 from decimal import Decimal, getcontext
 
 # 高精度计算相对误差（避免内部运算误差）
@@ -12,6 +12,14 @@ getcontext().prec = 50
 RUN_HISTORY = "run_history.csv"
 ORIGINAL_TIME = float('inf')  # running time of original program
 ORIGINAL_RESULT = ""          # running result of original program
+
+
+def is_non_finite(value):
+    try:
+        numeric_value = float(str(value).strip())
+        return math.isnan(numeric_value) or math.isinf(numeric_value)
+    except (ValueError, TypeError):
+        return False
 
 # delete run_history.csv
 def delete_data():
@@ -66,14 +74,14 @@ def is_nearly_equal(new_result, old_result, thres):
     # 调用修改后的get_rel_err函数计算相对误差
     rel_err = get_rel_err(new_result, old_result)
     
-    # 如果相对误差是inf，直接返回False
-    if rel_err == float('inf'):
+    # 如果相对误差是nan/inf，直接返回False
+    if is_non_finite(rel_err):
         return False
     
     # 使用Decimal进行比较，确保精度
     try:
         return decimal.Decimal(str(rel_err)) <= decimal.Decimal(thres)
-    except (ValueError, TypeError):
+    except (decimal.InvalidOperation, ValueError, TypeError):
         # 阈值无法转换为浮点数时，视为不匹配
         return False
 
@@ -86,6 +94,11 @@ def get_rel_err(new_result, old_result):
         # 转换为字符串并去除首尾空格，便于格式判断
         new_str = str(new_result).strip()
         old_str = str(old_result).strip()
+
+        if is_non_finite(new_str) or is_non_finite(old_str):
+            if "nan" in new_str.lower() or "nan" in old_str.lower():
+                return float('nan')
+            return float('inf')
         
         # 判断是否为十六进制格式（支持正负号：0x或-0x开头）
         is_hex_new = new_str.startswith(('0x', '-0x'))
