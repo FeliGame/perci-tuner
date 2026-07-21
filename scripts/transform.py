@@ -112,7 +112,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         try:
             # 使用perf_counter统计执行时间
             start_time = time.perf_counter()
-            output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD)
+            output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD if RUNNING_TIMES == 1 else None)
             end_time = time.perf_counter()
             execution_time = end_time - start_time
             

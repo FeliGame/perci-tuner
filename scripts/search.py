@@ -2,7 +2,7 @@
 
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import sys, json, os, time, copy
+import sys, json, os, time, copy, math
 import config_utils, data_utils, transform
 import exhaust_algorithm, dd_algorithm, hidd_algorithm, pedd_algorithm, algorithm_utils
 
@@ -16,7 +16,7 @@ def parse_arguments():
         '-history': True,
         '-algorithm': 'dd',
         '-mxp': False,
-        '-timeout': 60.0,
+        '-timeout': 1.5,
         '-shuffled': False,
         '-partition': 'sorted_partition.json',
         '-fp128todd': False,
@@ -158,7 +158,6 @@ def main():
     transform.RUNNING_TIMES = args['-repeat']
     transform.show_history = args['-history']
     algorithm = args['-algorithm']
-    transform.TIMEOUT_THRESHOLD = args['-timeout']
     shuffled = args['-shuffled']
     transform.FP128_TO_DD = args['-fp128todd']
     transform.MIX_BINOP = args['-mix-binop']
@@ -191,7 +190,7 @@ def main():
     print(f"  Repeat times: {args['-repeat']}")
     print(f"  Show history: {args['-history']}")
     print(f"  Algorithm: {args['-algorithm']}")
-    print(f"  Timeout seconds: {args['-timeout']}")
+    print(f"  Timeout multiplier: {args['-timeout']}")
     print(f"  Shuffled: {args['-shuffled']}")
     print(f"  Threads: {args['-threads']}")
     print(f"  FP128 to DD: {args['-fp128todd']}")
@@ -219,7 +218,9 @@ def main():
         print(">>> Perci-Tuner(Py) Error: baseline produced non-finite time/result, search aborted.")
         sys.exit(1)
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
-    
+    transform.TIMEOUT_THRESHOLD = math.ceil(args['-timeout'] * data_utils.ORIGINAL_TIME)
+    print(">>> Perci-Tuner(Py): Timeout threshold set to", transform.TIMEOUT_THRESHOLD, "seconds")
+        
     # start searching
     algorithm_utils.min_time = data_utils.ORIGINAL_TIME
     algorithm_utils.bitcode_name = os.path.basename(bitcode)

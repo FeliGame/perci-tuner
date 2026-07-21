@@ -33,7 +33,7 @@ EXCLUDE_FUNC=""
 RUN_ALGORITHM="dd"
 THRESHOLD="1e-6"
 REPEAT_TIMES="1"
-TIMEOUT="60.0"
+TIMEOUT="1.5"
 HISTORY_FLAG=true
 SHUFFLED_FLAG=false
 THREADS="1"
@@ -161,7 +161,7 @@ Search options:
   -algorithm=exhaust/dd/pedd  Select search algorithm (default dd)
   -thres=<1e-6>               Set error threshold (default 1e-6)
   -repeat=<1>                 Set repeat count (default 1)
-  -timeout=<60.0>             Set run-time timeout seconds (default 60.0)
+  -timeout=<1.5>              Set single program timeout multiplier (default 1.5 x baseline)
   -shuffled                   Shuffle searched variables (default false)
   -j<threads>                 Set thread count for dd-algorithm (default 1)
   -history                    Keep search history (default true)

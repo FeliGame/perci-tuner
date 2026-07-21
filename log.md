@@ -650,3 +650,7 @@
 * fix run_history: show nan/inf correctly.
 * feat: abort search when original result is nan/inf.
 * BETA fix infinite running ChangeVariableDecl::updateCallGraph. (benchmark: gamma_lanczos, integ_adaptive)
+
+### 21
+
+* feat: redefine -timeout option to the ceil of timeout multiplier (default ceil(1.5x baseline)).
