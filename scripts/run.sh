@@ -58,7 +58,7 @@ LINK_LIBS=""
 LINK_DIRS=""
 RUNTIME_LIB_DIRS=""
 INCLUDE_DIRS=""
-CFLAGS="" # Example: -O2. Beware that optimization may change results.
+OPT_LEVEL="-O2" # Example: -O2. Beware that optimization may change results.
 
 # run generate-config before search
 REFRESH_CONFIG=true
@@ -325,7 +325,7 @@ run_change_by_config() {
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output.bc -o changed_output.bc
 
-    clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
+    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
     info "[Changed] IR: changed_output.bc, Executable: changed_output"
 }
 
@@ -336,7 +336,7 @@ generate_config_and_original_executable() {
             --is-original=true \
             output.bc -o mxp.bc
 
-        clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+        clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
         rm mxp.bc
 
         LAST_LINE=$(./output | tail -n 1)
@@ -359,8 +359,10 @@ generate_config_and_original_executable() {
         --exclude-func="$EXCLUDE_FUNC" \
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output.bc -o output.bc
-
-    clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
+    # remove these to ensure optimzations available
+    sed -i 's/\boptnone\b//g' output.bc
+    sed -i 's/\bnoinline\b//g' output.bc
+    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
     info "[Original] Config: config.json, IR: output.bc, Executable: output"
 }
 
@@ -377,7 +379,7 @@ run_search_optimize() {
         -fp128todd="$DD_FLAG" \
         output.bc \
         -mix-binop="$MIX_BINOP_FLAG" \
-        $RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $CFLAGS \
+        $RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $OPT_LEVEL \
         -base-time="$BASELINE_TIME" \
         -base-result="$BASELINE_RESULT"
 }
@@ -405,14 +407,14 @@ run_multi_version() {
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output+mvselect.bc -o merged.bc
 
-    clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     info "[Merged] IR: merged.bc, Executable: merged"
 }
 
 run_fpe_postprocess() {
     [ "$FPE_FLAG" = true ] || return 0
 
-    clang $PERCI_ANALYSIS_OPTIONS $CFLAGS -o fpe_opt -rdynamic -funwind-tables optimized_output.bc \
+    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o fpe_opt -rdynamic -funwind-tables optimized_output.bc \
         -lm $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
 }
 
@@ -511,7 +513,7 @@ for arg in "$@"; do
             append_include_dir "$arg"
             ;;
         -O*)
-            CFLAGS="$arg"
+            OPT_LEVEL="$arg"
             ;;
         -j*)
             THREADS="${arg#-j}"

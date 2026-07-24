@@ -626,7 +626,7 @@
 
 ### 4
 
-* fix: use -O2, rename skip-func/skip-file to exclude-func/exclude-file.
+* fix: rename skip-func/skip-file to exclude-func/exclude-file.
 * feat: include-func/include-file, default scan all.
 
 ### 6
@@ -654,3 +654,7 @@
 ### 21
 
 * feat: redefine -timeout option to the ceil of timeout multiplier (default ceil(1.5x baseline)).
+
+### 24
+
+* CRUCIAL feat: default enable -O2, fix inactive -O2 optimization bug.
