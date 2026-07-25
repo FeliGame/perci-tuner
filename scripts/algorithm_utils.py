@@ -2,14 +2,12 @@
 # 算法共用的辅助函数
 # @Author: LinLanfeng, Guocheng —— NUDT
 
-import sys, json, shutil, os
-import config_utils, data_utils, transform
-import threading
+import sys, json
+import data_utils, transform
 
 
 global run_times
 run_times = 0
-run_times_lock = threading.Lock()  # lock for run_times
 global min_time
 min_time = float('inf')
 global best_config_index
@@ -24,17 +22,13 @@ global bitcode_name
 global skip
 skip = False
 
-def atomic_increment_run_times():
-    global run_times
-    with run_times_lock:  # 确保同一时间只有一个线程修改run_times
-        run_times += 1
-        return run_times
 
 # update best config
 def update_opt(updated_min_time):
     global best_config_index, min_time
     best_config_index = run_times
     min_time = updated_min_time
+
 
 def compare_json(original, current, diff, prefix=""):
     """
@@ -84,8 +78,8 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
 
     # Compare current_config with original_conf and store differences in diff
     compare_json(original_conf, current_config, diff)
-
-    result = transform.transform(atomic_increment_run_times(), bitcode, current_config, diff, is_mxp)
+    run_times += 1
+    result = transform.transform(run_times, bitcode, current_config, diff, is_mxp)
     satisfy_thres = True
     if result == 0:  # result not satisfy threshold
         satisfy_thres = False

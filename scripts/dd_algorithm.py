@@ -3,8 +3,7 @@
 # @Author: LinLanfeng, Guocheng —— NUDT
 
 import math
-import config_utils, data_utils, transform, algorithm_utils
-import concurrent.futures  # 新增：并行处理库
+import config_utils, transform, algorithm_utils
 
 # the initial divide number for delta debugging change set
 INITIAL_DIV_NUM = 2
@@ -49,9 +48,30 @@ def remove_unchangable(change_set):
             new_change_set.append(c)
     return new_change_set
 
+# 辅助函数：测试变化集并更新最佳配置
+def test_and_update_change_set(bitcode, change_set, test_set, new_change_set):
+    change_to_2nd_highest_precision(change_set)
+    change_to_highest_precision(test_set)
+    new_config = config_utils.rebuild(change_set)
+    have_better_set = False
+
+    # 执行测试配置
+    run_passed = algorithm_utils.run_config(bitcode, new_config, change_set)
+    current_result = transform.current_run_result
+    if current_result is None:
+        return new_change_set, False
+
+    # 只有符合误差阈值时才更新最佳配置
+    if run_passed and transform.current_run_time < algorithm_utils.min_time:
+        have_better_set = True
+        new_change_set = test_set.copy()
+        algorithm_utils.update_opt(transform.current_run_time)
+    
+    return new_change_set, have_better_set
+
 
 # using delta debugging algorithm to find the minimal change set
-def search_minimal_change_set(bitcode, change_set, div_num, threads):
+def search_minimal_change_set(bitcode, change_set, div_num):
     delta_change_set = []
     complement_delta_change_set = []
     # calculate the size of each part
@@ -60,7 +80,6 @@ def search_minimal_change_set(bitcode, change_set, div_num, threads):
     # divide change set and type set into div_num parts
     # and calculate each part's complement part
 
-    # Guo's version
     for i in range(0, len(change_set), div_size):
         start = i
         end = i + div_size
@@ -70,71 +89,42 @@ def search_minimal_change_set(bitcode, change_set, div_num, threads):
     # iterate each delta change and its complement delta change 
     # to find the current minimal change set
     new_change_set = []
-    new_div_num = div_num
-    layer_better = False  # 在本层级找到更优配置
+    have_better_set = False
     print(f'delta size: {len(delta_change_set)}, complement delta size: {len(complement_delta_change_set)}')
 
-    # 并行处理delta搜索的辅助函数
-    def process_delta(i):
+    # 串行处理delta搜索
+    for i in range(len(delta_change_set)):
         delta_change = delta_change_set[i]
         complement_delta_change = complement_delta_change_set[i]
-        local_better = False
-        local_new_change = []
-        local_min_time = algorithm_utils.min_time
 
         # 测试delta变化集
-        change_to_2nd_highest_precision(change_set)
-        change_to_highest_precision(delta_change)
-        new_config = config_utils.rebuild(change_set)
-        if algorithm_utils.run_config(bitcode, new_config, change_set) and transform.current_run_time < local_min_time:
-            local_better = True
-            local_new_change = delta_change.copy()
-            local_min_time = transform.current_run_time
+        new_change_set, is_better_set = test_and_update_change_set(bitcode, change_set, delta_change, new_change_set)
+        have_better_set |= is_better_set
 
         # 测试补集变化集
-        change_to_2nd_highest_precision(change_set)
-        change_to_highest_precision(complement_delta_change)
-        new_config = config_utils.rebuild(change_set)
-        if algorithm_utils.run_config(bitcode, new_config, change_set) and transform.current_run_time < local_min_time:
-            local_better = True
-            local_new_change = complement_delta_change.copy()
-            local_min_time = transform.current_run_time
-            
-        return (local_better, local_new_change, local_min_time)
+        new_change_set, is_better_set = test_and_update_change_set(bitcode, change_set, complement_delta_change, new_change_set)
+        have_better_set |= is_better_set
 
-    # 并行执行
-    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        results = list(executor.map(process_delta, range(len(delta_change_set))))
-    
-    # 处理并行结果
-    for local_better, new_change, local_min_time in results:
-        if local_better:
-            layer_better = True  # 本层级找到更优配置
-            if local_min_time < algorithm_utils.min_time:
-                new_change_set = new_change
-                algorithm_utils.update_opt(local_min_time)
-
-    if layer_better:
+    if have_better_set:
         # 还原最佳配置
         change_to_2nd_highest_precision(change_set)
         change_to_highest_precision(new_change_set)
         config_utils.CURRENT_CONFIG = config_utils.rebuild(change_set)
-        div_num = new_div_num
         change_set = new_change_set
-        if len(change_set) < 1: return
-        search_minimal_change_set(bitcode, change_set, INITIAL_DIV_NUM, threads)
+        if len(change_set) <= 1: return
+        search_minimal_change_set(bitcode, change_set, INITIAL_DIV_NUM)
     else:
         print("none better in current iteration")
         change_to_highest_precision(change_set)
         if div_num < len(change_set):  # 二分细粒度搜索，直到不能细分为止
             div_num *= 2
-            search_minimal_change_set(bitcode, change_set, div_num, threads)
+            search_minimal_change_set(bitcode, change_set, div_num)
 
-def run(bitcode, change_set, threads):
+def run(bitcode, change_set):
     # searching until every search types is empty
     while not is_type_empty(change_set):
         # search which need highest precision & try to lower others' precision
-        search_minimal_change_set(bitcode, change_set, INITIAL_DIV_NUM, threads)
+        search_minimal_change_set(bitcode, change_set, INITIAL_DIV_NUM)
         # remove highest precision
         change_set = remove_unchangable(change_set)
         # remove the highest precision from the search types of the rest

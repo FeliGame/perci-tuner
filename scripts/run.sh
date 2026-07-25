@@ -36,7 +36,6 @@ REPEAT_TIMES="1"
 TIMEOUT="1.5"
 HISTORY_FLAG=true
 SHUFFLED_FLAG=false
-THREADS="1"
 BASELINE_TIME=""
 BASELINE_RESULT=""
 
@@ -163,7 +162,6 @@ Search options:
   -repeat=<1>                 Set repeat count (default 1)
   -timeout=<1.5>              Set single program timeout multiplier (default 1.5 x baseline)
   -shuffled                   Shuffle searched variables (default false)
-  -j<threads>                 Set thread count for dd-algorithm (default 1)
   -history                    Keep search history (default true)
   -arg=<arg>                  Add one executable argument, in order
   -base-time=<time>           Manually set baseline running time
@@ -374,7 +372,6 @@ run_search_optimize() {
         -timeout="$TIMEOUT" \
         -history="$HISTORY_FLAG" \
         -shuffled="$SHUFFLED_FLAG" \
-        -threads="$THREADS" \
         -mxp="$MXP_FLAG" \
         -fp128todd="$DD_FLAG" \
         output.bc \
@@ -514,17 +511,6 @@ for arg in "$@"; do
             ;;
         -O*)
             OPT_LEVEL="$arg"
-            ;;
-        -j*)
-            THREADS="${arg#-j}"
-            case "$THREADS" in
-                ''|*[!0-9]*)
-                    die "-j requires a positive integer argument, got '$THREADS'"
-                    ;;
-                *)
-                    [ "$THREADS" -gt 0 ] || die "-j requires a positive integer argument, got '$THREADS'"
-                    ;;
-            esac
             ;;
         *)
             if [ -d "$arg" ]; then

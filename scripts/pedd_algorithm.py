@@ -3,7 +3,7 @@
 # @Author: Guocheng —— NUDT
 
 import math
-import config_utils, data_utils, transform, algorithm_utils
+import config_utils, transform, algorithm_utils
 
 # the initial divide number for delta debugging change set
 INITIAL_DIV_NUM = 2
@@ -97,7 +97,7 @@ def remove_from_change_set(change_set, elements):
     return [e for e in change_set if get_element_hash_key(e) not in elements_keys]
 
 # 辅助函数：测试变化集并更新结果映射
-def test_and_update_change_set(bitcode, change_set, test_set, new_change_set, div_num):
+def test_and_update_change_set(bitcode, change_set, test_set, new_change_set):
     change_to_2nd_highest_precision(change_set)
     change_to_highest_precision(test_set)
     new_config = config_utils.rebuild(change_set)
@@ -168,7 +168,7 @@ def search_minimal_change_set(bitcode, change_set, div_num):
         complement_delta_change = complement_delta_change_set[i]
 
         # 测试delta变化集
-        new_change_set, is_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, delta_change, new_change_set, div_num)
+        new_change_set, is_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, delta_change, new_change_set)
         have_better_set |= is_better_set
         if temp_updated:
             bottleneck_found = True
@@ -176,7 +176,7 @@ def search_minimal_change_set(bitcode, change_set, div_num):
             # 先暂存当前 pruned_change_set
 
         # 测试补集变化集
-        new_change_set, is_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, complement_delta_change, new_change_set, div_num)
+        new_change_set, is_better_set, temp_updated = test_and_update_change_set(bitcode, change_set, complement_delta_change, new_change_set)
         have_better_set |= is_better_set
         if temp_updated:
             bottleneck_found = True

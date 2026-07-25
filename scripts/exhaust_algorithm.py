@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import config_utils, data_utils, transform, algorithm_utils
+import config_utils, transform, algorithm_utils
 
 def exhaustive_search(bitcode, change_set):
     candidates = []

@@ -658,3 +658,8 @@
 ### 24
 
 * CRUCIAL feat: default enable -O2, fix inactive -O2 optimization bug.
+
+### 25
+
+* BETA fix dd_algorithm: inconsistent optimized config index.
+* remove: multi-thread dd_algorithm.

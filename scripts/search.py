@@ -25,7 +25,6 @@ def parse_arguments():
         '-link-dirs': [],
         '-rpath': [],
         '-cflags': [],
-        '-threads': 1,
 	    '-run-args': [],
         '-base-time': '',
         '-base-result': '',
@@ -63,8 +62,6 @@ def parse_arguments():
                     params[key] = value.lower() in ('true', '1', 'yes')
                 elif key == '-mix-binop':
                     params[key] = value
-                elif key == '-threads':
-                    params[key] = int(value)
                 elif key == '-base-time' and value != '':
                     params[key] = float(value)
                 elif key == '-base-result' and value != '':
@@ -192,7 +189,6 @@ def main():
     print(f"  Algorithm: {args['-algorithm']}")
     print(f"  Timeout multiplier: {args['-timeout']}")
     print(f"  Shuffled: {args['-shuffled']}")
-    print(f"  Threads: {args['-threads']}")
     print(f"  FP128 to DD: {args['-fp128todd']}")
     print(f"  Double-Double & double mix BinOp: {args['-mix-binop']}")
     print(f"  Link libs: {args['-link-libs']}")
@@ -225,7 +221,7 @@ def main():
     algorithm_utils.min_time = data_utils.ORIGINAL_TIME
     algorithm_utils.bitcode_name = os.path.basename(bitcode)
     if algorithm.lower() == 'dd':
-        new_conf = dd_algorithm.run(bitcode, change_set, args['-threads'])
+        new_conf = dd_algorithm.run(bitcode, change_set)
     elif algorithm.lower() == 'pedd':
         new_conf = pedd_algorithm.run(bitcode, change_set)
     elif algorithm.lower() == 'exhaust':
