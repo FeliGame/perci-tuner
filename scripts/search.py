@@ -221,15 +221,15 @@ def main():
     algorithm_utils.min_time = data_utils.ORIGINAL_TIME
     algorithm_utils.bitcode_name = os.path.basename(bitcode)
     if algorithm.lower() == 'dd':
-        new_conf = dd_algorithm.run(bitcode, change_set)
+        dd_algorithm.run(bitcode, change_set)
     elif algorithm.lower() == 'pedd':
-        new_conf = pedd_algorithm.run(bitcode, change_set)
+        pedd_algorithm.run(bitcode, change_set)
     elif algorithm.lower() == 'exhaust':
-        new_conf = exhaust_algorithm.run(bitcode, change_set)
+        exhaust_algorithm.run(bitcode, change_set)
     elif algorithm.lower() == 'hidd':
         partition_conf_file = args['-partition']
         partition_tree = json.loads(open(partition_conf_file, 'r').read())
-        new_conf = hidd_algorithm.run(bitcode, change_set, partition_tree)
+        hidd_algorithm.run(bitcode, change_set, partition_tree)
     else:
         print("Error: Invalid algorithm!")
         sys.exit(1)
