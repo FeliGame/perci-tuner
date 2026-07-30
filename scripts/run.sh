@@ -34,6 +34,7 @@ RUN_ALGORITHM="dd"
 THRESHOLD="1e-6"
 REPEAT_TIMES="1"
 TIMEOUT="1.5"
+TIME_MODE="program"
 HISTORY_FLAG=true
 SHUFFLED_FLAG=false
 BASELINE_TIME=""
@@ -161,6 +162,7 @@ Search options:
   -thres=<1e-6>               Set error threshold (default 1e-6)
   -repeat=<1>                 Set repeat count (default 1)
   -timeout=<1.5>              Set single program timeout multiplier (default 1.5 x baseline)
+  -time-mode=program/kernel   Measure full program or stderr core_time_sec=<seconds> (default program)
   -shuffled                   Shuffle searched variables (default false)
   -history                    Keep search history (default true)
   -arg=<arg>                  Add one executable argument, in order
@@ -370,6 +372,7 @@ run_search_optimize() {
         -thres="$THRESHOLD" \
         -repeat="$REPEAT_TIMES" \
         -timeout="$TIMEOUT" \
+        -time-mode="$TIME_MODE" \
         -history="$HISTORY_FLAG" \
         -shuffled="$SHUFFLED_FLAG" \
         -mxp="$MXP_FLAG" \
@@ -490,6 +493,13 @@ for arg in "$@"; do
             ;;
         -timeout=*)
             TIMEOUT="${arg#-timeout=}"
+            ;;
+        -time-mode=*)
+            TIME_MODE="${arg#-time-mode=}"
+            case "$TIME_MODE" in
+                program|kernel) ;;
+                *) die "-time-mode must be 'program' or 'kernel'" ;;
+            esac
             ;;
         -base-time=*)
             BASELINE_TIME="${arg#-base-time=}"

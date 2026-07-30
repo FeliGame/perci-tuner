@@ -17,6 +17,7 @@ def parse_arguments():
         '-algorithm': 'dd',
         '-mxp': False,
         '-timeout': 1.5,
+        '-time-mode': 'program',
         '-shuffled': False,
         '-partition': 'sorted_partition.json',
         '-fp128todd': False,
@@ -148,11 +149,16 @@ def baseline_test(bitcode, original_conf):
 def main():
     args = parse_arguments()
 
+    if args['-time-mode'] not in ('program', 'kernel'):
+        print("Error: -time-mode must be 'program' or 'kernel'")
+        sys.exit(1)
+
     transform.COMPILER = args['-compiler']
     bitcode = args['-ir']
     original_conf_file = args['-config']
     config_utils.thres = args['-thres']
     transform.RUNNING_TIMES = args['-repeat']
+    transform.TIME_MODE = args['-time-mode']
     transform.show_history = args['-history']
     algorithm = args['-algorithm']
     shuffled = args['-shuffled']
@@ -188,6 +194,7 @@ def main():
     print(f"  Show history: {args['-history']}")
     print(f"  Algorithm: {args['-algorithm']}")
     print(f"  Timeout multiplier: {args['-timeout']}")
+    print(f"  Time mode: {args['-time-mode']}")
     print(f"  Shuffled: {args['-shuffled']}")
     print(f"  FP128 to DD: {args['-fp128todd']}")
     print(f"  Double-Double & double mix BinOp: {args['-mix-binop']}")
@@ -214,7 +221,12 @@ def main():
         print(">>> Perci-Tuner(Py) Error: baseline produced non-finite time/result, search aborted.")
         sys.exit(1)
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
-    transform.TIMEOUT_THRESHOLD = math.ceil(args['-timeout'] * data_utils.ORIGINAL_TIME)
+    timeout_baseline = (
+        transform.current_run_wall_time
+        if args['-time-mode'] == 'kernel'
+        else data_utils.ORIGINAL_TIME
+    )
+    transform.TIMEOUT_THRESHOLD = math.ceil(args['-timeout'] * timeout_baseline)
     print(">>> Perci-Tuner(Py): Timeout threshold set to", transform.TIMEOUT_THRESHOLD, "seconds")
         
     # start searching

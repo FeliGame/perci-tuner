@@ -23,6 +23,7 @@ MIX_BINOP = True
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
 TIMEOUT_THRESHOLD = 60.0  # 超时阈值（秒）
+TIME_MODE = "program"
 LINK_LIBS = []
 LINK_DIRS = []
 RUNTIME_LIB_DIRS = []
@@ -31,8 +32,16 @@ RUN_ARGS = []
 
 # time & result in current run
 current_run_time = float("inf")
+current_run_wall_time = float("inf")
 current_run_result = ""
 show_history = False
+
+KERNEL_TIME_PATTERN = re.compile(
+    r"^\s*core_time_sec\s*=\s*"
+    r"([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)"
+    r"\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 # read runned program's output
@@ -56,9 +65,20 @@ def read_result(text):
     return None
 
 
+def read_kernel_time(text):
+    matches = KERNEL_TIME_PATTERN.findall(text)
+    if len(matches) != 1:
+        return None
+
+    kernel_time = float(matches[0])
+    if not math.isfinite(kernel_time) or kernel_time < 0:
+        return None
+    return kernel_time
+
+
 # run the current variable config and get the result
 def transform(run_id, bitcode_file, var_config, diff, is_mxp):
-    global current_run_time, current_run_result, RUNNING_FAIL_TIMES
+    global current_run_time, current_run_wall_time, current_run_result, RUNNING_FAIL_TIMES
     # 确保目标目录存在
     target_dirs = {
         "config": "config",
@@ -103,6 +123,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
     os.chmod(CURRENT_EXEC_NAME, 0o755)  # 添加读、写、执行权限
 
     time_list = []  # 改为存储所有运行时间的列表
+    wall_time_list = []
+    collect_wall_time = run_id == 1 and TIME_MODE == "kernel"
     logged = False  # 是否登记过运行结果/误差
     satisfy_thres = True  # 是否满足误差阈值
 
@@ -112,17 +134,33 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         try:
             # 使用perf_counter统计执行时间
             start_time = time.perf_counter()
-            output = subprocess.check_output(command, stderr=None, timeout=TIMEOUT_THRESHOLD if run_id > 1 else None)
+            completed = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=TIMEOUT_THRESHOLD if run_id > 1 else None,
+                check=True,
+            )
             end_time = time.perf_counter()
-            execution_time = end_time - start_time
+            output = completed.stdout
+            stderr_output = completed.stderr
             
             if not output.strip():
                 print(">>> Perci-Tuner(Py) Error: Program has no output, search failed!")
                 sys.exit(1)
+            output_text = output.decode()
+            stderr_text = stderr_output.decode()
+            # if stderr_text:
+            #     print(stderr_text, end="", file=sys.stderr, flush=True)
+            if TIME_MODE == "kernel":
+                execution_time = read_kernel_time(stderr_text)
+                if execution_time is None:
+                    return -3
+            else:
+                execution_time = end_time - start_time
             if not logged:  # 同一程序只需登记一次运行结果/误差
                 logged = True
                 # output = output.splitlines()[-1]  # 取最后一行
-                output_text = output.decode()
                 output_val = read_result(output_text)
                 if output_val is None:
                     return -4
@@ -146,7 +184,10 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                 data_utils.store_data(run_id, float("inf"), "TIMEOUT", diff)
             return -2
         except subprocess.CalledProcessError as e:
-            print(e.output.decode())
+            if e.stdout:
+                print(e.stdout.decode(), end="")
+            if e.stderr:
+                print(e.stderr.decode(), end="", file=sys.stderr)
             print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")
             RUNNING_FAIL_TIMES += 1
             current_run_result = None
@@ -155,9 +196,10 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             return -2
         
         time_list.append(execution_time)
+        if collect_wall_time:
+            wall_time_list.append(end_time - start_time)
         
         if i == RUNNING_TIMES - 1:
-            output_text = output.decode()
             print('current result:', output_text)
             current_run_result = read_result(output_text)
             if current_run_result is None:
@@ -174,6 +216,12 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         current_run_time = time_list[RUNNING_TIMES//2]
     else:
         current_run_time = (time_list[RUNNING_TIMES//2-1] + time_list[RUNNING_TIMES//2]) / 2
+    if collect_wall_time:
+        wall_time_list.sort()
+        if RUNNING_TIMES % 2 == 1:
+            current_run_wall_time = wall_time_list[RUNNING_TIMES//2]
+        else:
+            current_run_wall_time = (wall_time_list[RUNNING_TIMES//2-1] + wall_time_list[RUNNING_TIMES//2]) / 2
 
     if show_history:
         data_utils.store_data(run_id, current_run_time, current_run_result, diff, is_mxp)
