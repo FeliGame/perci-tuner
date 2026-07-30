@@ -142,7 +142,6 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                 check=True,
             )
             end_time = time.perf_counter()
-            wall_time = end_time - start_time
             output = completed.stdout
             stderr_output = completed.stderr
             
@@ -158,7 +157,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                 if execution_time is None:
                     return -3
             else:
-                execution_time = wall_time
+                execution_time = end_time - start_time
             if not logged:  # 同一程序只需登记一次运行结果/误差
                 logged = True
                 # output = output.splitlines()[-1]  # 取最后一行
@@ -198,7 +197,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
         
         time_list.append(execution_time)
         if collect_wall_time:
-            wall_time_list.append(wall_time)
+            wall_time_list.append(end_time - start_time)
         
         if i == RUNNING_TIMES - 1:
             print('current result:', output_text)
