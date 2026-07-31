@@ -40,12 +40,20 @@ private:
 
     void findFunctionCalls(Function &F);
 
+    // Record type-coupled interfaces for excluded functions without adding
+    // their parameters or bodies to the precision search space.
+    void findExcludedFunctionInterfaces(Module &M);
+
     void parseIncludeAndExcludeLists();
 
     bool needScanFile(DIFile *file);
     bool needScanFunction(Function &F);
+    bool isExcludedVariable(const std::string &functionName, const std::string &variableName);
+    bool isExcludedType(const std::string &typeName);
     vector<string> excludeFiles;
     vector<string> excludeFuncs;
+    vector<string> excludeVariables;
+    vector<string> excludeTypes;
     vector<string> includeFiles;
     vector<string> includeFuncs;
 

@@ -3,6 +3,8 @@
 // --mxp: if true, only search __autofp vars or vars in #pragma region.
 // --exclude-file=[.c]: these files won't be scanned
 // --exclude-func=[func]: these functions won't be scanned
+// --exclude-variable=[global::var,func::var]: scoped variables won't be emitted
+// --exclude-type=[type]: variables and struct declarations of these base types won't be emitted
 // Output: config.json
 
 #include "PrintConfig.h"
@@ -19,6 +21,8 @@
 #include <llvm/IR/ValueSymbolTable.h>
 #include <llvm/Demangle/Demangle.h>
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 
 using namespace std;
@@ -28,8 +32,67 @@ using namespace llvm;
 cl::opt<bool> EnableMXP("mxp", cl::value_desc("enable pragma & autofp"), cl::desc("true or false"), cl::init(false));
 cl::opt<string> ExcludeFiles("exclude-file", cl::value_desc("files skipped to scan"), cl::desc("comma separated src files"), cl::init(""));
 cl::opt<string> ExcludeFuncs("exclude-func", cl::value_desc("functions skipped to scan"), cl::desc("comma separated function names"), cl::init(""));
+cl::opt<string> ExcludeVariables("exclude-variable", cl::value_desc("variables skipped in config"), cl::desc("comma separated names: global::var or function::var"), cl::init(""));
+cl::opt<string> ExcludeTypes("exclude-type", cl::value_desc("types skipped in config"), cl::desc("comma separated base type names"), cl::init(""));
 cl::opt<string> IncludeFiles("include-file", cl::value_desc("files included to scan"), cl::desc("comma separated src files"), cl::init(""));
 cl::opt<string> IncludeFuncs("include-func", cl::value_desc("functions included to scan"), cl::desc("comma separated function names"), cl::init(""));
+
+namespace {
+
+struct DiscoveredStruct {
+    DICompositeType *type = nullptr;
+    std::string name;
+};
+
+// Debug types are commonly wrapped as
+// pointer -> const/typedef -> array -> struct.  Structure discovery must not
+// depend on the variable being declared directly as the typedef itself.
+DiscoveredStruct discoverStructType(DIType *type) {
+    std::string typedefName;
+
+    // A short depth limit protects against malformed recursive metadata while
+    // still allowing all ordinary qualifier/pointer/array nesting.
+    for (unsigned depth = 0; type && depth < 32; ++depth) {
+        if (auto *composite = dyn_cast<DICompositeType>(type)) {
+            if (composite->getTag() == dwarf::DW_TAG_structure_type ||
+                composite->getTag() == dwarf::DW_TAG_class_type ||
+                composite->getTag() == dwarf::DW_TAG_union_type) {
+                std::string name = composite->getName().str();
+                if (name.empty())
+                    name = typedefName;
+                return {composite, name};
+            }
+
+            // Arrays are DICompositeType nodes whose base type may ultimately
+            // be a structure.
+            if (composite->getTag() == dwarf::DW_TAG_array_type) {
+                type = composite->getBaseType();
+                continue;
+            }
+            break;
+        }
+
+        auto *derived = dyn_cast<DIDerivedType>(type);
+        if (!derived)
+            break;
+        if (derived->getTag() == dwarf::DW_TAG_typedef &&
+            typedefName.empty() && !derived->getName().empty()) {
+            typedefName = derived->getName().str();
+        }
+        type = derived->getBaseType();
+    }
+    return {};
+}
+
+bool isFloatingSearchType(const std::string &typeName) {
+    return typeName.find("float") != std::string::npos ||
+           typeName.find("double") != std::string::npos ||
+           typeName.find("__fp16") != std::string::npos ||
+           typeName.find("_Float16") != std::string::npos ||
+           typeName.find("__half") != std::string::npos;
+}
+
+} // namespace
 
 
 // Find Local vars and local static vars
@@ -97,6 +160,9 @@ void PrintConfig::findLocalVariables(Function &F) {
                     DIGlobalVariable *GVDebug = GVE->getVariable();
                     if (!GVDebug) continue;
                     typeName = parseDITypeName(GVDebug->getType());
+                    auto discovered = discoverStructType(GVDebug->getType());
+                    if (discovered.type)
+                        dumpStructDecl(discovered.type, discovered.name);
 
                     DL = I.getDebugLoc();
                     isStatic = true;
@@ -108,46 +174,19 @@ void PrintConfig::findLocalVariables(Function &F) {
                         varName = DV->getName();
                         typeName = parseDITypeName(DV->getType());
                         if (varName == "this") continue;
-                        if (DV->isParameter() && typeName.find('*') != std::string::npos) continue;  // 跳过函数指针形参
+                        auto discovered = discoverStructType(DV->getType());
+                        if (discovered.type)
+                            dumpStructDecl(discovered.type, discovered.name);
+
+                        // Pointer parameters are not independent storage
+                        // candidates, but their pointee record definitions
+                        // above still contribute searchable fields.
+                        if (DV->isParameter() &&
+                            typeName.find('*') != std::string::npos)
+                            continue;
                         DL = DDI->getDebugLoc();
                         isStatic = false;
                         isParam = DV->isParameter();
-                        
-                        // 处理结构体声明的局部变量 (通过dbg.declare)
-                        std::string structName = "";
-                        DICompositeType *structType = nullptr;
-                        
-                        // 检查是否是typedef定义的结构体
-                        if (auto *derivedType = dyn_cast<DIDerivedType>(DV->getType())) {
-                            // 如果是typedef类型，获取其名称作为结构体名称
-                            if (derivedType->getTag() == dwarf::DW_TAG_typedef) {
-                                // 获取typedef的基类型
-                                if (auto *baseType = derivedType->getBaseType()) {
-                                    if (auto *baseComposite = dyn_cast<DICompositeType>(baseType)) {
-                                        if (baseComposite->getTag() == dwarf::DW_TAG_structure_type) {
-                                            structType = baseComposite;
-                                            structName = baseComposite->getName().str();
-                                            if (structName.empty())
-                                                structName = derivedType->getName().str();
-                                        }
-                                    }
-                                }
-                            }
-                        } else if (auto *compositeType = dyn_cast<DICompositeType>(DV->getType())) {
-                            // 直接获取结构体类型
-                            if (compositeType->getTag() == dwarf::DW_TAG_structure_type) {
-                                structName = compositeType->getName().str();
-                                structType = compositeType;
-                            }
-                        }
-                        if (structName.empty()) {
-                            if (auto *AI = dyn_cast<AllocaInst>(DDI->getAddress())) {
-                                // 从AllocaInst获取分配的类型
-                                if (auto *ST = dyn_cast<StructType>(AI->getAllocatedType()))
-                                    structName = ST->getStructName().str();
-                            }
-                        }
-                        if (structType) dumpStructDecl(structType, structName);
                     }
                 }
                 // Handle __autofp intrinsic
@@ -240,6 +279,10 @@ void PrintConfig::findLocalVariables(Function &F) {
                     
             // Save to config
             if (typeName != "") {
+                // 局部变量/参数使用 function::name 精确限定作用域；
+                // 类型规则也在写入 config 前统一应用。
+                if (isExcludedVariable(funcName, varName) || isExcludedType(typeName))
+                    continue;
                 if (DL) {  // clang读取dbg.declare调用；flang-new不支持
                     lineNo = DL.getLine();
                     colNo = DL.getCol();
@@ -310,38 +353,16 @@ void PrintConfig::findGlobalVariables(Module &M) {
         globalVar["line"] = lineNo;
         globalVar["file"] = fileName;
         auto typeName = parseDITypeName(GVDebug->getType());
-        DICompositeType *structType = nullptr;
-        std::string structName = "";
-
-        // 处理结构体声明的全局变量
-        if (auto *derivedType = dyn_cast<DIDerivedType>(GVDebug->getType())) {
-            if (derivedType->getTag() == dwarf::DW_TAG_typedef) {
-                // 获取typedef的基类型
-                if (auto *baseType = derivedType->getBaseType()) {
-                    if (auto *baseComposite = dyn_cast<DICompositeType>(baseType)) {
-                        if (baseComposite->getTag() == dwarf::DW_TAG_structure_type) {
-                            structType = baseComposite;
-                            structName = baseComposite->getName().str();
-                            if (structName.empty())
-                                structName = derivedType->getName().str();
-                        }
-                    }
-                }
-            }
-        } else if (auto *compositeType = dyn_cast<DICompositeType>(GVDebug->getType())) {
-            if (compositeType->getTag() == dwarf::DW_TAG_structure_type) {
-                typeName = compositeType->getName().str();
-                // 如果typeName为空，尝试从global initializer获取信息
-                if (typeName.empty()) {
-                    if (auto *ST = dyn_cast<StructType>(GV.getValueType())) {
-                        typeName = ST->getStructName().str();
-                    }
-                }
-            }
-        }
-        if (structType) dumpStructDecl(structType, structName);
+        auto discovered = discoverStructType(GVDebug->getType());
+        if (discovered.type)
+            dumpStructDecl(discovered.type, discovered.name);
 
         globalVar["type"] = typeName;
+
+        // 全局变量使用 variable:global::name；变量和类型规则都在生成
+        // 搜索空间时直接过滤，后续搜索算法不会再看到这些对象。
+        if (isExcludedVariable("", name) || isExcludedType(typeName))
+            continue;
 
         // handle __autofp
         if (MDNode *MD = GV.getMetadata("precision_range")) {
@@ -363,21 +384,32 @@ void PrintConfig::findGlobalVariables(Module &M) {
 
 void PrintConfig::dumpStructDecl(DICompositeType* structType, std::string structName) {
     if (structName.empty()) return;
+    // type:Foo 不仅排除 Foo 类型的变量，也排除 Foo 的字段搜索空间。
+    if (isExcludedType(structName)) return;
     nlohmann::json structDecl;
     unsigned i = 0;
     for (auto *element : structType->getElements()) {
         if (auto *memberType = dyn_cast<DIDerivedType>(element)) {
             if (memberType->getTag() != dwarf::DW_TAG_member) continue;
+            unsigned memberIndex = i++;
+            std::string memberTypeName =
+                parseDITypeName(memberType->getBaseType());
+            // Integer/control members are record layout metadata, not
+            // mixed-precision candidates. Keep the original member index so
+            // a later floating member still maps to the correct AST field.
+            if (!isFloatingSearchType(memberTypeName))
+                continue;
             nlohmann::json memberInfo;
-            memberInfo["member_index"] = i++;
-            memberInfo["type"] = parseDITypeName(memberType->getBaseType());
+            memberInfo["member_index"] = memberIndex;
+            memberInfo["type"] = memberTypeName;
             structDecl.push_back(memberInfo);
         }
     }
     // 若structName有"struct."前缀，则将其去掉
     if (structName.find("struct.") != std::string::npos)
         structName = structName.substr(7);
-    config["structs"][structName] = structDecl;
+    if (!structDecl.empty())
+        config["structs"][structName] = structDecl;
 }
 
 void PrintConfig::findFunctionCalls(Function &F) {
@@ -430,6 +462,94 @@ bool PrintConfig::runOnFunction(Function &F) {
     return false;
 }
 
+void PrintConfig::findExcludedFunctionInterfaces(Module &M) {
+    nlohmann::json boundaries = nlohmann::json::object();
+
+    for (auto &F : M) {
+        if (F.isDeclaration() || needScanFunction(F))
+            continue;
+
+        auto *SP = F.getSubprogram();
+        if (SP && !needScanFile(SP->getFile()))
+            continue;
+
+        std::string functionName = demangle(F.getName());
+        nlohmann::json boundary;
+        boundary["name"] = functionName;
+        boundary["symbol"] = F.getName().str();
+        if (SP) {
+            boundary["file"] = SP->getFile()->getFilename().str();
+            boundary["line"] = SP->getLine();
+        }
+
+        nlohmann::json parameters = nlohmann::json::array();
+        unsigned parameterIndex = 0;
+        for (auto &Arg : F.args()) {
+            nlohmann::json parameter;
+            parameter["index"] = parameterIndex++;
+            parameter["name"] = Arg.hasName() ? Arg.getName().str() : "";
+            parameter["type"] = parseTypeName(Arg.getType());
+            // This metadata describes a derived interface only. It is never
+            // copied into config["local"] and therefore is not searchable.
+            parameter["searchable"] = false;
+            parameters.push_back(parameter);
+        }
+        boundary["parameters"] = parameters;
+
+        nlohmann::json calls = nlohmann::json::array();
+        for (auto *User : F.users()) {
+            auto *Call = dyn_cast<CallBase>(User);
+            if (!Call || Call->getCalledFunction() != &F)
+                continue;
+
+            nlohmann::json call;
+            if (auto *Caller = Call->getFunction())
+                call["caller"] = demangle(Caller->getName());
+            if (auto Loc = Call->getDebugLoc()) {
+                call["file"] = Loc->getFilename().str();
+                call["line"] = Loc.getLine();
+                call["column"] = Loc.getCol();
+            }
+            nlohmann::json arguments = nlohmann::json::array();
+            nlohmann::json bindings = nlohmann::json::array();
+            for (unsigned I = 0; I < Call->arg_size(); ++I) {
+                Value *Actual = Call->getArgOperand(I);
+                arguments.push_back(parseTypeName(Actual->getType()));
+
+                nlohmann::json binding;
+                binding["parameter_index"] = I;
+                if (I < F.arg_size()) {
+                    auto Parameter = F.arg_begin();
+                    std::advance(Parameter, I);
+                    binding["parameter_name"] =
+                        Parameter->hasName() ? Parameter->getName().str() : "";
+                }
+                binding["argument_type"] = parseTypeName(Actual->getType());
+                binding["pointer_interface"] = Actual->getType()->isPointerTy();
+
+                // With LLVM opaque pointers the pointee element type is no
+                // longer present in IR. Preserve the positional binding and,
+                // where possible, recover the caller-side storage object
+                // loaded from an alloca. TransformType resolves the concrete
+                // element type later from the source AST.
+                Value *Storage = Actual->stripPointerCasts();
+                if (auto *Load = dyn_cast<LoadInst>(Storage))
+                    Storage = Load->getPointerOperand()->stripPointerCasts();
+                binding["argument_storage"] =
+                    Storage->hasName() ? Storage->getName().str() : "";
+                bindings.push_back(binding);
+            }
+            call["argument_types"] = arguments;
+            call["bindings"] = bindings;
+            calls.push_back(call);
+        }
+        boundary["calls"] = calls;
+        boundaries[functionName] = boundary;
+    }
+
+    config["boundary_interfaces"] = boundaries;
+}
+
 void PrintConfig::parseIncludeAndExcludeLists() {
     auto parseCommaList = [](std::string raw) {
         vector<string> items;
@@ -454,13 +574,28 @@ void PrintConfig::parseIncludeAndExcludeLists() {
 
     excludeFiles.clear();
     excludeFuncs.clear();
+    excludeVariables.clear();
+    excludeTypes.clear();
     includeFiles.clear();
     includeFuncs.clear();
 
     excludeFiles = parseCommaList(ExcludeFiles);
     excludeFuncs = parseCommaList(ExcludeFuncs);
+    excludeVariables = parseCommaList(ExcludeVariables);
+    excludeTypes = parseCommaList(ExcludeTypes);
     includeFiles = parseCommaList(IncludeFiles);
     includeFuncs = parseCommaList(IncludeFuncs);
+
+    // 兼容旧命令行：历史上的无作用域变量规则只按全局变量解释。
+    // 新 excluded.txt 必须显式写 global::name 或 function::name。
+    for (auto &variable : excludeVariables) {
+        if (variable.find("::") == std::string::npos) {
+            errs() << ">>> Perci-Tuner: warning: unscoped exclude-variable '"
+                   << variable << "' is deprecated; treating it as 'global::"
+                   << variable << "'.\n";
+            variable = "global::" + variable;
+        }
+    }
 }
 
 bool PrintConfig::needScanFile(DIFile *file) {
@@ -474,14 +609,97 @@ bool PrintConfig::needScanFile(DIFile *file) {
 
 bool PrintConfig::needScanFunction(Function &F) {
     auto funcName = demangle(F.getName());
-    return (includeFuncs.size() < 1 || matchAnyPattern(includeFuncs, {funcName, F.getName().str()})) && 
-           !matchAnyPattern(excludeFuncs, {funcName, F.getName().str()});
+    auto matchesFunctionRule = [](const vector<string> &patterns,
+                                  const vector<string> &candidates) {
+        for (const auto &pattern : patterns) {
+            for (const auto &candidate : candidates) {
+                bool hasGlob = pattern.find('*') != std::string::npos ||
+                               pattern.find('?') != std::string::npos;
+                if ((hasGlob && matchGlobPattern(pattern, candidate)) ||
+                    (!hasGlob && pattern == candidate))
+                    return true;
+            }
+        }
+        return false;
+    };
+    vector<string> candidates = {funcName, F.getName().str()};
+    return (includeFuncs.empty() || matchesFunctionRule(includeFuncs, candidates)) &&
+           !matchesFunctionRule(excludeFuncs, candidates);
+}
+
+bool PrintConfig::isExcludedVariable(const std::string &functionName,
+                                     const std::string &variableName) {
+    // 每个变量只生成一个带作用域候选，确保同名全局、局部和参数互不误伤。
+    // 全局写 global::name，局部/参数写 function::name。
+    vector<string> candidates = {
+        (functionName.empty() ? "global" : functionName) + "::" + variableName
+    };
+
+    // 变量名必须精确匹配；只有规则显式包含 * 或 ? 时才按 glob 匹配。
+    // 作用域前缀进一步保证 global::data 不会排除 foo::data。
+    for (const auto &pattern : excludeVariables) {
+        for (const auto &candidate : candidates) {
+            bool hasGlob = pattern.find('*') != std::string::npos ||
+                           pattern.find('?') != std::string::npos;
+            if ((hasGlob && matchGlobPattern(pattern, candidate)) ||
+                (!hasGlob && pattern == candidate))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool PrintConfig::isExcludedType(const std::string &typeName) {
+    std::string baseType = typeName;
+
+    // ParseTypeName may produce forms such as "const OptionData_*" or
+    // "timespec[2]". A type rule names the underlying user-visible type,
+    // so remove qualifiers, pointer/array decorations and LLVM's trailing
+    // underscore used for some typedef-struct names before matching.
+    const vector<string> qualifiers = {"const", "volatile", "restrict", "struct", "class"};
+    for (const auto &qualifier : qualifiers) {
+        size_t pos = 0;
+        while ((pos = baseType.find(qualifier, pos)) != std::string::npos) {
+            bool leftBoundary = pos == 0 ||
+                !isalnum(static_cast<unsigned char>(baseType[pos - 1]));
+            size_t wordEnd = pos + qualifier.size();
+            bool rightBoundary = wordEnd == baseType.size() ||
+                !isalnum(static_cast<unsigned char>(baseType[wordEnd]));
+            if (leftBoundary && rightBoundary)
+                baseType.replace(pos, qualifier.size(), " ");
+            else
+                pos = wordEnd;
+        }
+    }
+    size_t arrayPos = baseType.find('[');
+    if (arrayPos != std::string::npos)
+        baseType.erase(arrayPos);
+    baseType.erase(remove(baseType.begin(), baseType.end(), '*'), baseType.end());
+    baseType.erase(remove(baseType.begin(), baseType.end(), '&'), baseType.end());
+    size_t begin = baseType.find_first_not_of(" \t\n\r");
+    size_t end = baseType.find_last_not_of(" \t\n\r");
+    baseType = begin == std::string::npos ? "" : baseType.substr(begin, end - begin + 1);
+    while (!baseType.empty() && baseType.back() == '_')
+        baseType.pop_back();
+
+    // 类型与变量一样采用精确/glob 匹配，避免短类型名误伤其他类型。
+    for (const auto &pattern : excludeTypes) {
+        for (const auto &candidate : {typeName, baseType}) {
+            bool hasGlob = pattern.find('*') != std::string::npos ||
+                           pattern.find('?') != std::string::npos;
+            if ((hasGlob && matchGlobPattern(pattern, candidate)) ||
+                (!hasGlob && pattern == candidate))
+                return true;
+        }
+    }
+    return false;
 }
 
 bool PrintConfig::runOnModule(Module &module) {
     parseIncludeAndExcludeLists();
     
     findGlobalVariables(module);
+    findExcludedFunctionInterfaces(module);
 
     for(auto &F : module) {
         string name = F.getName().str();
