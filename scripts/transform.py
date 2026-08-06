@@ -77,7 +77,7 @@ def read_kernel_time(text):
 
 
 # run the current variable config and get the result
-def transform(run_id, bitcode_file, var_config, diff, is_mxp):
+def transform(run_id, bitcode_file, var_config, diff, is_mxp, verify_upcast=True):
     global current_run_time, current_run_wall_time, current_run_result, RUNNING_FAIL_TIMES
     # 确保目标目录存在
     target_dirs = {
@@ -95,11 +95,12 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
 
     config_utils.print_config(var_config, CURRENT_CONFIG_NAME)
     # run LLVM passes
-    command = ['opt', 
-               '-load-pass-plugin', PERCI_TUNER_PATH, 
-               "-S", 
-               "-passes=" + PASSES + 
-               (",record_result" if is_mxp else "") + ",remove_pragma" + 
+    command = ['opt',
+               '-load-pass-plugin', PERCI_TUNER_PATH,
+               "-S",
+               "-passes=" + PASSES +
+               (",verify_upcast" if verify_upcast else "") +
+               (",record_result" if is_mxp else "") + ",remove_pragma" +
                (",fp128_to_dd" if ((run_id > 1 or ARCH == "x86_64") and FP128_TO_DD) else ""),
                "--enable-mix-binop=" + str(MIX_BINOP),
             #    "--print-dd=" + str(FP128_TO_DD),
@@ -107,10 +108,21 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                "--function-config=" + CURRENT_CONFIG_NAME, 
                bitcode_file, "-o", CURRENT_BC_NAME] 
                
-    retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
+    completed = subprocess.run(command, stdin=None, stdout=None, stderr=subprocess.PIPE)
+    retval = completed.returncode
     # return -1 if running LLVM passes fails
     if retval != 0:
         return -1
+
+    # 解析 VerifyScalarUpcast 的 stderr 输出，若存在违规则跳过后续编译和运行
+    if verify_upcast:
+        stderr_text = completed.stderr.decode()
+        m = re.search(r">>> VerifyScalarUpcast:\s*(\d+)", stderr_text)
+        invalid_count = int(m.group(1)) if m else 0
+        if invalid_count != 0:
+            if show_history:
+                data_utils.store_data(run_id, float("inf"), "INVALID_VAR_CNT:"+str(invalid_count), diff, is_mxp)
+            return -5
     
     # generate executable
     command = [COMPILER, '-o', CURRENT_EXEC_NAME, CURRENT_BC_NAME] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS

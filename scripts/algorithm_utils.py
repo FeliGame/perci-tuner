@@ -96,6 +96,9 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     elif result == -4:
         print(">>> Perci-Tuner Error: the running result is not found!")
         sys.exit(1)
+    elif result == -5:
+        print(f">>> Perci-Tuner(Py) PUDD skip upcast-only config: INVALID_VAR_CNT:{result}")
+        return False
 
     # save all configs into json
     if data_utils.ORIGINAL_RESULT == -1: return True
