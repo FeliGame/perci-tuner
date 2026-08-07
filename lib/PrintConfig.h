@@ -3,7 +3,7 @@
 #ifndef LLVM_PRINT_CONFIG_H
 #define LLVM_PRINT_CONFIG_H
 
-#include "nlohmann/json.hpp"
+#include "llvm/Support/JSON.h"
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
@@ -57,7 +57,7 @@ private:
 
     const SmallVector<StringRef> validSearchRange = {"float", "double", "long double", "__fp16"};  // for __autofp & pragma
     
-    nlohmann::json config;
+    json::Value config{nullptr};
 };
 
 } // namespace llvm

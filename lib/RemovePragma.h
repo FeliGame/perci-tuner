@@ -3,8 +3,6 @@
 #ifndef LLVM_REMOVE_PRAGMA_H
 #define LLVM_REMOVE_PRAGMA_H
 
-#include "nlohmann/json.hpp"
-
 #include <llvm/Pass.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Function.h>
