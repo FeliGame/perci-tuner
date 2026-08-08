@@ -3,8 +3,6 @@
 #ifndef LLVM_MERGE_MULTI_VERSION_H
 #define LLVM_MERGE_MULTI_VERSION_H
 
-#include "nlohmann/json.hpp"
-
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
 #include <llvm/Support/raw_ostream.h>

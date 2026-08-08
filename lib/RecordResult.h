@@ -3,8 +3,6 @@
 #ifndef LLVM_RECORD_RESULT_H
 #define LLVM_RECORD_RESULT_H
 
-#include "nlohmann/json.hpp"
-
 #include <llvm/Pass.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Function.h>

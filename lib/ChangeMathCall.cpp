@@ -16,6 +16,7 @@
 #include <llvm/Demangle/Demangle.h>
 
 #include <fstream>
+#include <sstream>
 
 using namespace std;
 using namespace llvm;
@@ -24,23 +25,43 @@ using namespace llvm;
 cl::opt<string> FunctionConfigName("function-config", cl::value_desc("filename"), cl::desc("Function's Type Config"), cl::init("config.json"));
 
 void ChangeMathCall::parseConfig() {
-    ifstream configFile(FunctionConfigName.c_str());
-    if (!configFile) {
+    std::ifstream configFile(FunctionConfigName.c_str());
+    if (!configFile.is_open()) {
         errs() << "Error: Failed to open " << FunctionConfigName << "\n";
         exit(1);
     }
-    configFile >> config;
-    config = config["calls"];
-    
-    for (auto &callerEntry : config) {
-        for (auto &entry : callerEntry) {
-            std::string file = entry["file"];
-            int line = entry["line"];
-            int column = entry["column"];
-            
+
+    configContents.assign((std::istreambuf_iterator<char>(configFile)),
+                          std::istreambuf_iterator<char>());
+    auto parsed = json::parse(StringRef(configContents));
+    if (!parsed) {
+        errs() << "Error: Failed to parse JSON from " << FunctionConfigName << "\n";
+        exit(1);
+    }
+    config = std::move(*parsed);
+
+    json::Value* callsVal = config.getAsObject()->get("calls");
+    if (!callsVal || callsVal->kind() == json::Value::Null) return;
+    auto* callsObj = callsVal->getAsObject();
+    if (!callsObj) return;
+
+    for (auto &callerEntry : *callsObj) {
+        auto* entryArr = callerEntry.second.getAsArray();
+        if (!entryArr) continue;
+        for (auto &entry : *entryArr) {
+            auto* entryObj = entry.getAsObject();
+            if (!entryObj) continue;
+
+            auto fileOpt = entryObj->getString("file");
+            std::string file = fileOpt ? fileOpt->str() : "";
+            auto lineOpt = entryObj->getNumber("line");
+            int line = lineOpt ? (int)*lineOpt : 0;
+            auto columnOpt = entryObj->getNumber("column");
+            int column = columnOpt ? (int)*columnOpt : 0;
+
             // 构建key：file+line+column
             std::string key = file + ":" + std::to_string(line) + ":" + std::to_string(column);
-            configMap[key] = entry;
+            configMap.insert_or_assign(key, entry);
         }
     }
 }
@@ -60,7 +81,6 @@ bool ChangeMathCall::runOnFunction(Function &F) {
     bool modified = false;
     auto &Context = F.getContext();
     auto funcName = demangle(F.getName());
-    nlohmann::json funcInfo = config[funcName];
 
     auto getBaseName = [](StringRef name) {
         if (name.size() > 0 && (name.back() == 'f' || name.back() == 'l')) {
@@ -86,7 +106,10 @@ bool ChangeMathCall::runOnFunction(Function &F) {
                 auto it = configMap.find(key);
                 if (it == configMap.end()) continue;
                 auto &configEntry = it->second;
-                auto targetCallee = configEntry["type"].get<string>();
+                auto* entryObj = configEntry.getAsObject();
+                if (!entryObj) continue;
+                auto typeOpt = entryObj->getString("type");
+                std::string targetCallee = typeOpt ? typeOpt->str() : "";
                 // If target is same as original or non-math, skip
                 if (targetCallee == oldCallee || !mathFunctions.contains(targetCallee)) continue;
                 

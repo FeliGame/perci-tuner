@@ -5,7 +5,6 @@
 #include "IRTiming.h"
 #include "utils/ParseTypeName.hpp"
 
-#include "nlohmann/json.hpp"
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>

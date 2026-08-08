@@ -5,7 +5,6 @@
 
 #include "ChangeVariableDecl.h"
 #include "utils/ParseTypeName.hpp"
-#include "nlohmann/json.hpp"
 
 #include <functional>
 #include <llvm/IR/DebugInfo.h>
@@ -26,6 +25,7 @@
 #include <llvm/Config/llvm-config.h>
 
 #include <fstream>
+#include <sstream>
 
 using namespace std;
 using namespace llvm;
@@ -40,21 +40,40 @@ void ChangeVariableDecl::parseConfig() {
         exit(1);
     }
 
-    configFile >> config;
-    nlohmann::json &localConfig = config["local"];
-    
-    for (auto &funcEntry : localConfig.items())
-        includedFunctions.insert(funcEntry.key());
-    for (auto &funcEntry : localConfig) {
-        // 处理每个函数的变量配置
-        for (auto &varEntry : funcEntry) {
-            std::string file = varEntry["file"];
-            int line = varEntry["line"];
-            int column = varEntry["column"];
-            if (varEntry["name"] == "ret" && !line && !column) continue;
-            
-            std::string key = file + ":" + std::to_string(line) + ":" + std::to_string(column);
-            configMap[key] = varEntry;
+    configContents.assign((std::istreambuf_iterator<char>(configFile)),
+                          std::istreambuf_iterator<char>());
+    auto parsed = json::parse(StringRef(configContents));
+    if (!parsed) {
+        exit(1);
+    }
+    config = std::move(*parsed);
+
+    json::Value* localConfig = config.getAsObject()->get("local");
+    if (!localConfig || localConfig->kind() == json::Value::Null) return;
+
+    auto* localObj = localConfig->getAsObject();
+    if (!localObj) return;
+
+    for (auto &funcEntry : *localObj)
+        includedFunctions.insert(funcEntry.first.str());
+
+    for (auto &funcEntry : *localObj) {
+        if (auto* funcArr = funcEntry.second.getAsArray()) {
+            for (auto &varEntry : *funcArr) {
+                auto* varObj = varEntry.getAsObject();
+                if (!varObj) continue;
+
+                auto fileOpt = varObj->getString("file");
+                std::string file = fileOpt ? fileOpt->str() : "";
+                auto lineOpt = varObj->getNumber("line");
+                int line = lineOpt ? (int)*lineOpt : 0;
+                auto columnOpt = varObj->getNumber("column");
+                int column = columnOpt ? (int)*columnOpt : 0;
+                auto nameOpt = varObj->getString("name");
+
+                std::string key = file + ":" + std::to_string(line) + ":" + std::to_string(column);
+                configMap.insert_or_assign(key, varEntry);
+            }
         }
     }
 }
@@ -90,26 +109,32 @@ void ChangeVariableDecl::initBaseTypeMaps(Module &module) {
     }
 
     // Pre-initialize global base type map from config["global"] (if present)
-    if (config.contains("global")) {
-        nlohmann::json &globalConfig = config["global"];
-        for (auto &globalEntry : globalConfig) {
-            std::string varName = globalEntry["name"];
-            std::string typeName = globalEntry["type"].get<string>();
-            Type *targetType = typeNameToBasicType(typeName, context);
-            if (!targetType) continue;
+    json::Value* globalVal = config.getAsObject()->get("global");
+    if (globalVal && globalVal->kind() != json::Value::Null) {
+        if (auto* globalArr = globalVal->getAsArray()) {
+            for (auto &globalEntry : *globalArr) {
+                auto* entryObj = globalEntry.getAsObject();
+                if (!entryObj) continue;
+                auto nameOpt = entryObj->getString("name");
+                std::string varName = nameOpt ? nameOpt->str() : "";
+                auto typeOpt = entryObj->getString("type");
+                std::string typeName = typeOpt ? typeOpt->str() : "";
+                auto *targetType = typeNameToBasicType(typeName, context);
+                if (!targetType) continue;
 
-            Type *baseType = targetType;
-            while (baseType->isArrayTy())
-                baseType = baseType->getArrayElementType();
+                auto *baseType = targetType;
+                while (baseType->isArrayTy())
+                    baseType = baseType->getArrayElementType();
 
-            for (auto &GV : module.globals()) {
-                if (GV.isDeclaration()) continue;
-                auto name = demangle(GV.getName().str());
-                // Skip compiler-internal or mangled symbols
-                if (name.find('.') != string::npos) continue;
-                if (name == varName) {
-                    globalBaseTypeMap[&GV] = baseType;
-                    break;
+                for (auto &GV : module.globals()) {
+                    if (GV.isDeclaration()) continue;
+                    auto name = demangle(GV.getName().str());
+                    // Skip compiler-internal or mangled symbols
+                    if (name.find('.') != string::npos) continue;
+                    if (name == varName) {
+                        globalBaseTypeMap[&GV] = baseType;
+                        break;
+                    }
                 }
             }
         }
@@ -129,7 +154,9 @@ void ChangeVariableDecl::initBaseTypeMaps(Module &module) {
                         auto it = configMap.find(key);
                         if (it == configMap.end()) continue;
                         auto &configEntry = it->second;
-                        auto typeName = configEntry["type"].get<string>();
+                        auto* entryObj = configEntry.getAsObject();
+                        auto typeOpt = entryObj->getString("type");
+                        std::string typeName = typeOpt ? typeOpt->str() : "";
                         auto *targetType = typeNameToBasicType(typeName, F.getContext());
                         if (!targetType) continue;
 
@@ -141,7 +168,7 @@ void ChangeVariableDecl::initBaseTypeMaps(Module &module) {
                         }
 
                         // 如果该配置项标注为参数，则初始化函数声明映射与指针形参基类型映射
-                        if (configEntry.contains("isParam") && configEntry["isParam"].get<bool>()) {
+                        if (entryObj->find("isParam") != entryObj->end() && entryObj->getBoolean("isParam").value_or(false)) {
                             StringRef varName = DV->getName();
                             unsigned argIndex = 0;
                             for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
@@ -170,7 +197,9 @@ void ChangeVariableDecl::initBaseTypeMaps(Module &module) {
                             auto it = configMap.find(key);
                             if (it == configMap.end()) continue;
                             auto &configEntry = it->second;
-                            auto typeName = configEntry["type"].get<string>();
+                            auto* entryObj = configEntry.getAsObject();
+                            auto typeOpt = entryObj->getString("type");
+                            std::string typeName = typeOpt ? typeOpt->str() : "";
                             auto *targetType = typeNameToBasicType(typeName, F.getContext());
                             if (!targetType) continue;
 
@@ -179,7 +208,7 @@ void ChangeVariableDecl::initBaseTypeMaps(Module &module) {
                             localBaseTypeMap[alloca] = baseType;
 
                             // 如果该配置项标注为参数，则将其与函数形参关联（若alloca名字对应参数名）
-                            if (it->second.contains("isParam") && it->second["isParam"].get<bool>()) {
+                            if (entryObj->find("isParam") != entryObj->end() && entryObj->getBoolean("isParam").value_or(false)) {
                                 std::string varName = "";
                                 if (alloca->hasName()) varName = alloca->getName().str();
                                 unsigned argIndex = 0;
@@ -1332,13 +1361,26 @@ Type* ChangeVariableDecl::typeNameToBasicType(string typeName, LLVMContext& cont
 
 void ChangeVariableDecl::runOnFunction(Function &F) {
     auto &context = F.getContext();
-    auto functionConfig = config["local"][demangle(F.getName())];
+
+    json::Value* localVal = config.getAsObject()->get("local");
+    if (!localVal || localVal->kind() == json::Value::Null) return;
+    auto* localObj = localVal->getAsObject();
+    if (!localObj) return;
+
+    json::Value* funcConfig = localObj->get(demangle(F.getName()));
+    if (!funcConfig || funcConfig->kind() == json::Value::Null) return;
 
     // 检查是否需要修改函数返回值类型
-    for (auto &configEntry : functionConfig) {
-        if (configEntry["name"] == "ret.") {
+    auto* funcConfigArr = funcConfig->getAsArray();
+    if (!funcConfigArr) return;
+    for (auto &configEntry : *funcConfigArr) {
+        auto* entryObj = configEntry.getAsObject();
+        if (!entryObj) continue;
+        auto nameOpt = entryObj->getString("name");
+        if (nameOpt && *nameOpt == "ret.") {
             auto srcTypeName = parseTypeName(F.getFunctionType()->getReturnType());
-            auto targetTypeName = configEntry["type"].get<string>();
+            auto typeOpt = entryObj->getString("type");
+            std::string targetTypeName = typeOpt ? typeOpt->str() : "";
             // TODO: 暂不处理指针类型返回值
             if (targetTypeName.find('*') != string::npos) continue;
             auto *targetType = typeNameToBasicType(targetTypeName, context);
@@ -1382,7 +1424,9 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                         if (it == configMap.end()) continue;
 
                         auto &configEntry = it->second;
-                        auto typeName = configEntry["type"].get<string>();
+                        auto* entryObj = configEntry.getAsObject();
+                        auto typeOpt = entryObj->getString("type");
+                        std::string typeName = typeOpt ? typeOpt->str() : "";
                         auto *targetType = typeNameToBasicType(typeName, context);
                         changeGlobalVariable(GV, targetType);
                     }
@@ -1399,13 +1443,15 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     auto it = configMap.find(key);
                     if (it == configMap.end()) continue;
                     auto &configEntry = it->second;
-                    auto typeName = configEntry["type"].get<string>();
+                    auto* entryObj = configEntry.getAsObject();
+                    auto typeOpt = entryObj->getString("type");
+                    std::string typeName = typeOpt ? typeOpt->str() : "";
                     auto srcTypeName = parseDITypeName(DV->getType());
                     // if (typeName == srcTypeName) continue;
                     auto *targetType = typeNameToBasicType(typeName, context);
                     if (targetType == nullptr) continue;
                     
-                    if (configEntry["isParam"]) {
+                    if (entryObj->find("isParam") != entryObj->end() && entryObj->getBoolean("isParam").value_or(false)) {
                         unsigned argIndex = 0;
                         for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
                             if (argIt->getName() == varName) {
@@ -1437,7 +1483,9 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     auto it = configMap.find(key);
                     if (it == configMap.end()) continue;
                     auto &configEntry = it->second;
-                    auto typeName = configEntry["type"].get<string>();
+                    auto* entryObj = configEntry.getAsObject();
+                    auto typeOpt = entryObj->getString("type");
+                    std::string typeName = typeOpt ? typeOpt->str() : "";
                     // if (typeName == srcTypeName) continue;
                     auto *targetType = typeNameToBasicType(typeName, context);
                     if (targetType == nullptr) continue;
@@ -1461,16 +1509,20 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
 }
 
 void ChangeVariableDecl::changeStructDeclarations(Module &module) {
-    if (!config.contains("structs")) return;
+    json::Value* structsVal = config.getAsObject()->get("structs");
+    if (!structsVal || structsVal->kind() == json::Value::Null) return;
+    auto* structsObj = structsVal->getAsObject();
+    if (!structsObj) return;
 
-    nlohmann::json structInfos = config["structs"];
     auto &context = module.getContext();
     // Iterate all struct decls in the module
     for (auto *sty : module.getIdentifiedStructTypes()) {
         StringRef rawName = sty->getName();
         StringRef structName = rawName.starts_with("struct.") ? rawName.substr(7) : rawName;
-        if (!structInfos.contains(structName.str())) continue;
-        auto members = structInfos[structName.str()];
+        json::Value* structEntry = structsObj->get(structName);
+        if (!structEntry || structEntry->kind() == json::Value::Null) continue;
+        auto* membersArr = structEntry->getAsArray();
+        if (!membersArr) continue;
         SmallVector<Type*, 4> memberNewTypes, memberNewBaseTypes;  // 成员的完整类型和基类型
         bool needsUpdate = false;
 
@@ -1478,7 +1530,10 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
         for (unsigned i = 0; i < sty->getNumElements(); ++i) {
             auto *oldType = sty->getElementType(i);
         
-            string typeStr = members[i]["type"].get<string>();
+            auto* memberObj = (*membersArr)[i].getAsObject();
+            if (!memberObj) continue;
+            auto typeOpt = memberObj->getString("type");
+            std::string typeStr = typeOpt ? typeOpt->str() : "";
             auto *targetType = typeNameToBasicType(typeStr, context);
 
             if (targetType && targetType != oldType) {
@@ -1629,15 +1684,20 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
 }
 
 void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
-    if (!config.contains("global")) return;
+    json::Value* globalVal = config.getAsObject()->get("global");
+    if (!globalVal || globalVal->kind() == json::Value::Null) return;
     auto &context = module.getContext();
     
     // 获取全局变量配置
-    nlohmann::json &globalConfig = config["global"];
+    auto* globalArr = globalVal->getAsArray();
+    if (!globalArr) return;
     
-    for (auto &globalEntry : globalConfig) {
-        std::string varName = globalEntry["name"];
-        configMap[varName] = globalEntry;
+    for (auto &globalEntry : *globalArr) {
+        auto* entryObj = globalEntry.getAsObject();
+        if (!entryObj) continue;
+        auto nameOpt = entryObj->getString("name");
+        std::string varName = nameOpt ? nameOpt->str() : "";
+        configMap.insert_or_assign(varName, globalEntry);
     }
 
     for (auto &GV : module.globals()) {
@@ -1649,7 +1709,9 @@ void ChangeVariableDecl::changeGlobalDeclarations(Module &module) {
         auto it = configMap.find(name);
         if (it == configMap.end()) continue;
         auto &configEntry = it->second;
-        std::string typeName = configEntry["type"].get<string>();
+        auto* entryObj = configEntry.getAsObject();
+        auto typeOpt = entryObj->getString("type");
+        std::string typeName = typeOpt ? typeOpt->str() : "";
         auto *targetType = typeNameToBasicType(typeName, context);
         changeGlobalVariable(&GV, targetType);
     }

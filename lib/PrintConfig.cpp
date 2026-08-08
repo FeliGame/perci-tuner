@@ -16,6 +16,7 @@
 #include <llvm/IR/Type.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/Format.h>
 #include <llvm/IR/ValueSymbolTable.h>
 #include <llvm/Demangle/Demangle.h>
 
@@ -34,7 +35,7 @@ cl::opt<string> IncludeFuncs("include-func", cl::value_desc("functions included 
 
 // Find Local vars and local static vars
 void PrintConfig::findLocalVariables(Function &F) {
-    nlohmann::json function;
+    json::Array function;
     auto funcName = demangle(F.getName());
 
     bool inRegion = false;
@@ -168,24 +169,31 @@ void PrintConfig::findLocalVariables(Function &F) {
                                 if (inRegion) {
                                     for (auto &localVar : function) {
                                         // 找到varName对应的config项
-                                        if (localVar["name"] == precisionRange[0].str()) {
+                                        auto *localObj = localVar.getAsObject();
+                                        auto *nameVal = localObj ? localObj->get("name") : nullptr;
+                                        if (localObj && nameVal && nameVal->getAsString() == precisionRange[0]) {
+                                            json::Array rangeArr;
                                             for (size_t i = 1; i < precisionRange.size(); ++i) {
-                                                localVar["range"].push_back(precisionRange[i].str());
+                                                rangeArr.push_back(json::Value(precisionRange[i]));
                                             }
+                                            (*localObj)["range"] = std::move(rangeArr);
                                             break;
                                         }
                                     }
                                 } else {
                                     // 保存精度范围到临时map中
-                                    autoFPRange[precisionRange[0].str()] = 
-                                        SmallVector<std::string>(precisionRange.begin()+1, precisionRange.end());
+                                    SmallVector<std::string> rangeStrs;
+                                    for (size_t i = 1; i < precisionRange.size(); ++i)
+                                        rangeStrs.push_back(precisionRange[i].str());
+                                    autoFPRange[precisionRange[0].str()] = rangeStrs;
                                 }
                             }
                         }
                     } else if (name == "llvm.precision.error") {
                         auto *errorMD = getMetadataNode(CI, 0);
                         auto errors = extractStringsFromMD(errorMD);
-                        config["result_error"] = errors[1];  // errors[0] is var_name
+                        if (auto *configObj = config.getAsObject())
+                            (*configObj)["result_error"] = json::Value(errors[1].str());  // errors[0] is var_name
                     }
                 }
             }
@@ -246,44 +254,69 @@ void PrintConfig::findLocalVariables(Function &F) {
                     auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
                     fileName = localScope->getNonLexicalBlockFileScope()->getFile()->getFilename().str();
                 }
-                nlohmann::json localVar;
-                localVar["name"] = varName;
-                localVar["type"] = typeName;
-                localVar["line"] = lineNo;
-                localVar["column"] = colNo;
-                localVar["file"] = fileName;
-                localVar["isStatic"] = isStatic;
-                localVar["isParam"] = isParam;
+                json::Object localVar;
+                localVar["name"] = json::Value(varName);
+                localVar["type"] = json::Value(typeName);
+                localVar["line"] = json::Value(static_cast<int64_t>(lineNo));
+                localVar["column"] = json::Value(static_cast<int64_t>(colNo));
+                localVar["file"] = json::Value(fileName);
+                localVar["isStatic"] = json::Value(isStatic);
+                localVar["isParam"] = json::Value(isParam);
                 // Handle __autofp
                 if (autoFPRange.count(varName)) {
-                    localVar["range"] = autoFPRange[varName];
+                    json::Array rangeArr;
+                    for (auto &s : autoFPRange[varName])
+                        rangeArr.push_back(json::Value(s));
+                    localVar["range"] = std::move(rangeArr);
                     searchableVars.insert(varName);
                 }
             
-                function.emplace_back(localVar); 
+                function.push_back(json::Value(std::move(localVar))); 
             }
         }
     }
 
-    nlohmann::json newFunction;
+    json::Array newFunction;
     for (auto &localVar : function) {
-        auto varName = localVar["name"].get<string>();
+        auto *localObj = localVar.getAsObject();
+        std::string varName = "";
+        if (localObj) {
+            if (auto *nameVal = localObj->get("name")) {
+                if (auto nameStr = nameVal->getAsString())
+                    varName = nameStr->str();
+            }
+        }
         // If search range not specified, use default range
-        if (localVar["range"].empty()) {
-            localVar["range"] = defaultPrecisionRange;
+        if (localObj) {
+            auto rangeIt = localObj->find("range");
+            if (rangeIt == localObj->end() || !rangeIt->second.getAsArray() || rangeIt->second.getAsArray()->empty()) {
+                json::Array rangeArr;
+                for (auto &s : defaultPrecisionRange)
+                    rangeArr.push_back(json::Value(s));
+                (*localObj)["range"] = std::move(rangeArr);
+            }
         }
         // Only save referenced vars into config
         if (searchableVars.count(varName) > 0) {
-            newFunction.push_back(localVar);
+            newFunction.push_back(std::move(localVar));
         }
     }
 
-    config["local"][funcName] = (EnableMXP ? newFunction : function);
+    if (auto *configObj = config.getAsObject()) {
+        json::Value &localVal = (*configObj)["local"];
+        if (localVal.getAsObject()) {
+            (*localVal.getAsObject())[funcName] = json::Value(std::move(EnableMXP ? newFunction : function));
+        } else {
+            json::Object newLocal;
+            newLocal[funcName] = json::Value(std::move(EnableMXP ? newFunction : function));
+            localVal = json::Value(std::move(newLocal));
+        }
+    }
     autoFPRange.clear();
 }
 
 void PrintConfig::findGlobalVariables(Module &M) { 
-    nlohmann::json globalVars;
+    json::Array globalVars;
 
     for (GlobalVariable &GV : M.globals()) {
         if (GV.isDeclaration()) continue;
@@ -292,9 +325,9 @@ void PrintConfig::findGlobalVariables(Module &M) {
         // Skip vars not declared by user
         if(name.find('.') != string::npos) continue;
 
-        nlohmann::json globalVar;
-        globalVar["name"] = name;
-        globalVar["isStatic"] = GV.hasInternalLinkage();
+        json::Object globalVar;
+        globalVar["name"] = json::Value(name);
+        globalVar["isStatic"] = json::Value(GV.hasInternalLinkage());
 
         SmallVector<DIGlobalVariableExpression *, 1> GVs;
         GV.getDebugInfo(GVs);
@@ -307,8 +340,8 @@ void PrintConfig::findGlobalVariables(Module &M) {
         DIFile *file = GVDebug->getFile();
         string fileName = file->getFilename().str();
         if (!needScanFile(file)) continue;
-        globalVar["line"] = lineNo;
-        globalVar["file"] = fileName;
+        globalVar["line"] = json::Value(static_cast<int64_t>(lineNo));
+        globalVar["file"] = json::Value(fileName);
         auto typeName = parseDITypeName(GVDebug->getType());
         DICompositeType *structType = nullptr;
         std::string structName = "";
@@ -341,7 +374,7 @@ void PrintConfig::findGlobalVariables(Module &M) {
         }
         if (structType) dumpStructDecl(structType, structName);
 
-        globalVar["type"] = typeName;
+        globalVar["type"] = json::Value(typeName);
 
         // handle __autofp
         if (MDNode *MD = GV.getMetadata("precision_range")) {
@@ -351,37 +384,50 @@ void PrintConfig::findGlobalVariables(Module &M) {
                     precisionRange.push_back(MDStr->getString().str());
                 }
             }
-            globalVar["range"] = precisionRange;
+            json::Array rangeArr;
+            for (auto &s : precisionRange)
+                rangeArr.push_back(json::Value(s));
+            globalVar["range"] = std::move(rangeArr);
             if (EnableMXP)
-                globalVars.emplace_back(globalVar);  // only __autofp globalVar available
+                globalVars.push_back(json::Value(std::move(globalVar)));  // only __autofp globalVar available
         }
         if (!EnableMXP)
-            globalVars.emplace_back(globalVar);
+            globalVars.push_back(json::Value(std::move(globalVar)));
     }
-    config["global"] = globalVars;
+    if (auto *configObj = config.getAsObject())
+        (*configObj)["global"] = json::Value(std::move(globalVars));
 }
 
 void PrintConfig::dumpStructDecl(DICompositeType* structType, std::string structName) {
     if (structName.empty()) return;
-    nlohmann::json structDecl;
+    json::Array structDecl;
     unsigned i = 0;
     for (auto *element : structType->getElements()) {
         if (auto *memberType = dyn_cast<DIDerivedType>(element)) {
             if (memberType->getTag() != dwarf::DW_TAG_member) continue;
-            nlohmann::json memberInfo;
-            memberInfo["member_index"] = i++;
-            memberInfo["type"] = parseDITypeName(memberType->getBaseType());
-            structDecl.push_back(memberInfo);
+            json::Object memberInfo;
+            memberInfo["member_index"] = json::Value(static_cast<int64_t>(i++));
+            memberInfo["type"] = json::Value(parseDITypeName(memberType->getBaseType()));
+            structDecl.push_back(json::Value(std::move(memberInfo)));
         }
     }
     // 若structName有"struct."前缀，则将其去掉
     if (structName.find("struct.") != std::string::npos)
         structName = structName.substr(7);
-    config["structs"][structName] = structDecl;
+    if (auto *configObj = config.getAsObject()) {
+        json::Value &structsVal = (*configObj)["structs"];
+        if (auto *structsObj = structsVal.getAsObject())
+            (*structsObj)[structName] = json::Value(std::move(structDecl));
+        else {
+            json::Object newStructs;
+            newStructs[structName] = json::Value(std::move(structDecl));
+            structsVal = json::Value(std::move(newStructs));
+        }
+    }
 }
 
 void PrintConfig::findFunctionCalls(Function &F) {
-    nlohmann::json funcInfo;
+    json::Array funcInfo;
     bool inRegion = false;
     
     for (auto &BB : F) {
@@ -403,20 +449,29 @@ void PrintConfig::findFunctionCalls(Function &F) {
                     auto *callee = CI->getCalledFunction();
                     if (callee && !callee->isIntrinsic()) {
                         auto loc = CI->getDebugLoc();
-                        nlohmann::json callInfo;
-                        callInfo["type"] = callee->getName().str();
+                        json::Object callInfo;
+                        callInfo["type"] = json::Value(callee->getName().str());
                         if (loc) {
-                            callInfo["file"] = loc->getFilename().str();
-                            callInfo["line"] = loc.get()->getLine();
-                            callInfo["column"] = loc.getCol();
+                            callInfo["file"] = json::Value(loc->getFilename().str());
+                            callInfo["line"] = json::Value(static_cast<int64_t>(loc.getLine()));
+                            callInfo["column"] = json::Value(static_cast<int64_t>(loc.getCol()));
                         }
-                        funcInfo.emplace_back(callInfo);
+                        funcInfo.push_back(json::Value(std::move(callInfo)));
                     }
                 }
             }
         }
     }
-    config["calls"][demangle(F.getName())] = funcInfo;
+    if (auto *configObj = config.getAsObject()) {
+        json::Value &callsVal = (*configObj)["calls"];
+        if (auto *callsObj = callsVal.getAsObject())
+            (*callsObj)[demangle(F.getName())] = json::Value(std::move(funcInfo));
+        else {
+            json::Object newCalls;
+            newCalls[demangle(F.getName())] = json::Value(std::move(funcInfo));
+            callsVal = json::Value(std::move(newCalls));
+        }
+    }
 }
 
 bool PrintConfig::runOnFunction(Function &F) {
@@ -481,6 +536,9 @@ bool PrintConfig::needScanFunction(Function &F) {
 bool PrintConfig::runOnModule(Module &module) {
     parseIncludeAndExcludeLists();
     
+    // Initialize config as an Object
+    config = json::Value(json::Object());
+
     findGlobalVariables(module);
 
     for(auto &F : module) {
@@ -496,7 +554,7 @@ bool PrintConfig::runOnModule(Module &module) {
 
     std::error_code errorInfo; 
     raw_fd_ostream outfile("config.json", errorInfo);
-    outfile << config.dump(4);  // 4 space = 1 indent
+    outfile << formatv("{0:4}", json::Value(std::move(config)));
 
     return false;  // hasn't changed IR
 }  

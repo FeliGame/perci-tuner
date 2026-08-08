@@ -12,7 +12,9 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/IR/DIBuilder.h>
 
-#include "nlohmann/json.hpp"
+#include <set>
+
+#include "llvm/Support/JSON.h"
 
 namespace llvm {
 
@@ -82,7 +84,7 @@ private:
 
     void removeUnusedReplacements();
 
-    DenseSet<StringRef> includedFunctions;
+    std::set<std::string> includedFunctions;
 
     DenseSet<Instruction*> instToErase;  // Inst to be erased later
 
@@ -106,10 +108,12 @@ private:
     DenseMap<Function*, Type*> funcRetTypeMap;  // 函数返回类型
     
     DenseMap<CallInst*, std::vector<Type*>> varargCallOriginalTypes;  // printf等可变参数
-    
-    nlohmann::json config;
+    // llvm::json::Value keeps parsed strings as StringRef views into the
+    // input buffer. Keep that buffer alive for the lifetime of the pass.
+    std::string configContents;
+    json::Value config{nullptr};
 
-    std::map<std::string, nlohmann::json> configMap;  // 存储config的map形式，key为file:line:column的拼接字符串
+    std::map<std::string, json::Value> configMap;  // 存储config的map形式，key为file:line:column的拼接字符串
 
     DIBuilder *DIB;
 
