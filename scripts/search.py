@@ -213,12 +213,12 @@ def main():
     if args['-base-time'] and args['-base-result']:
         data_utils.ORIGINAL_TIME = args['-base-time']
         data_utils.ORIGINAL_RESULT = args['-base-result']
-        print(">>> Perci-Tuner(Py): Using manual baseline values")
+        print(">>> Perci-Tuner: Using manual baseline values")
     else:
         data_utils.ORIGINAL_TIME = transform.current_run_time
         data_utils.ORIGINAL_RESULT = transform.current_run_result
     if data_utils.is_non_finite(data_utils.ORIGINAL_TIME) or data_utils.is_non_finite(data_utils.ORIGINAL_RESULT):
-        print(">>> Perci-Tuner(Py) Error: baseline produced non-finite time/result, search aborted.")
+        print(">>> Perci-Tuner Error: baseline produced non-finite time/result, search aborted.")
         sys.exit(1)
     print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
     timeout_baseline = (
@@ -227,7 +227,7 @@ def main():
         else data_utils.ORIGINAL_TIME
     )
     transform.TIMEOUT_THRESHOLD = math.ceil(args['-timeout'] * timeout_baseline)
-    print(">>> Perci-Tuner(Py): Timeout threshold set to", transform.TIMEOUT_THRESHOLD, "seconds")
+    print(">>> Perci-Tuner: Timeout threshold set to", transform.TIMEOUT_THRESHOLD, "seconds")
         
     # start searching
     algorithm_utils.min_time = data_utils.ORIGINAL_TIME

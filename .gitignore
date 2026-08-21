@@ -15,3 +15,6 @@ output
 temp_output
 optimized_output
 merged
+
+test/**/Output/
+test/.lit_test_times.txt

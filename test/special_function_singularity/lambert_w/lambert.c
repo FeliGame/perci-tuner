@@ -1,0 +1,251 @@
+// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize -no-build "%s" -lm' > %t.out 2>&1; true
+// RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
+
+/* specfunc/lambert.c
+ *
+ * Copyright (C) 2007 Brian Gough
+ * Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001 Gerard Jungman
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ */
+
+/* Author:  G. Jungman */
+
+#include <stdio.h>
+
+#include <math.h>
+#include <float.h>
+
+typedef double gsl_real_t;
+typedef struct { gsl_real_t val; gsl_real_t err; } gsl_sf_result;
+typedef unsigned int gsl_mode_t;
+
+#ifndef GSL_SUCCESS
+#define GSL_SUCCESS 0
+#endif
+#ifndef GSL_EDOM
+#define GSL_EDOM 1
+#endif
+#ifndef GSL_EMAXITER
+#define GSL_EMAXITER 11
+#endif
+#ifndef GSL_PREC_DOUBLE
+#define GSL_PREC_DOUBLE 0
+#endif
+#ifndef GSL_MODE_PREC
+#define GSL_MODE_PREC(mt) ((mt) & (unsigned int)7)
+#endif
+#ifndef GSL_DBL_EPSILON
+#define GSL_DBL_EPSILON (DBL_EPSILON)
+#endif
+#ifndef GSL_SQRT_DBL_EPSILON
+#define GSL_SQRT_DBL_EPSILON (sqrt(DBL_EPSILON))
+#endif
+#ifndef GSL_ROOT3_DBL_EPSILON
+#define GSL_ROOT3_DBL_EPSILON (powl((long double)DBL_EPSILON, 1.0L/3.0L))
+#endif
+#ifndef GSL_LOG_DBL_EPSILON
+#define GSL_LOG_DBL_EPSILON (log(DBL_EPSILON))
+#endif
+#ifndef GSL_MAX_DBL
+#define GSL_MAX_DBL(a,b) ((a) > (b) ? (a) : (b))
+#endif
+#ifndef GSL_NAN
+#define GSL_NAN NAN
+#endif
+#ifndef GSL_POSINF
+#define GSL_POSINF INFINITY
+#endif
+#ifndef GSL_ERROR
+#define GSL_ERROR(reason, code) return (code)
+#endif
+#ifndef DOMAIN_ERROR
+#define DOMAIN_ERROR(result) do { (result)->val = GSL_NAN; (result)->err = GSL_NAN; return GSL_EDOM; } while (0)
+#endif
+#ifndef DOMAIN_ERROR_MSG
+#define DOMAIN_ERROR_MSG(msg, result) DOMAIN_ERROR(result)
+#endif
+#ifndef OVERFLOW_ERROR
+#define OVERFLOW_ERROR(result) do { (result)->val = GSL_POSINF; (result)->err = GSL_POSINF; return GSL_EDOM; } while (0)
+#endif
+#ifndef UNDERFLOW_ERROR
+#define UNDERFLOW_ERROR(result) do { (result)->val = 0; (result)->err = GSL_DBL_EPSILON; return GSL_EDOM; } while (0)
+#endif
+#ifndef MAXITER_ERROR
+#define MAXITER_ERROR(result) do { (result)->val = GSL_NAN; (result)->err = GSL_NAN; return GSL_EMAXITER; } while (0)
+#endif
+
+/* Started with code donated by K. Briggs; added
+ * error estimates, GSL foo, and minor tweaks.
+ * Some Lambert-ology from
+ *  [Corless, Gonnet, Hare, and Jeffrey, "On Lambert's W Function".]
+ */
+
+/* Halley iteration (eqn. 5.12, Corless et al) */
+static int
+halley_iteration(
+    double x,
+    double w_initial,
+    unsigned int max_iters,
+    gsl_sf_result *result)
+{
+  double w = w_initial;
+  unsigned int i;
+
+  for (i = 0; i < max_iters; i++)
+  {
+    double tol;
+    const double e = exp(w);
+    const double p = w + 1.0;
+    double t = w * e - x;
+    /* printf("FOO: %20.16g  %20.16g\n", w, t); */
+
+    if (w > 0)
+    {
+      t = (t / p) / e; /* Newton iteration */
+    }
+    else
+    {
+      t /= e * p - 0.5 * (p + 1.0) * t / p; /* Halley iteration */
+    };
+
+    w -= t;
+
+    tol = 10 * GSL_DBL_EPSILON * GSL_MAX_DBL(fabs(w), 1.0 / (fabs(p) * e));
+
+    if (fabs(t) < tol)
+    {
+      result->val = w;
+      result->err = 2.0 * tol;
+      return GSL_SUCCESS;
+    }
+  }
+
+  /* should never get here */
+  result->val = w;
+  result->err = fabs(w);
+  return GSL_EMAXITER;
+}
+
+/* series which appears for q near zero;
+ * only the argument is different for the different branches
+ */
+static double
+series_eval(double r)
+{
+  static const double c[12] = {
+      -1.0,
+      2.331643981597124203363536062168,
+      -1.812187885639363490240191647568,
+      1.936631114492359755363277457668,
+      -2.353551201881614516821543561516,
+      3.066858901050631912893148922704,
+      -4.175335600258177138854984177460,
+      5.858023729874774148815053846119,
+      -8.401032217523977370984161688514,
+      12.250753501314460424,
+      -18.100697012472442755,
+      27.029044799010561650};
+  const double t_8 = c[8] + r * (c[9] + r * (c[10] + r * c[11]));
+  const double t_5 = c[5] + r * (c[6] + r * (c[7] + r * t_8));
+  const double t_1 = c[1] + r * (c[2] + r * (c[3] + r * (c[4] + r * t_5)));
+  return c[0] + r * t_1;
+}
+
+/*-*-*-*-*-*-*-*-*-*-*-* Functions with Error Codes *-*-*-*-*-*-*-*-*-*-*-*/
+
+int gsl_sf_lambert_W0_e(double x, gsl_sf_result *result)
+{
+  const double one_over_E = 1.0 / M_E;
+  const double q = x + one_over_E;
+
+  if (x == 0.0)
+  {
+    result->val = 0.0;
+    result->err = 0.0;
+    return GSL_SUCCESS;
+  }
+  else if (q < 0.0)
+  {
+    /* Strictly speaking this is an error. But because of the
+     * arithmetic operation connecting x and q, I am a little
+     * lenient in case of some epsilon overshoot. The following
+     * answer is quite accurate in that case. Anyway, we have
+     * to return GSL_EDOM.
+     */
+    result->val = -1.0;
+    result->err = sqrt(-q);
+    return GSL_EDOM;
+  }
+  else if (q == 0.0)
+  {
+    result->val = -1.0;
+    result->err = GSL_DBL_EPSILON; /* cannot error is zero, maybe q == 0 by "accident" */
+    return GSL_SUCCESS;
+  }
+  else if (q < 1.0e-03)
+  {
+    /* series near -1/E in sqrt(q) */
+    const double r = sqrt(q);
+    result->val = series_eval(r);
+    result->err = 2.0 * GSL_DBL_EPSILON * fabs(result->val);
+    return GSL_SUCCESS;
+  }
+  else
+  {
+    static const unsigned int MAX_ITERS = 10;
+    double w;
+
+    if (x < 1.0)
+    {
+      /* obtain initial approximation from series near x=0;
+       * no need for extra care, since the Halley iteration
+       * converges nicely on this branch
+       */
+      const double p = sqrt(2.0 * M_E * q);
+      w = -1.0 + p * (1.0 + p * (-1.0 / 3.0 + p * 11.0 / 72.0));
+    }
+    else
+    {
+      /* obtain initial approximation from rough asymptotic */
+      w = log(x);
+      if (x > 3.0)
+        w -= log(w);
+    }
+
+    return halley_iteration(x, w, MAX_ITERS, result);
+  }
+}
+
+/*-*-*-*-*-*-*-*-*-* Functions w/ Natural Prototypes *-*-*-*-*-*-*-*-*-*-*/
+
+int main()
+{
+  double x = -0.3678794;
+  gsl_sf_result result;
+
+  int status = 99;
+  int count = 1000000;
+  while (count--)
+  {
+    status = gsl_sf_lambert_W0_e(x, &result);
+  }
+  if (status == GSL_SUCCESS)
+    printf("%.13e\n", result.val);
+  else
+    printf("Error for W_{-1}(%f)\n", x);
+
+  return 0;
+}

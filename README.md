@@ -44,8 +44,15 @@ Then run `source ~/.bashrc` to enable it:
 
 Check run.sh for more help info.
 
-# Limitations
+## Test
 
-* Perci-Tuner enable mix precision for floating-type function return, such as 'long double foo(...) -> double foo(...)', but not support floating-type pointer function return, such as 'long double* foo(...) -> double* foo(...)'
-* Perci-Tuner performance not optimal under mix-precision fmuladd case. In clang, fmuladd with diff precision ops should split into fmul + fadd, and merge into fmuladd when operands are same. While Perci-Tuner doesn't support flexible split and merge.
-* Perci-Tuner won't change malloc size. In this case, we only recommend change config to lower precision to avoid potential memory overflow.
+```bash
+cd $PERCI_TUNER
+sh scripts/build.sh
+cd build
+ninja check
+```
+Or run specific test:
+```bash
+python3 -m lit -v test/xxx
+```

@@ -67,7 +67,7 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     # check if the config has been runned
     key = json.dumps(current_config, sort_keys=False)
     if skip_runned and key in runned_change_set: 
-        print('>>> Perci-Tuner(Py): The config has been runned, skipped...')
+        print('>>> Perci-Tuner: The config has been runned, skipped...')
         skip = True
         return
     skip = False
@@ -84,24 +84,24 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     if result == 0:  # result not satisfy threshold
         satisfy_thres = False
     if result == -1:
-        print(">>> Perci-Tuner(Py) Error: running LLVM passes failed!")
+        print(">>> Perci-Tuner Error: running LLVM passes failed!")
         sys.exit(1)
     elif result == -2:
-        print(">>> Perci-Tuner(Py) Warning: running IR failed, ignored...")
+        print(">>> Perci-Tuner Warning: running IR failed, ignored...")
         # sys.exit(1)
         return False
     elif result == -3:
-        print(">>> Perci-Tuner(Py) Error: the running time is not found!")
+        print(">>> Perci-Tuner Error: the running time is not found!")
         sys.exit(1)
     elif result == -4:
-        print(">>> Perci-Tuner(Py) Error: the running result is not found!")
+        print(">>> Perci-Tuner Error: the running result is not found!")
         sys.exit(1)
 
     # save all configs into json
     if data_utils.ORIGINAL_RESULT == -1: return True
     if satisfy_thres:
-        print(f">>> Perci-Tuner(Py): VALID config{run_times}")
+        print(f">>> Perci-Tuner: VALID config{run_times}")
     else:
-        print(f">>> Perci-Tuner(Py): INVALID config{run_times}")
+        print(f">>> Perci-Tuner: INVALID config{run_times}")
 
     return satisfy_thres

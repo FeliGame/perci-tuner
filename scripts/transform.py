@@ -146,7 +146,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             stderr_output = completed.stderr
             
             if not output.strip():
-                print(">>> Perci-Tuner(Py) Error: Program has no output, search failed!")
+                print(">>> Perci-Tuner Error: Program has no output, search failed!")
                 sys.exit(1)
             output_text = output.decode()
             stderr_text = stderr_output.decode()
@@ -177,7 +177,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                     current_run_time = float("nan")
                     break
         except subprocess.TimeoutExpired:
-            print(f">>> Perci-Tuner(Py) Error: Timeout after {TIMEOUT_THRESHOLD} seconds.")
+            print(f">>> Perci-Tuner Warning: Timeout after {TIMEOUT_THRESHOLD} seconds.")
             RUNNING_FAIL_TIMES += 1
             current_run_result = None
             if show_history:
@@ -188,7 +188,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
                 print(e.stdout.decode(), end="")
             if e.stderr:
                 print(e.stderr.decode(), end="", file=sys.stderr)
-            print(f">>> Perci-Tuner(Py) Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")
+            print(f">>> Perci-Tuner Error: Command failed with code {e.returncode}: {' '.join(e.cmd)}")
             RUNNING_FAIL_TIMES += 1
             current_run_result = None
             if show_history:

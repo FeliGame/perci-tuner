@@ -1,0 +1,2 @@
+./output -boxes1d 5
+./output -boxes1d 10

@@ -62,6 +62,7 @@ OPT_LEVEL="-O2" # Example: -O2. Beware that optimization may change results.
 
 # run generate-config before search
 REFRESH_CONFIG=true
+NO_BUILD=false
 
 # PERCI_ANALYSIS_OPTIONS="-Xclang -load -Xclang $PERCI_TUNER/build/libPerciAST.so -Xclang -plugin -Xclang perci-analysis "
 
@@ -237,13 +238,7 @@ EOF
 
 build_perci_tuner() {
     info "Build Perci-Tuner..."
-
-    cd "$PERCI_TUNER"
-    mkdir -p build
-    cd build
-    cmake ..
-    make -j"$(cpu_count)"
-    cd "$PERCI_TUNER"
+    sh "$PERCI_TUNER/scripts/build.sh"
 }
 
 prepare_runtime_options() {
@@ -431,6 +426,9 @@ for arg in "$@"; do
         generate-config|search-optimize|change-by-config|multi-version)
             MODE_FLAG="$arg"
             ;;
+        -no-build)
+            NO_BUILD=true
+            ;;
         -refresh-config=*)
             REFRESH_CONFIG="${arg#-refresh-config=}"
             ;;
@@ -543,7 +541,7 @@ if [ -z "$MODE_FLAG" ]; then
 fi
 
 require_perci_tuner_root
-build_perci_tuner
+[ "$NO_BUILD" = false ] && build_perci_tuner
 prepare_runtime_options
 
 clang --version

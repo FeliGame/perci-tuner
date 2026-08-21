@@ -42,3 +42,19 @@ add_library(PerciAST MODULE lib/PerciAST.cpp)
 # Link against LLVM libraries
 target_link_libraries(PerciTuner ${LLVM_LIBS})
 
+###############################################################################
+# Test suite: `ninja check` runs lit under test/.
+###############################################################################
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import lit"
+                RESULT_VARIABLE _lit_rc OUTPUT_QUIET ERROR_QUIET)
+if(_lit_rc EQUAL 0)
+    add_custom_target(check
+        COMMAND "${Python3_EXECUTABLE}" -m lit -v -j1 "${CMAKE_SOURCE_DIR}/test"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Running Perci-Tuner lit tests" USES_TERMINAL VERBATIM)
+    add_dependencies(check PerciTuner)
+else()
+    message(WARNING "lit not found; 'ninja check' unavailable (pip install lit)")
+endif()
+
