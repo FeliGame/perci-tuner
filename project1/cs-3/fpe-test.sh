@@ -1,1 +1,0 @@
-sh $PERCI_TUNER/scripts/run.sh fpe -mxp -history fpe-test.c 

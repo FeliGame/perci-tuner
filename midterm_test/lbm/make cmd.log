@@ -1,4 +1,0 @@
-gcc   -c -o lbm.o -DSPEC_CPU -DNDEBUG   -O3  -march=armv8-a  -std=gnu99 -ffast-math       -DSPEC_CPU_LP64         lbm.c
-gcc   -c -o main.o -DSPEC_CPU -DNDEBUG   -O3  -march=armv8-a  -std=gnu99 -ffast-math       -DSPEC_CPU_LP64         main.c
-gcc    -O3  -march=armv8-a  -std=gnu99 -ffast-math  -DSPEC_CPU_LP64        lbm.o main.o             -lm        -o lbm
-
