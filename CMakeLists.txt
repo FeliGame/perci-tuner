@@ -35,6 +35,7 @@ add_llvm_pass_plugin(PerciTuner
     lib/RecordResult.cpp
     lib/RemovePragma.cpp
     lib/FP128ToDD.cpp
+    lib/VerifyScalarUpcast.cpp
 )
 
 add_library(PerciAST MODULE lib/PerciAST.cpp)

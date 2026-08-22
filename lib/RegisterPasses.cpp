@@ -3,13 +3,6 @@
 
 // Ref: llvm-project/llvm/Examples/Bye.cpp
 
-#include "llvm/IR/Function.h"
-#include "llvm/Pass.h"
-#include "llvm/Passes/PassBuilder.h"
-#include "llvm/Passes/PassPlugin.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h"
-
 #include "PrintConfig.h"
 #include "ChangeVariableDecl.h"
 #include "ChangeMathCall.h"
@@ -18,6 +11,7 @@
 #include "RecordResult.h"
 #include "RemovePragma.h"
 #include "FP128ToDD.h"
+#include "VerifyScalarUpcast.h"
 
 using namespace llvm;
 
@@ -27,17 +21,11 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 	return {LLVM_PLUGIN_API_VERSION, "PerciTuner", LLVM_VERSION_STRING,
 			[](PassBuilder &PB)
 			{
-				// PB.registerAnalysisRegistrationCallback(
-				// 	[](ModuleAnalysisManager &MAM) {
-				// 		MAM.registerPass([] { 
-				// 			return IRTiming(); 
-				// 		});
-				// 	}
-				// );
-				// PB.registerVectorizerStartEPCallback(
-				//     [](llvm::ModulePassManager &PM, OptimizationLevel Level) {
-				//       PM.addPass(???);
-				//     });
+				PB.registerAnalysisRegistrationCallback(
+					[](ModuleAnalysisManager &MAM) {
+						MAM.registerPass([] { return VerifyScalarUpcast(); });
+					}
+				);
 				PB.registerPipelineParsingCallback(
 					[](StringRef Name, llvm::ModulePassManager &PM,
 					   ArrayRef<llvm::PassBuilder::PipelineElement>)
@@ -80,6 +68,11 @@ llvm::PassPluginLibraryInfo getPerciTunerPassPluginInfo()
 						if (Name == "fp128_to_dd")
 						{
 							PM.addPass(FP128ToDD());
+							return true;
+						}
+						if (Name == "verify_upcast")
+						{
+							PM.addPass(VerifyScalarUpcastPass());
 							return true;
 						}
 						return false;

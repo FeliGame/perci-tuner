@@ -8,9 +8,10 @@ Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features 
 First things first, install LLVM (recommended version: 17.0.6) build `-DCMAKE_BUILD_TYPE=Release` option, or Perci-Tuner might crash.
 
 ```sh
-git clone https://github.com/llvm/llvm-project.git
-cd llvm-project
-git checkout -b llvm-17 llvmorg-17.0.6
+git init
+git remote add origin https://github.com/llvm/llvm-project.git
+git fetch --depth=1 origin refs/tags/llvmorg-17.0.6:refs/tags/llvmorg-17.0.6
+git checkout llvmorg-17.0.6
 ```
 
 If you want to use -mxp option, install mxp version of LLVM, then build LLVM. https://mlir.llvm.org/getting_started/
