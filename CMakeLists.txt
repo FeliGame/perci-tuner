@@ -38,6 +38,7 @@ add_llvm_pass_plugin(PerciTuner
 )
 
 add_library(PerciAST MODULE lib/PerciAST.cpp)
+add_library(ChangeVarAST MODULE lib/ChangeVarAST.cpp)
 
 # Link against LLVM libraries
 target_link_libraries(PerciTuner ${LLVM_LIBS})

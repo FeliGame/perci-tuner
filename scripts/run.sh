@@ -153,10 +153,16 @@ Usage:
 Without a mode, run.sh calls clang directly.
 
 Available modes:
-  generate-config   Generate config file (config.json) and executable
-  search-optimize   Search for optimized config (run generate-config first)
-  change-by-config  Modify source code precision according to target config
-  multi-version     Generate multi-version executable
+  generate-config         Generate config file (config.json) and executable
+  generate-config-alpha   Generate config.json via pure Clang AST analysis
+                          (merged .ast files; only basic floating-point vars:
+                          local/global/params/struct members; no IR pipeline)
+  search-optimize         Search for optimized config (run generate-config first)
+  change-by-config        Modify source code precision according to target config
+  change-by-config-alpha  Rewrite source (*.changed.c) via pure Clang AST analysis
+                          (config-driven type token replacement; supports
+                          local/global/params/struct members + multi-decl split)
+  multi-version           Generate multi-version executable
 
 Search options:
   -algorithm=exhaust/dd/pedd  Select search algorithm (default dd)
@@ -192,6 +198,8 @@ Multi-version options:
 
 Examples:
   run.sh generate-config -mxp src.c -lm
+  run.sh generate-config-alpha -Iinclude helper.c main.c
+  run.sh change-by-config-alpha -target=config.json -Iinclude helper.c main.c
   run.sh search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas
   run.sh change-by-config -target=config.json src.c
   run.sh multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c
@@ -361,6 +369,76 @@ generate_config_and_original_executable() {
     info "[Original] Config: config.json, IR: output.bc, Executable: output"
 }
 
+run_generate_config_alpha() {
+    # Split source files into main + helpers. A file literally named main.c /
+    # main.cpp is treated as the merge target; everything else becomes an AST
+    # that is merged into it. If no main.* is found, the last source file is
+    # used as the main file.
+    MAIN_FILE=""
+    HELPER_FILES=""
+    for src_file in $SOURCE_FILES; do
+        base=$(basename "$src_file")
+        case "$base" in
+            main.c|main.cpp|main.cc)
+                MAIN_FILE="$src_file"
+                ;;
+            *)
+                HELPER_FILES="${HELPER_FILES:+$HELPER_FILES }$src_file"
+                ;;
+        esac
+    done
+    if [ -z "$MAIN_FILE" ]; then
+        MAIN_FILE=$(printf '%s\n' $SOURCE_FILES | tail -n 1)
+        HELPER_FILES=$(printf '%s\n' $SOURCE_FILES | head -n -1 | tr '\n' ' ' | sed 's/ $//')
+    fi
+    [ -n "$MAIN_FILE" ] || die "no source files supplied for generate-config-alpha"
+
+    AST_DIR="$PERCI_TUNER/build/ast"
+    mkdir -p "$AST_DIR"
+
+    AST_MERGE_ARGS=""
+    for helper in $HELPER_FILES; do
+        ast_base=$(basename "$helper" | sed 's/\.[ch]\{1,2\}$//; s/\.cpp$//; s/\.cc$//')
+        ast_file="$AST_DIR/${ast_base}.ast"
+        info "Emit PCH: $helper -> $ast_file"
+        clang -c -Xclang -emit-pch "$helper" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT -o "$ast_file"
+        AST_MERGE_ARGS="$AST_MERGE_ARGS -Xclang -ast-merge -Xclang $ast_file"
+    done
+
+    PERCI_AST_PLUGIN="$PERCI_TUNER/build/libPerciAST.so"
+    [ -f "$PERCI_AST_PLUGIN" ] || die "libPerciAST.so not found at $PERCI_AST_PLUGIN"
+
+    info "Run PerciAST plugin on merged AST (main: $MAIN_FILE)"
+    clang -c -Xclang -load -Xclang "$PERCI_AST_PLUGIN" \
+          -Xclang -plugin -Xclang perci-analysis \
+          $AST_MERGE_ARGS \
+          "$MAIN_FILE" $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
+          -o "$AST_DIR/merged.o" > config.json
+
+    info "[Alpha] Config: config.json (PerciAST plugin on merged AST; merged .ast files in $AST_DIR)"
+}
+
+run_change_by_config_alpha() {
+    # Pure-AST source rewriting: loads libChangeVarAST.so on each source file,
+    # which rewrites declaration type tokens per the target config and writes
+    # *.changed.c per modified file. No IR pipeline, no recompilation.
+    [ -f "$TARGET_CONFIG" ] || die "target config not found: $TARGET_CONFIG"
+
+    PERCI_CHG_PLUGIN="$PERCI_TUNER/build/libChangeVarAST.so"
+    [ -f "$PERCI_CHG_PLUGIN" ] || die "libChangeVarAST.so not found at $PERCI_CHG_PLUGIN"
+
+    for src_file in $SOURCE_FILES; do
+        [ -f "$src_file" ] || die "file not found: $src_file"
+        info "Rewrite (AST): $src_file  (config: $TARGET_CONFIG)"
+        clang -c -Xclang -load -Xclang "$PERCI_CHG_PLUGIN" \
+              -Xclang -plugin -Xclang change-var-ast \
+              -Xclang -plugin-arg-change-var-ast -Xclang "$TARGET_CONFIG" \
+              "$src_file" $INCLUDE_DIRS -o /dev/null
+    done
+
+    info "[Alpha] Source rewriting done. Output: *.changed.c files in cwd"
+}
+
 run_search_optimize() {
     python3 -u "$PERCI_TUNER/scripts/search.py" \
         -algorithm="$RUN_ALGORITHM" \
@@ -423,7 +501,7 @@ for arg in "$@"; do
             show_help
             exit 0
             ;;
-        generate-config|search-optimize|change-by-config|multi-version)
+        generate-config|generate-config-alpha|search-optimize|change-by-config|change-by-config-alpha|multi-version)
             MODE_FLAG="$arg"
             ;;
         -no-build)
@@ -538,6 +616,26 @@ if [ -z "$MODE_FLAG" ]; then
     info "call clang..."
     clang "$@"
     exit $?
+fi
+
+# generate-config-alpha and change-by-config-alpha are pure-AST paths: they
+# do not touch the LLVM IR pipeline (opt / PerciTuner.so), so they bypass
+# build_perci_tuner and compile_sources_to_bitcode.
+if [ "$MODE_FLAG" = "generate-config-alpha" ] || [ "$MODE_FLAG" = "change-by-config-alpha" ]; then
+    require_perci_tuner_root
+    if [ "$NO_BUILD" = false ]; then
+        info "Build AST plugins (alpha mode)..."
+        mkdir -p "$PERCI_TUNER/build"
+        ( cd "$PERCI_TUNER/build" && ninja PerciAST ChangeVarAST ) || {
+            ( cd "$PERCI_TUNER/build" && cmake -G Ninja .. && ninja PerciAST ChangeVarAST )
+        }
+    fi
+    clang --version
+    case "$MODE_FLAG" in
+        generate-config-alpha)    run_generate_config_alpha ;;
+        change-by-config-alpha)   run_change_by_config_alpha ;;
+    esac
+    exit 0
 fi
 
 require_perci_tuner_root
