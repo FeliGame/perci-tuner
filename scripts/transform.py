@@ -77,7 +77,7 @@ def read_kernel_time(text):
 
 
 # run the current variable config and get the result
-def transform(run_id, bitcode_file, var_config, diff, is_mxp):
+def transform(run_id, bitcode_file, var_config, diff, is_mxp, parent=0):
     global current_run_time, current_run_wall_time, current_run_result, RUNNING_FAIL_TIMES
     # 确保目标目录存在
     target_dirs = {
@@ -181,7 +181,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             RUNNING_FAIL_TIMES += 1
             current_run_result = None
             if show_history:
-                data_utils.store_data(run_id, float("inf"), "TIMEOUT", diff)
+                data_utils.store_data(run_id, float("inf"), "TIMEOUT", diff, parent=parent)
             return -2
         except subprocess.CalledProcessError as e:
             if e.stdout:
@@ -192,7 +192,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             RUNNING_FAIL_TIMES += 1
             current_run_result = None
             if show_history:
-                data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff)
+                data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff, parent=parent)
             return -2
         
         time_list.append(execution_time)
@@ -207,7 +207,7 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
 
     if not satisfy_thres:
         if show_history:
-            data_utils.store_data(run_id, float('inf'), current_run_result, diff, is_mxp)
+            data_utils.store_data(run_id, float('inf'), current_run_result, diff, is_mxp, parent)
         return 0
     
     # 计算中位数
@@ -224,5 +224,5 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp):
             current_run_wall_time = (wall_time_list[RUNNING_TIMES//2-1] + wall_time_list[RUNNING_TIMES//2]) / 2
 
     if show_history:
-        data_utils.store_data(run_id, current_run_time, current_run_result, diff, is_mxp)
+        data_utils.store_data(run_id, current_run_time, current_run_result, diff, is_mxp, parent)
     return 1

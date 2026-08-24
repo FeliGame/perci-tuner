@@ -1,20 +1,16 @@
 # Perci-Tuner
 
 Perci-Tuner increases C program's runtime speed while keeping errors within an acceptable range, by reducing floating-point variables & C-Math function calls' precision.
-Perci-Tuner uses the New PassManager to be compatible with LLVM17, and features a modular design for easier expansion and modification.
 
-# User Manual
+## LLVM 17
 
-First things first, install LLVM (recommended version: 17.0.6) build `-DCMAKE_BUILD_TYPE=Release` option, or Perci-Tuner might crash.
+Build with `-DCMAKE_BUILD_TYPE=Release` or Perci-Tuner might crash.
 
 ```sh
 git clone https://github.com/llvm/llvm-project.git
 cd llvm-project
 git checkout -b llvm-17 llvmorg-17.0.6
-```
 
-If you want to use -mxp option, install mxp version of LLVM, then build LLVM. https://mlir.llvm.org/getting_started/
-``` sh
 cmake -G Ninja \
   -S llvm -B build \
   -DCMAKE_BUILD_TYPE=Release \
@@ -27,32 +23,50 @@ cmake -G Ninja \
   -DLLVM_ENABLE_ASSERTIONS=OFF
 
 cmake --build build -j8
-cmake --install build --prefix /usr/local
+sudo cmake --install build --prefix /usr/local
 ```
+If you want to use -mxp option, install mxp version of LLVM from gitmodule.
 
-## Add Environment Variable
+## Run
 
-Add this into ~/.bashrc:
-
-`export PERCI_TUNER="/path/to/perci-tuner/"`
-
-Then run `source ~/.bashrc` to enable it:
-
-## Build & Run Perci-Tuner
-
-`sh scripts/run.sh <generate-config|change-by-config|search-optimize> src_files [Optional Flags]`
-
+```sh
+export PERCI_TUNER="/path/to/perci-tuner/"
+sh scripts/run.sh <generate-config|change-by-config|search-optimize> src_files [Optional Flags]
+```
 Check run.sh for more help info.
 
 ## Test
 
-```bash
+```sh
 cd $PERCI_TUNER
 sh scripts/build.sh
 cd build
 ninja check
 ```
 Or run specific test:
-```bash
+```sh
 python3 -m lit -v test/xxx
+```
+
+## Visualize search
+
+After finishing a search, generate `run_history.png` with:
+```bash
+python3 scripts/visualize.py
+```
+The PNG generated from `run_history.csv`: 
+* Each pie is a runned config marked with `run_id`
+* Each line is a generation of configs, they were born in a common parent.
+* `parent` means the run_id that current config search from
+* Outer cycle means bitwidth of elements:
+```
+16-green, 32-blue, 64-yellow, 128-red
+```
+* Inner cycle means run status: 
+```
+Black: RUNTIME-ERROR (unexpected)
+Red: out-of-errorthreshold
+Yellow: Run slower than original
+Green: Run faster than original
+✅: The fastest config until current
 ```

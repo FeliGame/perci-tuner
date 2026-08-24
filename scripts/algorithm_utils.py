@@ -3,7 +3,7 @@
 # @Author: LinLanfeng, Guocheng —— NUDT
 
 import sys, json
-import data_utils, transform
+import config_utils, data_utils, transform
 
 
 global run_times
@@ -11,12 +11,11 @@ run_times = 0
 global min_time
 min_time = float('inf')
 global best_config_index
-best_config_index = 0
-global algorithm
-algorithm = 'dd'
+best_config_index = 1
 global is_mxp
 is_mxp = False
 global original_conf
+original_conf = None
 runned_change_set = set()
 global bitcode_name
 global skip
@@ -63,7 +62,7 @@ def compare_json(original, current, diff, prefix=""):
 # run the current config and get the result if satisfy rel_err threshold
 def run_config(bitcode, current_config, change_set, skip_runned=True):
     global run_times, original_conf, runned_change_set, is_mxp, skip
-    
+
     # check if the config has been runned
     key = json.dumps(current_config, sort_keys=False)
     if skip_runned and key in runned_change_set: 
@@ -79,7 +78,8 @@ def run_config(bitcode, current_config, change_set, skip_runned=True):
     # Compare current_config with original_conf and store differences in diff
     compare_json(original_conf, current_config, diff)
     run_times += 1
-    result = transform.transform(run_times, bitcode, current_config, diff, is_mxp)
+    result = transform.transform(run_times, bitcode, current_config, diff, is_mxp,
+                                 config_utils.CURRENT_CONFIG_PARENT)
     satisfy_thres = True
     if result == 0:  # result not satisfy threshold
         satisfy_thres = False
