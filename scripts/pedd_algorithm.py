@@ -201,6 +201,7 @@ def search_minimal_change_set(bitcode, change_set, div_num):
         change_to_highest_precision(new_change_set)
         config_utils.CURRENT_CONFIG = config_utils.rebuild(change_set)
         change_set = new_change_set
+        config_utils.CURRENT_CONFIG_PARENT = algorithm_utils.best_config_index
         # 如果同时存在 pruned_change_set，需要将其与 better_set 结合
         if pruned_change_set:
             # 从新的 change_set（即 better_set）中移除导致超阈值的元素
@@ -222,10 +223,12 @@ def run(bitcode, change_set):
     global invalid_result_map
     # searching until every search types is empty
     while not is_type_empty(change_set):
+        config_utils.CURRENT_CONFIG_PARENT = algorithm_utils.best_config_index
         # search which need highest precision & try to lower others' precision
         search_minimal_change_set(bitcode, change_set, INITIAL_DIV_NUM)
         # remove highest precision
         change_set = remove_unchangable(change_set)
         # remove the highest precision from the search types of the rest
         remove_highest_precision_from_selections(change_set)
+    config_utils.CURRENT_CONFIG_PARENT = algorithm_utils.best_config_index
     return config_utils.CURRENT_CONFIG

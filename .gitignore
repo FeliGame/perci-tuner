@@ -7,6 +7,7 @@ ir_timing.txt
 .DS_Store
 *.csv
 *.bc
+*.png
 *.ll
 *.json
 *.o

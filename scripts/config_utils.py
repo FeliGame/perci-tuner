@@ -7,6 +7,8 @@ import copy, json, re, random
 
 global thres
 global CURRENT_CONFIG
+global CURRENT_CONFIG_PARENT
+CURRENT_CONFIG_PARENT = 1
 
 # valid precision types
 PRECISIONS = ["__fp16", "float", "double", "long double"]
