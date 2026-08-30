@@ -1,19 +1,21 @@
 #!/bin/sh
 
-# Build Perci-Tuner using the Ninja generator.
-#   -r        Force a clean rebuild (ninja -t clean first)
+#   -r        Force a clean rebuild
 #   -j N      Use N parallel jobs (default: nproc)
+#   -check    Build, then run the lit test suite (the "check" target)
 
 set -e
 
 FORCE=0
 JOBS=""
+RUN_CHECK=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         -r) FORCE=1 ;;
         -j) shift; JOBS="$1" ;;
         -j*) JOBS="${1#-j}" ;;
+        -check) RUN_CHECK=1 ;;
         *) printf 'build.sh: unknown argument: %s\n' "$1" >&2; exit 1 ;;
     esac
     shift
@@ -26,7 +28,30 @@ cd "$PERCI_TUNER"
 mkdir -p build
 cd build
 
-[ -f build.ninja ] || cmake -G Ninja ..
+# Configure once. Prefer Ninja when available; otherwise fall back to the
+# default generator (Unix Makefiles).
+if [ ! -f build.ninja ] && [ ! -f Makefile ]; then
+    if command -v ninja >/dev/null 2>&1; then
+        cmake -G Ninja ..
+    else
+        cmake ..
+    fi
+fi
 
-[ "$FORCE" = 1 ] && ninja -t clean
-ninja -j "$JOBS"
+# Match the build tool to the configured generator.
+if [ -f build.ninja ]; then
+    BUILD_TOOL=ninja
+    CLEAN_CMD="ninja -t clean"
+else
+    BUILD_TOOL=make
+    CLEAN_CMD="make clean"
+fi
+
+[ "$FORCE" = 1 ] && $CLEAN_CMD
+
+$BUILD_TOOL -j "$JOBS"
+
+if [ "$RUN_CHECK" = 1 ]; then
+    # The "check" target runs lit; see CMakeLists.txt.
+    $BUILD_TOOL check
+fi

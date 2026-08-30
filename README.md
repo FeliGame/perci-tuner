@@ -22,8 +22,8 @@ cmake -G Ninja \
   -DBUILD_SHARED_LIBS=ON \
   -DLLVM_ENABLE_ASSERTIONS=OFF
 
-cmake --build build -j8
-sudo cmake --install build --prefix /usr/local
+cmake --build build
+cmake --install build --prefix ${INSTALLDIR}
 ```
 If you want to use -mxp option, install mxp version of LLVM from gitmodule.
 
@@ -39,9 +39,7 @@ Check run.sh for more help info.
 
 ```sh
 cd $PERCI_TUNER
-sh scripts/build.sh
-cd build
-ninja check
+sh scripts/build.sh -check
 ```
 Or run specific test:
 ```sh

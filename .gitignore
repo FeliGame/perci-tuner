@@ -11,6 +11,7 @@ ir_timing.txt
 *.ll
 *.json
 *.o
+*.png
 benchmarks/*.bc
 output
 temp_output

@@ -37,13 +37,13 @@ add_llvm_pass_plugin(PerciTuner
     lib/FP128ToDD.cpp
 )
 
-add_library(PerciAST MODULE lib/PerciAST.cpp)
+add_library(PerciAST MODULE ast/PerciAST.cpp)
 
 # Link against LLVM libraries
 target_link_libraries(PerciTuner ${LLVM_LIBS})
 
 ###############################################################################
-# Test suite: `ninja check` runs lit under test/.
+# Test suite
 ###############################################################################
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import lit"
@@ -55,6 +55,6 @@ if(_lit_rc EQUAL 0)
         COMMENT "Running Perci-Tuner lit tests" USES_TERMINAL VERBATIM)
     add_dependencies(check PerciTuner)
 else()
-    message(WARNING "lit not found; 'ninja check' unavailable (pip install lit)")
+    message(WARNING "lit not found; 'check' target unavailable (pip install lit)")
 endif()
 
