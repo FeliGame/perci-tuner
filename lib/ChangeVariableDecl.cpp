@@ -69,7 +69,6 @@ void ChangeVariableDecl::parseConfig() {
                 int line = lineOpt ? (int)*lineOpt : 0;
                 auto columnOpt = varObj->getNumber("column");
                 int column = columnOpt ? (int)*columnOpt : 0;
-                auto nameOpt = varObj->getString("name");
 
                 std::string key = file + ":" + std::to_string(line) + ":" + std::to_string(column);
                 configMap.insert_or_assign(key, varEntry);

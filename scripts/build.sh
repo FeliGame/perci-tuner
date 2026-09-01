@@ -2,20 +2,17 @@
 
 #   -r        Force a clean rebuild
 #   -j N      Use N parallel jobs (default: nproc)
-#   -check    Build, then run the lit test suite (the "check" target)
 
 set -e
 
 FORCE=0
 JOBS=""
-RUN_CHECK=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         -r) FORCE=1 ;;
         -j) shift; JOBS="$1" ;;
         -j*) JOBS="${1#-j}" ;;
-        -check) RUN_CHECK=1 ;;
         *) printf 'build.sh: unknown argument: %s\n' "$1" >&2; exit 1 ;;
     esac
     shift
@@ -50,8 +47,3 @@ fi
 [ "$FORCE" = 1 ] && $CLEAN_CMD
 
 $BUILD_TOOL -j "$JOBS"
-
-if [ "$RUN_CHECK" = 1 ]; then
-    # The "check" target runs lit; see CMakeLists.txt.
-    $BUILD_TOOL check
-fi

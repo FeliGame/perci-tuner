@@ -153,6 +153,7 @@ Usage:
 Without a mode, run.sh calls clang directly.
 
 Available modes:
+  check             Build, then run the lit test suite
   generate-config   Generate config file (config.json) and executable
   search-optimize   Search for optimized config (run generate-config first)
   change-by-config  Modify source code precision according to target config
@@ -300,6 +301,19 @@ compile_sources_to_bitcode() {
 # Mode implementations
 ###############################################################################
 
+run_check() {
+    cd "$PERCI_TUNER/build" || die "build directory not found: $PERCI_TUNER/build"
+
+    # Match the build tool to the configured generator (mirrors build.sh).
+    if [ -f build.ninja ]; then
+        ninja check
+    elif [ -f Makefile ]; then
+        make check
+    else
+        die "no build found in $PERCI_TUNER/build; run scripts/build.sh first"
+    fi
+}
+
 run_change_by_config() {
     opt output.bc -o output.bc
 
@@ -423,7 +437,7 @@ for arg in "$@"; do
             show_help
             exit 0
             ;;
-        generate-config|search-optimize|change-by-config|multi-version)
+        generate-config|search-optimize|change-by-config|multi-version|check)
             MODE_FLAG="$arg"
             ;;
         -no-build)
@@ -542,6 +556,12 @@ fi
 
 require_perci_tuner_root
 [ "$NO_BUILD" = false ] && build_perci_tuner
+
+if [ "$MODE_FLAG" = "check" ]; then
+    run_check
+    exit
+fi
+
 prepare_runtime_options
 
 clang --version

@@ -4,8 +4,6 @@ Perci-Tuner increases C program's runtime speed while keeping errors within an a
 
 ## LLVM 17
 
-Build with `-DCMAKE_BUILD_TYPE=Release` or Perci-Tuner might crash.
-
 ```sh
 git clone https://github.com/llvm/llvm-project.git
 cd llvm-project
@@ -31,7 +29,7 @@ If you want to use -mxp option, install mxp version of LLVM from gitmodule.
 
 ```sh
 export PERCI_TUNER="/path/to/perci-tuner/"
-sh scripts/run.sh <generate-config|change-by-config|search-optimize> src_files [Optional Flags]
+sh scripts/run.sh <generate-config|change-by-config|search-optimize|check> src_files [Optional Flags]
 ```
 Check run.sh for more help info.
 
@@ -39,7 +37,7 @@ Check run.sh for more help info.
 
 ```sh
 cd $PERCI_TUNER
-sh scripts/build.sh -check
+sh scripts/run.sh check
 ```
 Or run specific test:
 ```sh
