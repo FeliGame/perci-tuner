@@ -5,6 +5,7 @@
 #include "IRTiming.h"
 #include "utils/ParseTypeName.hpp"
 
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
@@ -39,7 +40,7 @@ bool IRTiming::runOnModule(Module &M)
         FunctionType::get(PointerType::get(Type::getInt8Ty(M.getContext()), 0), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
     auto *filePtr = Builder.CreateCall(fopenFunc, {fileNamePtr, modePtr});
 
-    auto *startCycle = Builder.CreateCall(Intrinsic::getDeclaration(&M, Intrinsic::readcyclecounter), {}, "start_cycle");
+    auto *startCycle = Builder.CreateCall(Intrinsic::getOrInsertDeclaration(&M, Intrinsic::readcyclecounter), {}, "start_cycle");
 
     auto *fmtStrPtr = Builder.CreateGlobalStringPtr("%s:%lld\n");
     auto *funcNamePtr = Builder.CreateGlobalStringPtr("main");
@@ -61,7 +62,7 @@ bool IRTiming::runOnModule(Module &M)
             {
                 IRBuilder<> ReturnBuilder(RI); // Insert inst before ret
                 auto *endCycle = ReturnBuilder.CreateCall(
-                    Intrinsic::getDeclaration(&M, Intrinsic::readcyclecounter), {}, "end_cycle");
+                    Intrinsic::getOrInsertDeclaration(&M, Intrinsic::readcyclecounter), {}, "end_cycle");
                 auto *elapsedCycle = ReturnBuilder.CreateSub(endCycle, startCycle, "elapsed_cycle");
 
                 ReturnBuilder.CreateCall(fprintfFunc, {filePtr, fmtStrPtr, funcNamePtr, elapsedCycle});

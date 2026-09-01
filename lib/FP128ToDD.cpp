@@ -472,7 +472,7 @@ bool FP128ToDD::runOnModule(Module &M) {
 
         unsigned startIndex = 1;
         // 若后缀是fscanf或fwscanf，则更新startIndex
-        if (Callee->getName().endswith("fscanf") || Callee->getName().endswith("fwscanf")) {
+        if (Callee->getName().ends_with("fscanf") || Callee->getName().ends_with("fwscanf")) {
           startIndex = 2;
         }
 	      Value *FmtOp = FCall->getOperand(startIndex - 1);
@@ -508,10 +508,10 @@ bool FP128ToDD::runOnModule(Module &M) {
             if (subFmt.empty()) continue;
             
             // 检查当前子格式串是否以"%L"开头（表示需要处理为DD格式）
-            if (subFmt.startswith("%L")) {
+            if (subFmt.starts_with("%L")) {
               // TODO：处理逻辑(FP128ToDD)
             }
-            else if (subFmt.startswith("%l")) {
+            else if (subFmt.starts_with("%l")) {
               // TODO：处理逻辑(FP64ToDD)
             }
             argIndex++;

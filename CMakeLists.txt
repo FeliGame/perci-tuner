@@ -4,6 +4,7 @@ project(PerciTuner)
 
 # Find the LLVM libraries
 find_package(LLVM REQUIRED CONFIG)
+find_package(MLIR REQUIRED CONFIG)
 find_package(Clang REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")

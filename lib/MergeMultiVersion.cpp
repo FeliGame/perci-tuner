@@ -7,6 +7,7 @@
 #include "MergeMultiVersion.h"
 #include "utils/ParseTypeName.hpp"
 
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>

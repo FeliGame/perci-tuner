@@ -6,6 +6,7 @@
 #include "ChangeVariableDecl.h"
 #include "utils/ParseTypeName.hpp"
 
+#include <llvm/IR/IRBuilder.h>
 #include <functional>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
@@ -362,7 +363,7 @@ Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction 
 #if LLVM_VERSION_MAJOR < 19
     if (auto *constantVal = dyn_cast<Constant>(val)) {
         if (targetType->isFloatingPointTy()) {
-            return ConstantExpr::getFPCast(constantVal, targetType);
+            return ConstantExpr::getCast(CastInst::FPExt, constantVal, targetType);
         }
         return nullptr;
     }
@@ -628,7 +629,7 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
     if (!callee) return nullptr;
     
     // 处理llvm.fmuladd函数调用
-    if (callee->getName().startswith("llvm.fmuladd")) {
+    if (callee->getName().starts_with("llvm.fmuladd")) {
         // 获取当前fmuladd指令的类型
         Type* oldType = call->getType();
         Type* highestType = nullptr;
@@ -1115,7 +1116,7 @@ Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* t
     } else if (isa<ConstantFP>(initializer)) {
         // TODO: 该语句并不生效，为什么？
         // newInitializer = ConstantFP::get(targetType, cfp->getValueAPF());
-        return ConstantExpr::getFPCast(initializer, targetType);
+        return ConstantExpr::getCast(CastInst::FPExt, initializer, targetType);
     } else if (isa<ConstantDataArray>(initializer)) {
         // 处理ConstantDataArray初始化器（如字符串常量）
         auto *targetArrayType = dyn_cast<ArrayType>(targetType);
