@@ -1,4 +1,4 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize -no-build "%s" -lm' > %t.out 2>&1; true
+// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm' > %t.out 2>&1; true
 // RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
 
 /* arclen_polar.c -- Arc length of cardioid r(θ)=1-cos(θ)

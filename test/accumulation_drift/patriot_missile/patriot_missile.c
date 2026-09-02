@@ -1,4 +1,4 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize -no-build "%s" -lm' > %t.out 2>&1; true
+// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm' > %t.out 2>&1; true
 // RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
 
 /* patriot_missile.c -- 0.1 accumulated N times, then *10 (Patriot timing bug)

@@ -1,4 +1,4 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize -no-build "%s" -lm -arg=2048 -arg=2048 -arg=0 -arg=127 -arg=0 -arg=127 -arg=2 -arg=0.5 -arg=2' > %t.out 2>&1; true
+// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm -arg=2048 -arg=2048 -arg=0 -arg=127 -arg=0 -arg=127 -arg=2 -arg=0.5 -arg=2' > %t.out 2>&1; true
 // RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
 
 // srad.cpp : Defines the entry point for the console application.

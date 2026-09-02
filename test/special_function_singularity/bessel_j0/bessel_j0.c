@@ -1,4 +1,4 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize -no-build "%s" -lm' > %t.out 2>&1; true
+// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm' > %t.out 2>&1; true
 // RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
 
 /* bessel_j0.c -- J_0 via series (|x|<8) and asymptotic (|x|>=8), summed over [0.1, 100]

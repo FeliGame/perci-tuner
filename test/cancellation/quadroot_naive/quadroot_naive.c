@@ -1,4 +1,4 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize -no-build "%s" -lm' > %t.out 2>&1; true
+// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm' > %t.out 2>&1; true
 // RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
 
 /* quadroot_naive.c -- Naive quadratic formula for x^2 - bx + c = 0  (b=1e6, c=1)
