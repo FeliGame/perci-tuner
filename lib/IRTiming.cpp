@@ -33,25 +33,25 @@ bool IRTiming::runOnModule(Module &M)
 
     IRBuilder<> Builder(&mainFuncPtr->getEntryBlock(), mainFuncPtr->getEntryBlock().begin());
 
-    auto *fileNamePtr = Builder.CreateGlobalStringPtr(IRTimingResultName.c_str());
-    auto *modePtr = Builder.CreateGlobalStringPtr("w"); // rewrite
+    auto *fileNamePtr = Builder.CreateGlobalString(IRTimingResultName);
+    auto *modePtr = Builder.CreateGlobalString("w"); // rewrite
     auto fopenFunc = M.getOrInsertFunction(
         "fopen", 
-        FunctionType::get(PointerType::get(Type::getInt8Ty(M.getContext()), 0), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
+        FunctionType::get(PointerType::get(M.getContext(), 0), {PointerType::get(M.getContext(), 0), PointerType::get(M.getContext(), 0)}, true));
     auto *filePtr = Builder.CreateCall(fopenFunc, {fileNamePtr, modePtr});
 
     auto *startCycle = Builder.CreateCall(Intrinsic::getOrInsertDeclaration(&M, Intrinsic::readcyclecounter), {}, "start_cycle");
 
-    auto *fmtStrPtr = Builder.CreateGlobalStringPtr("%s:%lld\n");
-    auto *funcNamePtr = Builder.CreateGlobalStringPtr("main");
+    auto *fmtStrPtr = Builder.CreateGlobalString("%s:%lld\n");
+    auto *funcNamePtr = Builder.CreateGlobalString("main");
 
     auto fcloseFunc = M.getOrInsertFunction(
         "fclose",
-        FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
+        FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(M.getContext(), 0)}, true));
 
     auto fprintfFunc = M.getOrInsertFunction(
         "fprintf",
-        FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
+        FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(M.getContext(), 0), PointerType::get(M.getContext(), 0)}, true));
 
     // Record & ouput cycles before each ret of function
     for (auto &BB : *mainFuncPtr)

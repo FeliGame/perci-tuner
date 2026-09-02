@@ -62,10 +62,8 @@ bool MergeMultiVersion::runOnModule(Module &module)
     IRMover Mover(module);
     SmallVector<GlobalValue *, 8> ToClone;
     ToClone.push_back(OtherFunc);
-    auto HandleError = [](const Twine &Msg)
-    { return Error::success(); };
-    if (Error Err = Mover.move(std::move(otherModule), ToClone, [](GlobalValue &GV, std::function<void(GlobalValue &)> Materialize)
-                               { Materialize(GV); }, HandleError))
+    if (Error Err = Mover.move(std::move(otherModule), ToClone, [](GlobalValue &GV, IRMover::ValueAdder Add)
+                               { Add(GV); }, false))
     {
         errs() << "IRMover error: " << Err << "\n";
         return false;

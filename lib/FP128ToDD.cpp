@@ -668,7 +668,7 @@ bool FP128ToDD::runOnModule(Module &M) {
       if (!Allocas.empty()) {
       	IRBuilder<> Builder(&EntryBlock, EntryBlock.getFirstInsertionPt());
 	for (auto *AI : Allocas) {
-	  AI->moveBefore(&*Builder.GetInsertPoint());
+	  AI->moveBefore(Builder.GetInsertPoint());
 	  //errs() << "wait to move Allocas : " << *AI << "\n";
 	}
 	Allocas.clear();
@@ -829,7 +829,7 @@ PreservedAnalyses FP128ToDD::run(Module &M, ModuleAnalysisManager &) {
       if (GV.hasInitializer())
         if (Constant *New = convertConstant(GV.getInitializer())) {
           GV.setInitializer(New);
-          GV.mutateType(New->getType()->getPointerTo());
+          GV.mutateType(PointerType::get(M.getContext(), 0));
         }
 
     /* 2. 再扫描所有函数，替换函数体里的常量 */

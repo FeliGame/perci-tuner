@@ -342,7 +342,7 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
             } else if (oldType == newType) {
                 continue;
             } else {
-                newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
+                newLoad = new LoadInst(newType, load->getPointerOperand(), "", load->getIterator());
                 newLoad->setAlignment(align);
 
                 load->replaceAllUsesWith(newLoad);
@@ -483,7 +483,7 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
         if (load->getType()->isPointerTy())
             return load;
         if (loadType != load->getType()) {
-            auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load);
+            auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load->getIterator());
             newLoad->setAlignment(align ? Align(align) : getAlign(loadType));
             newLoad->setDebugLoc(load->getDebugLoc());
             load->replaceAllUsesWith(newLoad);
@@ -729,7 +729,7 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             }
 
             // 创建新的call指令
-            CallInst* newCall = CallInst::Create(newFunc, castedOperands, "", call);
+            CallInst* newCall = CallInst::Create(newFunc, castedOperands, "", call->getIterator());
             newCall->setDebugLoc(call->getDebugLoc());
             newCall->takeName(call);
             replaceMultiOperandInst(call, newCall);
@@ -806,7 +806,7 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
 
     if (modified) {
         // 创建新的 PHINode，类型为 highestType
-        auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi);
+        auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi->getIterator());
         for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
             auto *oldVal = phi->getIncomingValue(i);
             auto *newVal = oldVal;
@@ -847,7 +847,7 @@ Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* tar
         gep->getPointerOperand(),
         indices,
         gep->getName(),
-        gep
+        gep->getIterator()
     );
 
     // 用新的 GEP 指令替换旧的 GEP 指令
@@ -927,7 +927,7 @@ Instruction* ChangeVariableDecl::repairBitCastInst(BitCastInst* bitCast) {
         return nullptr;
     }
 
-    BitCastInst* newBitCast = new BitCastInst(newSrcValue, destType, bitCast->getName(), bitCast);
+    BitCastInst* newBitCast =             new BitCastInst(newSrcValue, destType, bitCast->getName(), bitCast->getIterator());
     bitCast->replaceAllUsesWith(newBitCast);
     instToErase.insert(bitCast);
     // errs() << "[repair bitcast] " << *bitCast << "->" << *newBitCast << '\n';
@@ -1538,7 +1538,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
 
             if (targetType && targetType != oldType) {
                 if (oldType->isPointerTy())
-                    oldType = PointerType::get(targetType, 0);
+                    oldType = PointerType::get(context, 0);
                 else {
                     // errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
                     oldType = targetType;
@@ -1648,7 +1648,7 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                             gep->getPointerOperand(),
                             indices,
                             gep->getName(),
-                            gep
+                            gep->getIterator()
                         );
                         gep->replaceAllUsesWith(newGEP);
                         instToErase.insert(gep);
@@ -1964,7 +1964,7 @@ void ChangeVariableDecl::updateCallInst(CallInst *call, Function &newFunc, std::
     }
     
     // 创建新的CallInst
-    CallInst *newCall = CallInst::Create(newFunc.getFunctionType(), &newFunc, newArgs, "", call);
+    CallInst *newCall = CallInst::Create(newFunc.getFunctionType(), &newFunc, newArgs, "", call->getIterator());
     newCall->setDebugLoc(call->getDebugLoc());
     newCall->takeName(call);
     replaceMultiOperandInst(call, newCall);

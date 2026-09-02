@@ -134,9 +134,7 @@ bool ChangeMathCall::runOnFunction(Function &F) {
                 }
                 // All args are of same type
                 SmallVector<Type*, 2> paramTypes;
-                for (auto &op : call->args()) {
-                    paramTypes.push_back(paramType);
-                }
+                paramTypes.resize(call->arg_size(), paramType);
                 
                 auto *newFuncType = FunctionType::get(
                     paramType,  // ret type
