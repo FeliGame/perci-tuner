@@ -29,7 +29,7 @@ If you want to use -mxp option, install mxp version of LLVM from gitmodule.
 
 ```sh
 export PERCI_TUNER="/path/to/perci-tuner/"
-sh scripts/run.sh <generate-config|change-by-config|search-optimize|check> src_files [Optional Flags]
+sh scripts/run.sh <print-config|change-by-config|search-optimize|check> src_files [Optional Flags]
 ```
 Check run.sh for more help info.
 

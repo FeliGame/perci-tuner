@@ -60,9 +60,8 @@ RUNTIME_LIB_DIRS=""
 INCLUDE_DIRS=""
 OPT_LEVEL="-O2" # Example: -O2. Beware that optimization may change results.
 
-# run generate-config before search
+# run print-config before search
 REFRESH_CONFIG=true
-NO_BUILD=false
 
 # PERCI_ANALYSIS_OPTIONS="-Xclang -load -Xclang $PERCI_TUNER/build/libPerciAST.so -Xclang -plugin -Xclang perci-analysis "
 
@@ -154,8 +153,8 @@ Without a mode, run.sh calls clang directly.
 
 Available modes:
   check             Build, then run the lit test suite
-  generate-config   Generate config file (config.json) and executable
-  search-optimize   Search for optimized config (run generate-config first)
+  print-config      Generate config file (config.json) and executable
+  search-optimize   Search for optimized config (run print-config first)
   change-by-config  Modify source code precision according to target config
   multi-version     Generate multi-version executable
 
@@ -192,7 +191,7 @@ Multi-version options:
   -multi-func=<function>      Set multi-version function name
 
 Examples:
-  run.sh generate-config -mxp src.c -lm
+  run.sh print-config -mxp src.c -lm
   run.sh search-optimize -mxp -algorithm=exhaust -thres=1e-5 -repeat=10 src.c -lm -lgsl -lblas
   run.sh change-by-config -target=config.json src.c
   run.sh multi-version -mxp -original-version -multi-ir=optimized.bc -multi-func=main src.c
@@ -338,7 +337,7 @@ run_change_by_config() {
     info "[Changed] IR: changed_output.bc, Executable: changed_output"
 }
 
-generate_config_and_original_executable() {
+print_config() {
     if [ "$CHECK_RESULT_FLAG" = true ]; then
         opt -load-pass-plugin "$PERCI_TUNER/build/PerciTuner.so" -S \
             -passes="record_result,remove_pragma" \
@@ -354,7 +353,7 @@ generate_config_and_original_executable() {
     fi
 
     PASSES="print_config,remove_pragma"
-    if [ "$DD_FLAG" = true ] && [ "$MODE_FLAG" = "generate-config" ]; then
+    if [ "$DD_FLAG" = true ] && [ "$MODE_FLAG" = "print-config" ]; then
         PASSES="$PASSES,fp128_to_dd"
         select_double_double_support_archive
     fi
@@ -437,11 +436,8 @@ for arg in "$@"; do
             show_help
             exit 0
             ;;
-        generate-config|search-optimize|change-by-config|multi-version|check)
+        print-config|search-optimize|change-by-config|multi-version|check)
             MODE_FLAG="$arg"
-            ;;
-        -no-build)
-            NO_BUILD=true
             ;;
         -refresh-config=*)
             REFRESH_CONFIG="${arg#-refresh-config=}"
@@ -555,7 +551,7 @@ if [ -z "$MODE_FLAG" ]; then
 fi
 
 require_perci_tuner_root
-[ "$NO_BUILD" = false ] && build_perci_tuner
+build_perci_tuner
 
 if [ "$MODE_FLAG" = "check" ]; then
     run_check
@@ -571,12 +567,12 @@ case "$MODE_FLAG" in
     change-by-config)
         run_change_by_config
         ;;
-    generate-config)
-        generate_config_and_original_executable
+    print-config)
+        print_config
         ;;
     search-optimize|multi-version)
         if [ "$REFRESH_CONFIG" = true ]; then
-            generate_config_and_original_executable
+            print_config
         fi
         ;;
     *)

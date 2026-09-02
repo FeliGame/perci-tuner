@@ -1,4 +1,4 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize -no-build "%s" -lm -arg=512 -arg=8 -arg=100 -arg=%S/data/power_512x8 -arg=%S/data/temp_512x8' > %t.out 2>&1; true
+// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm -arg=512 -arg=8 -arg=100 -arg=%S/data/power_512x8 -arg=%S/data/temp_512x8' > %t.out 2>&1; true
 // RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
 
 #include <stdio.h>
