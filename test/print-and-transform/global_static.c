@@ -33,6 +33,15 @@
 // CHECK: "type": "__fp16"
 
 
+// RUN: sed 's/"type": "float"/"type": "double"/' %t/config.json > %t/changed.json
+// RUN: cd %t && sh %PERCI_TUNER/scripts/run.sh change-by-config -target=changed.json
+// RUN: FileCheck %s --input-file=%t/changed_output.bc --check-prefix=CHECK-TRANSFORM
+
+// CHECK-TRANSFORM: global double
+// CHECK-TRANSFORM-NOT: global float
+// CHECK-TRANSFORM: store double
+// CHECK-TRANSFORM-NOT: store float
+
 long double _l2d;
 double _d2f;
 float _f2h;
