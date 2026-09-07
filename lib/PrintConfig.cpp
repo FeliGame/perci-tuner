@@ -6,19 +6,22 @@
 // Output: config.json
 
 #include "PrintConfig.h"
+#include "utils/GlobMatch.hpp"
 #include "utils/ParseTypeName.hpp"
 #include "utils/ParseMetaDataNode.hpp"
-#include "utils/GlobMatch.hpp"
 
+#include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DebugInfo.h>
+#if LLVM_VERSION_MAJOR >= 19
+#include <llvm/IR/DebugProgramInstruction.h>
+#endif
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
-#include <llvm/Support/CommandLine.h>
-#include <llvm/Support/raw_ostream.h>
-#include <llvm/Support/Format.h>
 #include <llvm/IR/ValueSymbolTable.h>
-#include <llvm/Demangle/Demangle.h>
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/Format.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include <fstream>
 
@@ -50,8 +53,42 @@ void PrintConfig::findLocalVariables(Function &F) {
             std::string typeName = "";
             DebugLoc DL;
             unsigned lineNo = 0, colNo = 0;
-            bool isStatic = false, isParam = false;
+            bool isStatic = false, isParam = false, declFound = false;
+
+            auto dumpLocal = [&]() -> void {
+                if (declFound || typeName == "" ||
+                    typeName.find("integer") != std::string::npos ||
+                    typeName.find("size_t") != std::string::npos ||
+                    typeName.find("__intptr_t") != std::string::npos)
+                    return;
+
+                if (DL) {  // clang读取dbg.declare调用；flang-new不支持
+                    lineNo = DL.getLine();
+                    colNo = DL.getCol();
+                    auto *localScope = dyn_cast<llvm::DILocalScope>(DL.getScope());
+                    fileName = localScope->getNonLexicalBlockFileScope()->getFile()->getFilename().str();
+                }
+                json::Object localVar;
+                localVar["name"] = json::Value(varName);
+                localVar["type"] = json::Value(typeName);
+                localVar["line"] = json::Value(static_cast<int64_t>(lineNo));
+                localVar["column"] = json::Value(static_cast<int64_t>(colNo));
+                localVar["file"] = json::Value(fileName);
+                localVar["isStatic"] = json::Value(isStatic);
+                localVar["isParam"] = json::Value(isParam);
+                // Handle __autofp
+                if (autoFPRange.count(varName)) {
+                    json::Array rangeArr;
+                    for (auto &s : autoFPRange[varName])
+                        rangeArr.push_back(json::Value(s));
+                    localVar["range"] = std::move(rangeArr);
+                    searchableVars.insert(varName);
+                }
             
+                function.push_back(json::Value(std::move(localVar))); 
+                declFound = true; // To avoid repeat dump
+            };
+
             // 处理ret指令以识别返回值
             if (auto *RI = dyn_cast<ReturnInst>(&I)) {
                 // 如果返回指令有操作数（即返回值）
@@ -103,13 +140,36 @@ void PrintConfig::findLocalVariables(Function &F) {
                     isStatic = true;
                 }
             }
+#if LLVM_VERSION_MAJOR >= 19
+            else if (auto *AI = dyn_cast<AllocaInst>(&I)) {
+                // 适用flang-new + LLVM19后
+                if (auto *N = AI->getMetadata("dbg")) {
+                    if (auto *Loc = dyn_cast<DILocation>(N)) {
+                        lineNo = Loc->getLine();
+                        colNo = Loc->getColumn();
+                        if (auto *Scope = Loc->getScope()) {
+                            fileName = Scope->getFilename().str();
+                        }
+                    }
+                    // TODO: flang-new无法输出var name?
+                    if (AI->hasName()) varName = AI->getName().str();
+                    typeName = parseTypeName(AI->getAllocatedType());
+                }
+            }
+            for (auto &DR : I.getDbgRecordRange()) {
+                if (auto *DDI = dyn_cast<DbgVariableRecord>(&DR)) {
+                    if (!DDI->isDbgDeclare()) continue;
+                    if (auto *DV = DDI->getVariable()) {
+#elif
             else if (auto *CI = dyn_cast<CallInst>(&I)) {
-                if (auto *DDI = llvm::dyn_cast<llvm::DbgDeclareInst>(&I)) {
-                    if (auto *DV = llvm::dyn_cast<llvm::DILocalVariable>(DDI->getVariable())) {
+                if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
+                    if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
+#endif
                         varName = DV->getName();
-                        typeName = parseDITypeName(DV->getType());
                         if (varName == "this") continue;
+                        typeName = parseDITypeName(DV->getType());
                         if (DV->isParameter() && typeName.find('*') != std::string::npos) continue;  // 跳过函数指针形参
+                        declFound = false;  // LLVM22: Struct type alias will be hooked by multi #declare
                         DL = DDI->getDebugLoc();
                         isStatic = false;
                         isParam = DV->isParameter();
@@ -149,8 +209,10 @@ void PrintConfig::findLocalVariables(Function &F) {
                             }
                         }
                         if (structType) dumpStructDecl(structType, structName);
+                        dumpLocal();
                     }
                 }
+#if LLVM_VERSION_MAJOR == 17
                 // Handle __autofp intrinsic
                 else if (Function *Callee = CI->getCalledFunction()) {
                     auto name = Callee->getName();
@@ -196,21 +258,7 @@ void PrintConfig::findLocalVariables(Function &F) {
                             (*configObj)["result_error"] = json::Value(errors[1].str());  // errors[0] is var_name
                     }
                 }
-            }
-            else if (auto *AI = dyn_cast<AllocaInst>(&I)) {
-                // 适用flang-new + LLVM19后
-                if (auto *N = AI->getMetadata("dbg")) {
-                    if (auto *Loc = dyn_cast<DILocation>(N)) {
-                        lineNo = Loc->getLine();
-                        colNo = Loc->getColumn();
-                        if (auto *Scope = Loc->getScope()) {
-                            fileName = Scope->getFilename().str();
-                        }
-                    }
-                    // TODO: flang-new无法输出var name?
-                    if (AI->hasName()) varName = AI->getName().str();
-                    typeName = parseTypeName(AI->getAllocatedType());
-                }
+#endif
             }
 
             // Collect referenced vars from IR insts
@@ -241,38 +289,7 @@ void PrintConfig::findLocalVariables(Function &F) {
                 collectValues(&I);
             }
 
-            // Skip integer type
-            if (typeName.find("integer") != std::string::npos) continue;
-            if (typeName.find("size_t") != std::string::npos) continue;
-            if (typeName.find("__intptr_t") != std::string::npos) continue;
-                    
-            // Save to config
-            if (typeName != "") {
-                if (DL) {  // clang读取dbg.declare调用；flang-new不支持
-                    lineNo = DL.getLine();
-                    colNo = DL.getCol();
-                    auto *localScope = llvm::dyn_cast<llvm::DILocalScope>(DL.getScope());
-                    fileName = localScope->getNonLexicalBlockFileScope()->getFile()->getFilename().str();
-                }
-                json::Object localVar;
-                localVar["name"] = json::Value(varName);
-                localVar["type"] = json::Value(typeName);
-                localVar["line"] = json::Value(static_cast<int64_t>(lineNo));
-                localVar["column"] = json::Value(static_cast<int64_t>(colNo));
-                localVar["file"] = json::Value(fileName);
-                localVar["isStatic"] = json::Value(isStatic);
-                localVar["isParam"] = json::Value(isParam);
-                // Handle __autofp
-                if (autoFPRange.count(varName)) {
-                    json::Array rangeArr;
-                    for (auto &s : autoFPRange[varName])
-                        rangeArr.push_back(json::Value(s));
-                    localVar["range"] = std::move(rangeArr);
-                    searchableVars.insert(varName);
-                }
-            
-                function.push_back(json::Value(std::move(localVar))); 
-            }
+            dumpLocal();
         }
     }
 

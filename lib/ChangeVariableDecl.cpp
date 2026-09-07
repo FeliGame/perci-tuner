@@ -9,6 +9,9 @@
 #include <llvm/IR/IRBuilder.h>
 #include <functional>
 #include <llvm/IR/DebugInfo.h>
+#if LLVM_VERSION_MAJOR >= 19
+#include <llvm/IR/DebugProgramInstruction.h>
+#endif
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
@@ -286,11 +289,11 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
                         DIType *diType = DV->getType();
                         DIType *finalDIType = nullptr;
                         std::string typeSuffix;
-                        
+
                         // 如果是指针类型，需要替换DIDerivedType的基类型
                         if (diType && isa<DIDerivedType>(diType)) {
                             auto *derivedType = dyn_cast<DIDerivedType>(diType);
-                            
+
                             // 创建新的DIType作为基类型
                             DIType *newBaseDIType = createDIType(newType, DV->getScope(), DIB);
                             if (newBaseDIType) {
@@ -305,7 +308,7 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
                             // 对于非指针类型，直接创建DIType
                             finalDIType = createDIType(newType, DV->getScope(), DIB);
                         }
-                        
+
                         if (!finalDIType) continue;
                         // 创建新的DILocalVariable
                         auto *newDV = DIB->createAutoVariable(
@@ -1395,6 +1398,43 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
     // Check if decl inst need to be changed
     for (auto &BB : F) {
         for (auto &I : BB) {
+#if LLVM_VERSION_MAJOR >= 19
+            // LLVM22: #dbg_declare is a debug record attached to the instruction
+            for (auto &DR : I.getDbgRecordRange()) {
+                if (auto *DVR = dyn_cast<DbgVariableRecord>(&DR)) {
+                    if (!DVR->isDbgDeclare()) continue;
+                    if (auto *DV = DVR->getVariable()) {
+                        auto varName = DV->getName();
+                        auto loc = DVR->getDebugLoc();
+                        if (!loc) continue;
+                        auto fileName = DV->getFile()->getFilename().str();
+
+                        std::string key = fileName + ":" + std::to_string(loc.getLine()) + ":" + std::to_string(loc.getCol());
+                        auto it = configMap.find(key);
+                        if (it == configMap.end()) continue;
+                        auto &configEntry = it->second;
+                        auto* entryObj = configEntry.getAsObject();
+                        auto typeOpt = entryObj->getString("type");
+                        std::string typeName = typeOpt ? typeOpt->str() : "";
+                        auto *targetType = typeNameToBasicType(typeName, context);
+                        if (targetType == nullptr) continue;
+
+                        if (entryObj->find("isParam") != entryObj->end() && entryObj->getBoolean("isParam").value_or(false)) {
+                            unsigned argIndex = 0;
+                            for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                                if (argIt->getName() == varName) {
+                                    funcDeclTypeMap[&F][argIndex] = targetType;
+                                    break;
+                                }
+                            }
+                        }
+                        if (auto *addr = dyn_cast<AllocaInst>(DVR->getAddress())) {
+                            changeAllocaInst(addr, targetType);
+                        }
+                    }
+                }
+            }
+#endif
             if (auto *SI = dyn_cast<StoreInst>(&I)) {
                 Value *Addr = SI->getPointerOperand();
                 
@@ -1432,7 +1472,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     }
                 }
             }
-            // 适用clang情况
+            // clang17
             else if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
                 if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
                     auto varName = DV->getName();

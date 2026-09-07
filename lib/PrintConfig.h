@@ -18,8 +18,6 @@ using namespace std;
 
 namespace llvm {
 
-class DIFile;
-
 class PrintConfig : public PassInfoMixin<PrintConfig> {
 public:
     PreservedAnalyses run(Module &module, ModuleAnalysisManager &); // for New Pass Manager
