@@ -44,6 +44,26 @@ add_library(PerciAST MODULE ast/PerciAST.cpp)
 target_link_libraries(PerciTuner ${LLVM_LIBS})
 
 ###############################################################################
+# CIR pass plugin (loaded by cir-opt; see scripts/run.sh `cir` option)
+###############################################################################
+add_library(PerciTunerCIR MODULE
+    cir/RegisterCIRPasses.cpp
+    cir/CIRPrintConfig.cpp
+    cir/CIRTransform.cpp
+)
+set_target_properties(PerciTunerCIR PROPERTIES PREFIX "")
+target_include_directories(PerciTunerCIR PRIVATE
+    ${MLIR_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/cir
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib
+)
+target_link_libraries(PerciTunerCIR PRIVATE
+    MLIRCIR
+    MLIRIR
+    MLIRPass
+)
+
+###############################################################################
 # Test suite
 ###############################################################################
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

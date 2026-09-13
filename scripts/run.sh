@@ -16,6 +16,12 @@ MODE_FLAG=""
 SOURCE_FILES=""
 RUN_ARGS=""
 
+# When true, print-config / change-by-config run on ClangIR (CIR) instead of
+# LLVM IR: clang -emit-cir -> cir-opt(PerciTunerCIR.so) -> cir-translate.
+# Enabled by passing the bare "cir" option, e.g.
+#   sh scripts/run.sh cir print-config src.c
+CIR_FLAG=false
+
 # Precision / instrumentation flags.
 MXP_FLAG=false
 FPE_FLAG=false
@@ -158,6 +164,11 @@ Available modes:
   change-by-config  Modify source code precision according to target config
   multi-version     Generate multi-version executable
 
+Prefix a mode with the bare "cir" option to run print-config /
+change-by-config on ClangIR instead of LLVM IR, e.g.:
+  run.sh cir print-config src.c
+  run.sh cir change-by-config -target=config.json src.c
+
 Search options:
   -algorithm=exhaust/dd/pedd  Select search algorithm (default dd)
   -thres=<1e-6>               Set error threshold (default 1e-6)
@@ -268,6 +279,11 @@ select_double_double_support_archive() {
 }
 
 compile_sources_to_bitcode() {
+    if [ "$CIR_FLAG" = true ]; then
+        compile_sources_to_cir
+        return 0
+    fi
+
     if [ -z "$SOURCE_FILES" ]; then
         if [ -f output.bc ]; then
             info "No source files supplied; reuse existing output.bc"
@@ -296,6 +312,30 @@ compile_sources_to_bitcode() {
     llvm-link $BCS -o output.bc
 }
 
+# CIR variant of compile_sources_to_bitcode: produces output.cir.
+# Only single-source flows are supported in the first version (there is no
+# stable llvm-link equivalent for .cir inputs); cir-opt takes one module.
+compile_sources_to_cir() {
+    if [ -z "$SOURCE_FILES" ]; then
+        if [ -f output.cir ]; then
+            info "No source files supplied; reuse existing output.cir"
+            return 0
+        fi
+        die "no source files supplied and output.cir does not exist"
+    fi
+
+    set -- $SOURCE_FILES
+    if [ "$#" -gt 1 ]; then
+        die "cir mode currently supports a single source file (got $#)"
+    fi
+    src_file="$1"
+    [ -f "$src_file" ] || die "file not found: $src_file"
+
+    clang $PERCI_ANALYSIS_OPTIONS -g -emit-cir \
+        "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
+        -o output.cir
+}
+
 ###############################################################################
 # Mode implementations
 ###############################################################################
@@ -313,7 +353,33 @@ run_check() {
     fi
 }
 
+run_change_by_config_cir() {
+    # Transform CIR in one pass (math calls + variable precision), then lower
+    # back to LLVM IR / native code.
+    cir-opt --mlir-print-debuginfo \
+        --load-pass-plugin "$PERCI_TUNER/build/PerciTunerCIR.so" \
+        --pass-pipeline="builtin.module(transform-cir)" \
+        --variable-config="$TARGET_CONFIG" \
+        --function-config="$TARGET_CONFIG" \
+        --include-file="$INCLUDE_FILE" \
+        --include-func="$INCLUDE_FUNC" \
+        --exclude-file="$EXCLUDE_FILE" \
+        --exclude-func="$EXCLUDE_FUNC" \
+        output.cir -o changed_output.cir
+
+    cir-translate --cir-to-llvmir changed_output.cir -o changed_output.bc
+
+    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o changed_output changed_output.bc \
+        $LINK_LIBS $LINK_DIRS $DD_SUPPORT
+    info "[Changed][CIR] IR: changed_output.cir, BC: changed_output.bc, Executable: changed_output"
+}
+
 run_change_by_config() {
+    if [ "$CIR_FLAG" = true ]; then
+        run_change_by_config_cir
+        return $?
+    fi
+
     opt output.bc -o output.bc
 
     PASSES="change_math_call,change_variable_decl"
@@ -337,7 +403,29 @@ run_change_by_config() {
     info "[Changed] IR: changed_output.bc, Executable: changed_output"
 }
 
+print_config_cir() {
+    cir-opt --mlir-print-debuginfo \
+        --load-pass-plugin "$PERCI_TUNER/build/PerciTunerCIR.so" \
+        --pass-pipeline="builtin.module(print-cir-config)" \
+        --mxp="$MXP_FLAG" \
+        --include-file="$INCLUDE_FILE" \
+        --include-func="$INCLUDE_FUNC" \
+        --exclude-file="$EXCLUDE_FILE" \
+        --exclude-func="$EXCLUDE_FUNC" \
+        output.cir -o output.cir
+
+    cir-translate --cir-to-llvmir output.cir -o output.bc
+    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o output output.bc \
+        $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
+    info "[Original][CIR] Config: config.json, IR: output.cir, Executable: output"
+}
+
 print_config() {
+    if [ "$CIR_FLAG" = true ]; then
+        print_config_cir
+        return $?
+    fi
+
     if [ "$CHECK_RESULT_FLAG" = true ]; then
         opt -load-pass-plugin "$PERCI_TUNER/build/PerciTuner.so" -S \
             -passes="record_result,remove_pragma" \
@@ -438,6 +526,11 @@ for arg in "$@"; do
             ;;
         print-config|search-optimize|change-by-config|multi-version|check)
             MODE_FLAG="$arg"
+            ;;
+        cir)
+            # Use the ClangIR (CIR) implementation of print-config /
+            # change-by-config instead of the LLVM IR passes.
+            CIR_FLAG=true
             ;;
         -refresh-config=*)
             REFRESH_CONFIG="${arg#-refresh-config=}"
