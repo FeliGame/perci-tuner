@@ -345,7 +345,13 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
             } else if (oldType == newType) {
                 continue;
             } else {
-                newLoad = new LoadInst(newType, load->getPointerOperand(), "", load->getIterator());
+                newLoad = new LoadInst(newType, load->getPointerOperand(), "",
+#if LLVM_VERSION_MAJOR >= 19
+                    load->getIterator()
+#else
+                    load
+#endif
+                );
                 newLoad->setAlignment(align);
 
                 load->replaceAllUsesWith(newLoad);
@@ -363,11 +369,11 @@ Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction 
     if (val->getType() == targetType) {
         return val; 
     }
+
 #if LLVM_VERSION_MAJOR < 19
     if (auto *constantVal = dyn_cast<Constant>(val)) {
-        if (targetType->isFloatingPointTy()) {
-            return ConstantExpr::getCast(CastInst::FPExt, constantVal, targetType);
-        }
+        if (targetType->isFloatingPointTy())
+            return ConstantExpr::getFPCast(constantVal, targetType);
         return nullptr;
     }
 #endif
@@ -486,7 +492,13 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
         if (load->getType()->isPointerTy())
             return load;
         if (loadType != load->getType()) {
-            auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load->getIterator());
+            auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(),
+#if LLVM_VERSION_MAJOR >= 19
+                load->getIterator()
+#else
+                load
+#endif
+            );
             newLoad->setAlignment(align ? Align(align) : getAlign(loadType));
             newLoad->setDebugLoc(load->getDebugLoc());
             load->replaceAllUsesWith(newLoad);
@@ -632,7 +644,11 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
     if (!callee) return nullptr;
     
     // 处理llvm.fmuladd函数调用
+#if LLVM_VERSION_MAJOR >= 19
     if (callee->getName().starts_with("llvm.fmuladd")) {
+#else
+    if (callee->getName().startswith("llvm.fmuladd")) {
+#endif
         // 获取当前fmuladd指令的类型
         Type* oldType = call->getType();
         Type* highestType = nullptr;
@@ -732,7 +748,13 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             }
 
             // 创建新的call指令
-            CallInst* newCall = CallInst::Create(newFunc, castedOperands, "", call->getIterator());
+            CallInst* newCall = CallInst::Create(newFunc, castedOperands, "",
+#if LLVM_VERSION_MAJOR >= 19
+                call->getIterator()
+#else
+                call
+#endif
+            );
             newCall->setDebugLoc(call->getDebugLoc());
             newCall->takeName(call);
             replaceMultiOperandInst(call, newCall);
@@ -809,7 +831,13 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
 
     if (modified) {
         // 创建新的 PHINode，类型为 highestType
-        auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi->getIterator());
+        auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "",
+#if LLVM_VERSION_MAJOR >= 19
+            phi->getIterator()
+#else
+            phi
+#endif
+        );
         for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
             auto *oldVal = phi->getIncomingValue(i);
             auto *newVal = oldVal;
@@ -850,7 +878,11 @@ Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* tar
         gep->getPointerOperand(),
         indices,
         gep->getName(),
+#if LLVM_VERSION_MAJOR >= 19
         gep->getIterator()
+#else
+        gep
+#endif
     );
 
     // 用新的 GEP 指令替换旧的 GEP 指令
@@ -930,7 +962,13 @@ Instruction* ChangeVariableDecl::repairBitCastInst(BitCastInst* bitCast) {
         return nullptr;
     }
 
-    BitCastInst* newBitCast =             new BitCastInst(newSrcValue, destType, bitCast->getName(), bitCast->getIterator());
+    BitCastInst* newBitCast = new BitCastInst(newSrcValue, destType, bitCast->getName(),
+#if LLVM_VERSION_MAJOR >= 19
+        bitCast->getIterator()
+#else
+        bitCast
+#endif
+    );
     bitCast->replaceAllUsesWith(newBitCast);
     instToErase.insert(bitCast);
     // errs() << "[repair bitcast] " << *bitCast << "->" << *newBitCast << '\n';
@@ -1119,7 +1157,11 @@ Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* t
     } else if (isa<ConstantFP>(initializer)) {
         // TODO: 该语句并不生效，为什么？
         // newInitializer = ConstantFP::get(targetType, cfp->getValueAPF());
+#if LLVM_VERSION_MAJOR >= 19
         return ConstantExpr::getCast(CastInst::FPExt, initializer, targetType);
+#else
+        return ConstantExpr::getFPCast(initializer, targetType);
+#endif
     } else if (isa<ConstantDataArray>(initializer)) {
         // 处理ConstantDataArray初始化器（如字符串常量）
         auto *targetArrayType = dyn_cast<ArrayType>(targetType);
@@ -1578,7 +1620,11 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
 
             if (targetType && targetType != oldType) {
                 if (oldType->isPointerTy())
-                    oldType = PointerType::get(context, 0);
+#if LLVM_VERSION_MAJOR >= 19
+                    oldType = PointerType::get(context, cast<PointerType>(oldType)->getAddressSpace());
+#else
+                    oldType = PointerType::get(targetType, cast<PointerType>(oldType)->getAddressSpace());
+#endif
                 else {
                     // errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
                     oldType = targetType;
@@ -1688,7 +1734,11 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                             gep->getPointerOperand(),
                             indices,
                             gep->getName(),
+#if LLVM_VERSION_MAJOR >= 19
                             gep->getIterator()
+#else
+                            gep
+#endif
                         );
                         gep->replaceAllUsesWith(newGEP);
                         instToErase.insert(gep);
@@ -2004,7 +2054,13 @@ void ChangeVariableDecl::updateCallInst(CallInst *call, Function &newFunc, std::
     }
     
     // 创建新的CallInst
-    CallInst *newCall = CallInst::Create(newFunc.getFunctionType(), &newFunc, newArgs, "", call->getIterator());
+    CallInst *newCall = CallInst::Create(newFunc.getFunctionType(), &newFunc, newArgs, "",
+#if LLVM_VERSION_MAJOR >= 19
+        call->getIterator()
+#else
+        call
+#endif
+    );
     newCall->setDebugLoc(call->getDebugLoc());
     newCall->takeName(call);
     replaceMultiOperandInst(call, newCall);

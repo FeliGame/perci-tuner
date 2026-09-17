@@ -160,7 +160,7 @@ void PrintConfig::findLocalVariables(Function &F) {
                 if (auto *DDI = dyn_cast<DbgVariableRecord>(&DR)) {
                     if (!DDI->isDbgDeclare()) continue;
                     if (auto *DV = DDI->getVariable()) {
-#elif
+#else
             else if (auto *CI = dyn_cast<CallInst>(&I)) {
                 if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
                     if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
@@ -212,7 +212,9 @@ void PrintConfig::findLocalVariables(Function &F) {
                         dumpLocal();
                     }
                 }
-#if LLVM_VERSION_MAJOR == 17
+#if LLVM_VERSION_MAJOR >= 19
+                // TODO: LLVM 19+: autofp intrinsics not implemented
+#else
                 // Handle __autofp intrinsic
                 else if (Function *Callee = CI->getCalledFunction()) {
                     auto name = Callee->getName();

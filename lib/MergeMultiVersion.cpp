@@ -62,8 +62,14 @@ bool MergeMultiVersion::runOnModule(Module &module)
     IRMover Mover(module);
     SmallVector<GlobalValue *, 8> ToClone;
     ToClone.push_back(OtherFunc);
-    if (Error Err = Mover.move(std::move(otherModule), ToClone, [](GlobalValue &GV, IRMover::ValueAdder Add)
+    if (Error Err = Mover.move(std::move(otherModule), ToClone,
+#if LLVM_VERSION_MAJOR >= 19
+                               [](GlobalValue &GV, IRMover::ValueAdder Add)
                                { Add(GV); }, false))
+#else
+                               [](GlobalValue &GV, std::function<void(GlobalValue &)> Materialize)
+                               { Materialize(GV); }, false))
+#endif
     {
         errs() << "IRMover error: " << Err << "\n";
         return false;

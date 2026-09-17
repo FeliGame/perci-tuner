@@ -472,7 +472,11 @@ bool FP128ToDD::runOnModule(Module &M) {
 
         unsigned startIndex = 1;
         // 若后缀是fscanf或fwscanf，则更新startIndex
+#if LLVM_VERSION_MAJOR >= 19
         if (Callee->getName().ends_with("fscanf") || Callee->getName().ends_with("fwscanf")) {
+#else
+        if (Callee->getName().endswith("fscanf") || Callee->getName().endswith("fwscanf")) {
+#endif
           startIndex = 2;
         }
 	      Value *FmtOp = FCall->getOperand(startIndex - 1);
@@ -508,10 +512,18 @@ bool FP128ToDD::runOnModule(Module &M) {
             if (subFmt.empty()) continue;
             
             // 检查当前子格式串是否以"%L"开头（表示需要处理为DD格式）
+#if LLVM_VERSION_MAJOR >= 19
             if (subFmt.starts_with("%L")) {
+#else
+            if (subFmt.startswith("%L")) {
+#endif
               // TODO：处理逻辑(FP128ToDD)
             }
+#if LLVM_VERSION_MAJOR >= 19
             else if (subFmt.starts_with("%l")) {
+#else
+            else if (subFmt.startswith("%l")) {
+#endif
               // TODO：处理逻辑(FP64ToDD)
             }
             argIndex++;
@@ -668,7 +680,11 @@ bool FP128ToDD::runOnModule(Module &M) {
       if (!Allocas.empty()) {
       	IRBuilder<> Builder(&EntryBlock, EntryBlock.getFirstInsertionPt());
 	for (auto *AI : Allocas) {
+#if LLVM_VERSION_MAJOR >= 19
 	  AI->moveBefore(Builder.GetInsertPoint());
+#else
+	  AI->moveBefore(&*Builder.GetInsertPoint());
+#endif
 	  //errs() << "wait to move Allocas : " << *AI << "\n";
 	}
 	Allocas.clear();
