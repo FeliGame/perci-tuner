@@ -68,7 +68,6 @@ private:
     Instruction* repairPHINode(PHINode *phi);
     Instruction* repairGEPInst(GetElementPtrInst* gep, Type* targetType);
     Constant* repairGEPConstantExpr(ConstantExpr *constant, Type* targetType);
-    Instruction* repairBitCastInst(BitCastInst* bitCast);
     Instruction* repairIntToFP(Instruction* castInst);
     void repairAllocaUsers(AllocaInst* alloca);
     void repairUserType(Value* origin, User *user, Type* targetType=nullptr, unsigned align=0);
