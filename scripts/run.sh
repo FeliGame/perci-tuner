@@ -22,6 +22,7 @@ FPE_FLAG=false
 CHECK_RESULT_FLAG=false
 DD_FLAG=false
 MIX_BINOP_FLAG=true
+CIR_FLAG=false
 
 # Filters.
 INCLUDE_FILE=""
@@ -181,6 +182,7 @@ Common options:
   -mix-binop=<true>           Enable mixed double/double-double binary operators
   -mxp                        Only include pragma precision and __autofp variables
   -fpe                        Print Floating-Point Exception, enables -mxp and -check-result
+  -cir                        Enable CIR/MLIR support (requires LLVM22 built with mlir)
 
 Change-by-config options:
   -target=<config>            Set target config file (default changed_config.json)
@@ -238,7 +240,11 @@ EOF
 
 build_perci_tuner() {
     info "Build Perci-Tuner..."
-    sh "$PERCI_TUNER/scripts/build.sh"
+    BUILD_ARGS=""
+    if [ "$CIR_FLAG" = true ]; then
+        BUILD_ARGS="-cir"
+    fi
+    sh "$PERCI_TUNER/scripts/build.sh" $BUILD_ARGS
 }
 
 prepare_runtime_options() {
@@ -472,6 +478,9 @@ for arg in "$@"; do
         -mxp)
             MXP_FLAG=true
             CHECK_RESULT_FLAG=true
+            ;;
+        -cir)
+            CIR_FLAG=true
             ;;
         -fp128todd)
             DD_FLAG=true

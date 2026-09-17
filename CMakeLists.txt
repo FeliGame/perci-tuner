@@ -2,14 +2,21 @@ cmake_minimum_required(VERSION 3.10)
 
 project(PerciTuner)
 
+# CIR (Clang IR) support requires LLVM22 + MLIR. Enable only when -DPERCI_ENABLE_CIR=ON
+
 # Find the LLVM libraries
 find_package(LLVM REQUIRED CONFIG)
-find_package(MLIR REQUIRED CONFIG)
+if(PERCI_ENABLE_CIR)
+    find_package(MLIR REQUIRED CONFIG)
+endif()
 find_package(Clang REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 message(STATUS "Using Clang: ${Clang_DIR}")
+if(PERCI_ENABLE_CIR)
+    message(STATUS "CIR/MLIR support enabled")
+endif()
 
 # Add LLVM include directories
 include_directories(${LLVM_INCLUDE_DIRS})
