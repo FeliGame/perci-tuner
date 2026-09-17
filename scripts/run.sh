@@ -287,11 +287,11 @@ compile_sources_to_bitcode() {
         [ -f "$src_file" ] || die "file not found: $src_file"
 
         if [ "$FPE_FLAG" = true ]; then
-            clang $PERCI_ANALYSIS_OPTIONS -S -emit-llvm -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe \
+            clang $PERCI_ANALYSIS_OPTIONS -S -emit-llvm -ffp-contract=fast -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe \
                 "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
                 -fno-discard-value-names -o "$src_file.bc"
         else
-            clang $PERCI_ANALYSIS_OPTIONS -g -emit-llvm -c \
+            clang $PERCI_ANALYSIS_OPTIONS -g -emit-llvm -ffp-contract=fast -c \
                 "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
                 -fno-discard-value-names -o "$src_file.bc"
         fi
