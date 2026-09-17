@@ -6,6 +6,7 @@
 #include "ChangeMathCall.h"
 #include "utils/ParseTypeName.hpp"
 
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
@@ -133,9 +134,7 @@ bool ChangeMathCall::runOnFunction(Function &F) {
                 }
                 // All args are of same type
                 SmallVector<Type*, 2> paramTypes;
-                for (auto &op : call->args()) {
-                    paramTypes.push_back(paramType);
-                }
+                paramTypes.resize(call->arg_size(), paramType);
                 
                 auto *newFuncType = FunctionType::get(
                     paramType,  // ret type

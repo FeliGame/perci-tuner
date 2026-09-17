@@ -5,6 +5,7 @@
 #include "IRTiming.h"
 #include "utils/ParseTypeName.hpp"
 
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
@@ -32,25 +33,53 @@ bool IRTiming::runOnModule(Module &M)
 
     IRBuilder<> Builder(&mainFuncPtr->getEntryBlock(), mainFuncPtr->getEntryBlock().begin());
 
-    auto *fileNamePtr = Builder.CreateGlobalStringPtr(IRTimingResultName.c_str());
+#if LLVM_VERSION_MAJOR >= 19
+    auto *fileNamePtr = Builder.CreateGlobalString(IRTimingResultName);
+    auto *modePtr = Builder.CreateGlobalString("w"); // rewrite
+    auto *fmtStrPtr = Builder.CreateGlobalString("%s:%lld\n");
+    auto *funcNamePtr = Builder.CreateGlobalString("main");
+#else
+    auto *fileNamePtr = Builder.CreateGlobalStringPtr(IRTimingResultName);
     auto *modePtr = Builder.CreateGlobalStringPtr("w"); // rewrite
-    auto fopenFunc = M.getOrInsertFunction(
-        "fopen", 
-        FunctionType::get(PointerType::get(Type::getInt8Ty(M.getContext()), 0), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
-    auto *filePtr = Builder.CreateCall(fopenFunc, {fileNamePtr, modePtr});
-
-    auto *startCycle = Builder.CreateCall(Intrinsic::getDeclaration(&M, Intrinsic::readcyclecounter), {}, "start_cycle");
-
     auto *fmtStrPtr = Builder.CreateGlobalStringPtr("%s:%lld\n");
     auto *funcNamePtr = Builder.CreateGlobalStringPtr("main");
+#endif
+
+    auto fopenFunc = M.getOrInsertFunction(
+        "fopen",
+        FunctionType::get(
+#if LLVM_VERSION_MAJOR >= 19
+            PointerType::get(M.getContext(), 0), {PointerType::get(M.getContext(), 0), PointerType::get(M.getContext(), 0)}, true));
+#else
+            PointerType::get(Type::getInt8Ty(M.getContext()), 0), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
+#endif
+    auto *filePtr = Builder.CreateCall(fopenFunc, {fileNamePtr, modePtr});
+
+    auto *startCycle = Builder.CreateCall(
+#if LLVM_VERSION_MAJOR >= 19
+        Intrinsic::getOrInsertDeclaration(&M, Intrinsic::readcyclecounter),
+#else
+        Intrinsic::getDeclaration(&M, Intrinsic::readcyclecounter),
+#endif
+            {}, "start_cycle");
 
     auto fcloseFunc = M.getOrInsertFunction(
         "fclose",
-        FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
+        FunctionType::get(Type::getVoidTy(M.getContext()),
+#if LLVM_VERSION_MAJOR >= 19
+            {PointerType::get(M.getContext(), 0)}, true));
+#else
+            {PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
+#endif
 
     auto fprintfFunc = M.getOrInsertFunction(
         "fprintf",
-        FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
+        FunctionType::get(Type::getVoidTy(M.getContext()),
+#if LLVM_VERSION_MAJOR >= 19
+            {PointerType::get(M.getContext(), 0), PointerType::get(M.getContext(), 0)}, true));
+#else
+            {PointerType::get(Type::getInt8Ty(M.getContext()), 0), PointerType::get(Type::getInt8Ty(M.getContext()), 0)}, true));
+#endif
 
     // Record & ouput cycles before each ret of function
     for (auto &BB : *mainFuncPtr)
@@ -61,7 +90,12 @@ bool IRTiming::runOnModule(Module &M)
             {
                 IRBuilder<> ReturnBuilder(RI); // Insert inst before ret
                 auto *endCycle = ReturnBuilder.CreateCall(
-                    Intrinsic::getDeclaration(&M, Intrinsic::readcyclecounter), {}, "end_cycle");
+#if LLVM_VERSION_MAJOR >= 19
+                    Intrinsic::getOrInsertDeclaration(&M, Intrinsic::readcyclecounter),
+#else
+                    Intrinsic::getDeclaration(&M, Intrinsic::readcyclecounter),
+#endif
+                        {}, "end_cycle");
                 auto *elapsedCycle = ReturnBuilder.CreateSub(endCycle, startCycle, "elapsed_cycle");
 
                 ReturnBuilder.CreateCall(fprintfFunc, {filePtr, fmtStrPtr, funcNamePtr, elapsedCycle});

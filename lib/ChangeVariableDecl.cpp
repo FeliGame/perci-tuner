@@ -6,8 +6,12 @@
 #include "ChangeVariableDecl.h"
 #include "utils/ParseTypeName.hpp"
 
+#include <llvm/IR/IRBuilder.h>
 #include <functional>
 #include <llvm/IR/DebugInfo.h>
+#if LLVM_VERSION_MAJOR >= 19
+#include <llvm/IR/DebugProgramInstruction.h>
+#endif
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
@@ -285,11 +289,11 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
                         DIType *diType = DV->getType();
                         DIType *finalDIType = nullptr;
                         std::string typeSuffix;
-                        
+
                         // 如果是指针类型，需要替换DIDerivedType的基类型
                         if (diType && isa<DIDerivedType>(diType)) {
                             auto *derivedType = dyn_cast<DIDerivedType>(diType);
-                            
+
                             // 创建新的DIType作为基类型
                             DIType *newBaseDIType = createDIType(newType, DV->getScope(), DIB);
                             if (newBaseDIType) {
@@ -304,7 +308,7 @@ AllocaInst* ChangeVariableDecl::changeAllocaInst(AllocaInst *alloca, Type *newTy
                             // 对于非指针类型，直接创建DIType
                             finalDIType = createDIType(newType, DV->getScope(), DIB);
                         }
-                        
+
                         if (!finalDIType) continue;
                         // 创建新的DILocalVariable
                         auto *newDV = DIB->createAutoVariable(
@@ -341,7 +345,13 @@ void ChangeVariableDecl::repairAllocaUsers(AllocaInst* alloca) {
             } else if (oldType == newType) {
                 continue;
             } else {
-                newLoad = new LoadInst(newType, load->getPointerOperand(), "", load);
+                newLoad = new LoadInst(newType, load->getPointerOperand(), "",
+#if LLVM_VERSION_MAJOR >= 19
+                    load->getIterator()
+#else
+                    load
+#endif
+                );
                 newLoad->setAlignment(align);
 
                 load->replaceAllUsesWith(newLoad);
@@ -359,11 +369,11 @@ Value *ChangeVariableDecl::insertCast(Value *val, Type *targetType, Instruction 
     if (val->getType() == targetType) {
         return val; 
     }
+
 #if LLVM_VERSION_MAJOR < 19
     if (auto *constantVal = dyn_cast<Constant>(val)) {
-        if (targetType->isFloatingPointTy()) {
+        if (targetType->isFloatingPointTy())
             return ConstantExpr::getFPCast(constantVal, targetType);
-        }
         return nullptr;
     }
 #endif
@@ -482,7 +492,13 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
         if (load->getType()->isPointerTy())
             return load;
         if (loadType != load->getType()) {
-            auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(), load);
+            auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(),
+#if LLVM_VERSION_MAJOR >= 19
+                load->getIterator()
+#else
+                load
+#endif
+            );
             newLoad->setAlignment(align ? Align(align) : getAlign(loadType));
             newLoad->setDebugLoc(load->getDebugLoc());
             load->replaceAllUsesWith(newLoad);
@@ -628,7 +644,11 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
     if (!callee) return nullptr;
     
     // 处理llvm.fmuladd函数调用
+#if LLVM_VERSION_MAJOR >= 19
+    if (callee->getName().starts_with("llvm.fmuladd")) {
+#else
     if (callee->getName().startswith("llvm.fmuladd")) {
+#endif
         // 获取当前fmuladd指令的类型
         Type* oldType = call->getType();
         Type* highestType = nullptr;
@@ -728,7 +748,13 @@ Instruction* ChangeVariableDecl::repairCallInst(CallInst* call) {
             }
 
             // 创建新的call指令
-            CallInst* newCall = CallInst::Create(newFunc, castedOperands, "", call);
+            CallInst* newCall = CallInst::Create(newFunc, castedOperands, "",
+#if LLVM_VERSION_MAJOR >= 19
+                call->getIterator()
+#else
+                call
+#endif
+            );
             newCall->setDebugLoc(call->getDebugLoc());
             newCall->takeName(call);
             replaceMultiOperandInst(call, newCall);
@@ -805,7 +831,13 @@ Instruction* ChangeVariableDecl::repairPHINode(PHINode* phi) {
 
     if (modified) {
         // 创建新的 PHINode，类型为 highestType
-        auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "", phi);
+        auto *newPhi = PHINode::Create(highestType, phi->getNumIncomingValues(), "",
+#if LLVM_VERSION_MAJOR >= 19
+            phi->getIterator()
+#else
+            phi
+#endif
+        );
         for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
             auto *oldVal = phi->getIncomingValue(i);
             auto *newVal = oldVal;
@@ -846,7 +878,11 @@ Instruction* ChangeVariableDecl::repairGEPInst(GetElementPtrInst* gep, Type* tar
         gep->getPointerOperand(),
         indices,
         gep->getName(),
+#if LLVM_VERSION_MAJOR >= 19
+        gep->getIterator()
+#else
         gep
+#endif
     );
 
     // 用新的 GEP 指令替换旧的 GEP 指令
@@ -1069,7 +1105,11 @@ Constant* ChangeVariableDecl::changeGVInitializer(Constant *initializer, Type* t
     } else if (isa<ConstantFP>(initializer)) {
         // TODO: 该语句并不生效，为什么？
         // newInitializer = ConstantFP::get(targetType, cfp->getValueAPF());
+#if LLVM_VERSION_MAJOR >= 19
+        return ConstantExpr::getCast(CastInst::FPExt, initializer, targetType);
+#else
         return ConstantExpr::getFPCast(initializer, targetType);
+#endif
     } else if (isa<ConstantDataArray>(initializer)) {
         // 处理ConstantDataArray初始化器（如字符串常量）
         auto *targetArrayType = dyn_cast<ArrayType>(targetType);
@@ -1342,6 +1382,43 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
     // Check if decl inst need to be changed
     for (auto &BB : F) {
         for (auto &I : BB) {
+#if LLVM_VERSION_MAJOR >= 19
+            // LLVM22: #dbg_declare is a debug record attached to the instruction
+            for (auto &DR : I.getDbgRecordRange()) {
+                if (auto *DVR = dyn_cast<DbgVariableRecord>(&DR)) {
+                    if (!DVR->isDbgDeclare()) continue;
+                    if (auto *DV = DVR->getVariable()) {
+                        auto varName = DV->getName();
+                        auto loc = DVR->getDebugLoc();
+                        if (!loc) continue;
+                        auto fileName = DV->getFile()->getFilename().str();
+
+                        std::string key = fileName + ":" + std::to_string(loc.getLine()) + ":" + std::to_string(loc.getCol());
+                        auto it = configMap.find(key);
+                        if (it == configMap.end()) continue;
+                        auto &configEntry = it->second;
+                        auto* entryObj = configEntry.getAsObject();
+                        auto typeOpt = entryObj->getString("type");
+                        std::string typeName = typeOpt ? typeOpt->str() : "";
+                        auto *targetType = typeNameToBasicType(typeName, context);
+                        if (targetType == nullptr) continue;
+
+                        if (entryObj->find("isParam") != entryObj->end() && entryObj->getBoolean("isParam").value_or(false)) {
+                            unsigned argIndex = 0;
+                            for (auto argIt = F.arg_begin(); argIt != F.arg_end(); ++argIt, ++argIndex) {
+                                if (argIt->getName() == varName) {
+                                    funcDeclTypeMap[&F][argIndex] = targetType;
+                                    break;
+                                }
+                            }
+                        }
+                        if (auto *addr = dyn_cast<AllocaInst>(DVR->getAddress())) {
+                            changeAllocaInst(addr, targetType);
+                        }
+                    }
+                }
+            }
+#endif
             if (auto *SI = dyn_cast<StoreInst>(&I)) {
                 Value *Addr = SI->getPointerOperand();
                 
@@ -1379,7 +1456,7 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                     }
                 }
             }
-            // 适用clang情况
+            // clang17
             else if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
                 if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
                     auto varName = DV->getName();
@@ -1485,7 +1562,11 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
 
             if (targetType && targetType != oldType) {
                 if (oldType->isPointerTy())
-                    oldType = PointerType::get(targetType, 0);
+#if LLVM_VERSION_MAJOR >= 19
+                    oldType = PointerType::get(context, cast<PointerType>(oldType)->getAddressSpace());
+#else
+                    oldType = PointerType::get(targetType, cast<PointerType>(oldType)->getAddressSpace());
+#endif
                 else {
                     // errs() << "[change struct member] " << structName << " member " << i << ": " << *oldType << "->" << *targetType << '\n';
                     oldType = targetType;
@@ -1595,7 +1676,11 @@ void ChangeVariableDecl::changeStructDeclarations(Module &module) {
                             gep->getPointerOperand(),
                             indices,
                             gep->getName(),
+#if LLVM_VERSION_MAJOR >= 19
+                            gep->getIterator()
+#else
                             gep
+#endif
                         );
                         gep->replaceAllUsesWith(newGEP);
                         instToErase.insert(gep);
@@ -1911,7 +1996,13 @@ void ChangeVariableDecl::updateCallInst(CallInst *call, Function &newFunc, std::
     }
     
     // 创建新的CallInst
-    CallInst *newCall = CallInst::Create(newFunc.getFunctionType(), &newFunc, newArgs, "", call);
+    CallInst *newCall = CallInst::Create(newFunc.getFunctionType(), &newFunc, newArgs, "",
+#if LLVM_VERSION_MAJOR >= 19
+        call->getIterator()
+#else
+        call
+#endif
+    );
     newCall->setDebugLoc(call->getDebugLoc());
     newCall->takeName(call);
     replaceMultiOperandInst(call, newCall);

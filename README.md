@@ -2,18 +2,18 @@
 
 Perci-Tuner increases C program's runtime speed while keeping errors within an acceptable range, by reducing floating-point variables & C-Math function calls' precision.
 
-## LLVM 17
-
+## LLVM
+Availability on LLVM 22.1.8 & LLVM 17.0.6 have been tested.
 ```sh
 git clone https://github.com/llvm/llvm-project.git
 cd llvm-project
-git checkout -b llvm-17 llvmorg-17.0.6
+git checkout llvmorg-22.1.8
 
 cmake -G Ninja \
   -S llvm -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DLLVM_TARGETS_TO_BUILD="host" \
-  -DLLVM_ENABLE_PROJECTS="clang" \
+  -DLLVM_ENABLE_PROJECTS="clang;mlir" \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DLLVM_BUILD_UTILS=ON \
   -DLLVM_BUILD_TOOLS=ON \
@@ -46,7 +46,7 @@ python3 -m lit -v test/xxx
 
 ## Visualize search
 
-After finishing a search, generate `run_history.png` with:
+After finishing a search, generate t-SNE & UMAP visualization and `run_history.png` with:
 ```bash
 python3 scripts/visualize.py
 ```
