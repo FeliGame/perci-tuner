@@ -924,58 +924,6 @@ Constant* ChangeVariableDecl::repairGEPConstantExpr(ConstantExpr *constant, Type
     return newConstant;
 }
 
-Instruction* ChangeVariableDecl::repairBitCastInst(BitCastInst* bitCast) {
-    Value* srcValue = bitCast->getOperand(0);
-    Type* srcType = srcValue->getType();
-    Type* destType = bitCast->getDestTy();
-
-    // 仅处理源类型为浮点类型的情况
-    if (!srcType->isFloatingPointTy()) {
-        return nullptr;
-    }
-
-    // 确定与目标类型位宽相同的浮点类型
-    LLVMContext& context = bitCast->getContext();
-    Type* targetFloatType;
-    unsigned destBitWidth = destType->getPrimitiveSizeInBits();
-    switch (destBitWidth) {
-        case 16:
-            targetFloatType = Type::getHalfTy(context);
-            break;
-        case 32:
-            targetFloatType = Type::getFloatTy(context);
-            break;
-        case 64:
-            targetFloatType = Type::getDoubleTy(context);
-            break;
-        case 128:
-            targetFloatType = Type::getFP128Ty(context);
-            break;
-        default:
-            errs() << "Unsupported bit width for floating point extension: " << destBitWidth << "\n";
-            return nullptr;
-    }
-
-    Value* newSrcValue = insertCast(srcValue, targetFloatType, bitCast);
-    if (!newSrcValue) {
-        // errs() << "Failed to cast source value in BitCastInst: " << *bitCast << "\n";
-        return nullptr;
-    }
-
-    BitCastInst* newBitCast = new BitCastInst(newSrcValue, destType, bitCast->getName(),
-#if LLVM_VERSION_MAJOR >= 19
-        bitCast->getIterator()
-#else
-        bitCast
-#endif
-    );
-    bitCast->replaceAllUsesWith(newBitCast);
-    instToErase.insert(bitCast);
-    // errs() << "[repair bitcast] " << *bitCast << "->" << *newBitCast << '\n';
-
-    return newBitCast;
-}
-
 // 修复SIToFP和UIToFP指令的目标类型
 Instruction* ChangeVariableDecl::repairIntToFP(Instruction* castInst) {    
     Value* sourceOperand = castInst->getOperand(0);
@@ -1331,12 +1279,6 @@ void llvm::ChangeVariableDecl::repairCasts(Function &F)
                         castInst->replaceAllUsesWith(newCast);
                         instToErase.insert(castInst);
                     }
-                    continue;
-                }
-
-                // 5. 处理BitCast指令
-                if (auto *bitCast = dyn_cast<BitCastInst>(&I)) {
-                    repairBitCastInst(bitCast);
                     continue;
                 }
             }
