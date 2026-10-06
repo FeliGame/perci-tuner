@@ -163,7 +163,7 @@ Search options:
   -algorithm=exhaust/dd/pedd  Select search algorithm (default dd)
   -thres=<1e-6>               Set error threshold (default 1e-6)
   -repeat=<1>                 Set repeat count (default 1)
-  -timeout=<1.5>              Set single program timeout multiplier (default 1.5 x baseline)
+  -timeout=<1.5>              Set runtime&compile timeout multiplier (default 1.5 x baseline)
   -time-mode=program/kernel   Measure full program or stderr core_time_sec=<seconds> (default program)
   -shuffled                   Shuffle searched variables (default false)
   -history                    Keep search history (default true)

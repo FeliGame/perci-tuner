@@ -22,7 +22,8 @@ FP128_TO_DD = False
 MIX_BINOP = True
 RUNNING_TIMES = 1
 RUNNING_FAIL_TIMES = 0
-TIMEOUT_THRESHOLD = 60.0  # 超时阈值（秒）
+TIMEOUT_THRESHOLD = 60.0  # runtime timeout threshold (seconds)
+COMPILE_TIMEOUT_THRESHOLD = 60.0  # compile timeout threshold (seconds)
 TIME_MODE = "program"
 LINK_LIBS = []
 LINK_DIRS = []
@@ -33,6 +34,7 @@ RUN_ARGS = []
 # time & result in current run
 current_run_time = float("inf")
 current_run_wall_time = float("inf")
+current_compile_time = float("inf")
 current_run_result = ""
 show_history = False
 
@@ -78,7 +80,7 @@ def read_kernel_time(text):
 
 # run the current variable config and get the result
 def transform(run_id, bitcode_file, var_config, diff, is_mxp, parent=0):
-    global current_run_time, current_run_wall_time, current_run_result, RUNNING_FAIL_TIMES
+    global current_run_time, current_run_wall_time, current_run_result, current_compile_time, RUNNING_FAIL_TIMES
     # 确保目标目录存在
     target_dirs = {
         "config": "config",
@@ -116,7 +118,24 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, parent=0):
     command = [COMPILER, '-o', CURRENT_EXEC_NAME, CURRENT_BC_NAME] + CFLAGS + LINK_LIBS + LINK_DIRS + RUNTIME_LIB_DIRS
     if (run_id > 1 or ARCH == "x86_64") and FP128_TO_DD:
         command += [os.path.join(os.getenv("PERCI_TUNER"), "lib/dd_real/libautop-x86.a" if ARCH == "x86_64" else "lib/dd_real/libautop.a"), '-lm']
-    retval = subprocess.call(command, stdin=None, stdout=None, stderr=subprocess.DEVNULL)  # Don't output LLVM.err()
+    compile_start_time = time.perf_counter()
+    try:
+        completed_compile = subprocess.run(
+            command,
+            stdin=None,
+            stdout=None,
+            stderr=subprocess.DEVNULL,  # Don't output LLVM.err()
+            timeout=COMPILE_TIMEOUT_THRESHOLD if run_id > 1 else None,
+        )
+        retval = completed_compile.returncode
+    except subprocess.TimeoutExpired:
+        current_compile_time = float("inf")
+        print(f">>> Perci-Tuner Warning: Compile timeout after {COMPILE_TIMEOUT_THRESHOLD} seconds.")
+        RUNNING_FAIL_TIMES += 1
+        if show_history:
+            data_utils.store_data(run_id, float("inf"), "COMPILE-TIMEOUT", diff, parent=parent)
+        return -2
+    current_compile_time = time.perf_counter() - compile_start_time
     if retval != 0:
         return -2
 
@@ -181,7 +200,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, parent=0):
             RUNNING_FAIL_TIMES += 1
             current_run_result = None
             if show_history:
-                data_utils.store_data(run_id, float("inf"), "TIMEOUT", diff, parent=parent)
+                data_utils.store_data(run_id, float("inf"), "TIMEOUT", diff, parent=parent,
+                                      compile_time=current_compile_time)
             return -2
         except subprocess.CalledProcessError as e:
             if e.stdout:
@@ -192,7 +212,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, parent=0):
             RUNNING_FAIL_TIMES += 1
             current_run_result = None
             if show_history:
-                data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff, parent=parent)
+                data_utils.store_data(run_id, float("inf"), "RUNTIME-ERROR", diff, parent=parent,
+                                      compile_time=current_compile_time)
             return -2
         
         time_list.append(execution_time)
@@ -207,7 +228,8 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, parent=0):
 
     if not satisfy_thres:
         if show_history:
-            data_utils.store_data(run_id, float('inf'), current_run_result, diff, is_mxp, parent)
+            data_utils.store_data(run_id, float('inf'), current_run_result, diff, is_mxp, parent,
+                                  compile_time=current_compile_time)
         return 0
     
     # 计算中位数
@@ -224,5 +246,6 @@ def transform(run_id, bitcode_file, var_config, diff, is_mxp, parent=0):
             current_run_wall_time = (wall_time_list[RUNNING_TIMES//2-1] + wall_time_list[RUNNING_TIMES//2]) / 2
 
     if show_history:
-        data_utils.store_data(run_id, current_run_time, current_run_result, diff, is_mxp, parent)
+        data_utils.store_data(run_id, current_run_time, current_run_result, diff, is_mxp, parent,
+                              compile_time=current_compile_time)
     return 1

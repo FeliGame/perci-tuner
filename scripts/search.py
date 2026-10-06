@@ -220,12 +220,14 @@ def main():
     if data_utils.is_non_finite(data_utils.ORIGINAL_TIME) or data_utils.is_non_finite(data_utils.ORIGINAL_RESULT):
         print(">>> Perci-Tuner Error: baseline produced non-finite time/result, search aborted.")
         sys.exit(1)
-    print("original time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
+    print("original compile time:", transform.current_compile_time, "original run time:", data_utils.ORIGINAL_TIME, "original result:", data_utils.ORIGINAL_RESULT)
     timeout_baseline = (
         transform.current_run_wall_time
         if args['-time-mode'] == 'kernel'
         else data_utils.ORIGINAL_TIME
     )
+    transform.COMPILE_TIMEOUT_THRESHOLD = math.ceil(args['-timeout'] * transform.current_compile_time)
+    print(">>> Perci-Tuner: Compile timeout threshold set to", transform.COMPILE_TIMEOUT_THRESHOLD, "seconds")
     transform.TIMEOUT_THRESHOLD = math.ceil(args['-timeout'] * timeout_baseline)
     print(">>> Perci-Tuner: Timeout threshold set to", transform.TIMEOUT_THRESHOLD, "seconds")
         
