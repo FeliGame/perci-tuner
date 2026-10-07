@@ -1,5 +1,5 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm' > %t.out 2>&1; true
-// RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
+// RUN: timeout -k 2 90 sh -c 'rm -rf "%t" && mkdir -p "%t" && cd "%t" && sh "%PERCI_TUNER/scripts/run.sh" search-optimize  "%s" -arg=100 -arg=100 -arg=0.03 -arg=0.04 -arg=2.0 -arg=0.04 -arg=0.5 -arg=-0.7 -arg=1.0 -arg=10 -arg=2000 -arg=1 -arg=0 -arg=1 -include-func=heston_variance_step -lm' > %t.out 2>&1
+// RUN: ! grep -E 'fatal error:|: error:|error generated|undefined reference|undefined symbol|collect2:|^>>> Perci-Tuner Error' %t.out
 
 /*
  * heston_mc_target.c

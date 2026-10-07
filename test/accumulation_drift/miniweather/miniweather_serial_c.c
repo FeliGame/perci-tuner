@@ -1,5 +1,5 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm' > %t.out 2>&1; true
-// RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
+// RUN: timeout -k 2 200 sh -c 'rm -rf "%t" && mkdir -p "%t" && cd "%t" && sh "%PERCI_TUNER/scripts/run.sh" search-optimize  "%s" -arg=20 -arg=10 -arg=1.0 -arg=100.0 -arg=2 -include-func=reductions -lm' > %t.out 2>&1
+// RUN: ! grep -E 'fatal error:|: error:|error generated|undefined reference|undefined symbol|collect2:|^>>> Perci-Tuner Error' %t.out
 
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>

@@ -1,5 +1,5 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm' > %t.out 2>&1; true
-// RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
+// RUN: timeout -k 2 90 sh -c 'rm -rf "%t" && mkdir -p "%t" && cd "%t" && sh "%PERCI_TUNER/scripts/run.sh" search-optimize  "%s" -lm' > %t.out 2>&1
+// RUN: ! grep -E 'fatal error:|: error:|error generated|undefined reference|undefined symbol|collect2:|^>>> Perci-Tuner Error' %t.out
 
 #include <math.h>
 #include <stdio.h>
@@ -65,7 +65,7 @@ int main(void)
     real_t vy0 = (real_t)1.0;
     real_t vz0 = (real_t)0.0;
     real_t result = (real_t)0.0;
-    int count = 50000;
+    int count = 5000;  // smoke-size iteration count (upstream default: 50000)
     while (count--)
     {
         result = ex0(x0, y0, z0, vx0, vy0, vz0);

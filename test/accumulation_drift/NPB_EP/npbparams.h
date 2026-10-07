@@ -1,11 +1,11 @@
-/* CLASS = S */
+/* CLASS = S, M reduced to 10 for smoke tests */
 /*
 c  This file is generated automatically by the setparams utility.
 c  It sets the number of processors and the class of the NPB
 c  in this directory. Do not modify it by hand.
 */
 #define	CLASS	 'S'
-#define	M	24
+#define	M	10
 #define	CONVERTDOUBLE	FALSE
 #define COMPILETIME "06 Jan 2026"
 #define NPBVERSION "3.0 structured"

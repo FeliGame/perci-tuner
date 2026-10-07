@@ -10,7 +10,7 @@ c  in this directory. Do not modify it by hand.
 #define	ISIZ2	12
 #define	ISIZ3	12
 /* number of iterations and how often to print the norm */
-#define	ITMAX_DEFAULT	50
+#define	ITMAX_DEFAULT	5  /* smoke: upstream default is 50 */
 #define	INORM_DEFAULT	50
 #define	DT_DEFAULT	0.5
 #define	CONVERTDOUBLE	FALSE

@@ -1,5 +1,5 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm' > %t.out 2>&1; true
-// RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
+// RUN: timeout -k 2 90 sh -c 'rm -rf "%t" && mkdir -p "%t" && cd "%t" && sh "%PERCI_TUNER/scripts/run.sh" search-optimize "%s" "%S/common/c_randdp.c" "%S/common/c_timers.c" "%S/common/wtime.c" -I%S/common -lm' > %t.out 2>&1
+// RUN: ! grep -E 'fatal error:|: error:|error generated|undefined reference|undefined symbol|collect2:|^>>> Perci-Tuner Error' %t.out
 
 /*--------------------------------------------------------------------
   
@@ -39,7 +39,7 @@
 #include "npbparams.h"
 
 /* parameters */
-#define	MK		16
+#define	MK	10
 #define	MM		(M - MK)
 #define	NN		(1 << MM)
 #define	NK		(1 << MK)

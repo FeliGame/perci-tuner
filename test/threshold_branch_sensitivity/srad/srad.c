@@ -1,5 +1,5 @@
-// RUN: timeout -k 2 10 sh -c 'cd "%PERCI_TUNER" && sh scripts/run.sh search-optimize  "%s" -lm -arg=2048 -arg=2048 -arg=0 -arg=127 -arg=0 -arg=127 -arg=2 -arg=0.5 -arg=2' > %t.out 2>&1; true
-// RUN: ! grep -q '^>>> Perci-Tuner Error' %t.out
+// RUN: timeout -k 2 90 sh -c 'rm -rf "%t" && mkdir -p "%t" && cd "%t" && sh "%PERCI_TUNER/scripts/run.sh" search-optimize  "%s" -lm -arg=256 -arg=256 -arg=0 -arg=127 -arg=0 -arg=127 -arg=2 -arg=0.5 -arg=2' > %t.out 2>&1
+// RUN: ! grep -E 'fatal error:|: error:|error generated|undefined reference|undefined symbol|collect2:|^>>> Perci-Tuner Error' %t.out
 
 // srad.cpp : Defines the entry point for the console application.
 //

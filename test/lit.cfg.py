@@ -24,7 +24,7 @@ config.suffixes = [".c"]
 # filenames so lit skips them.
 _helper_names = set()
 for _dp, _dns, _fns in os.walk(config.test_source_root):
-    _dns[:] = [d for d in _dns if not d.startswith(".") and d != "Output"]
+    _dns[:] = [d for d in _dns if not d.startswith(".") and d != "Output" and d != "sys"]
     for _fn in _fns:
         if not _fn.endswith(".c"):
             continue
@@ -32,7 +32,9 @@ for _dp, _dns, _fns in os.walk(config.test_source_root):
             _head = _f.read(256)
         if "// RUN:" not in _head:
             _helper_names.add(_fn)
-config.excludes = sorted(_helper_names)
+# NPB benchmarks ship a "sys" directory with build utilities (e.g.
+# setparams.c); those are not tuner test cases.
+config.excludes = sorted(_helper_names | {"sys"})
 
 # ShTest cases are shell-based; advertise the feature so `REQUIRES: shell`
 # guards evaluate as available.
@@ -48,5 +50,4 @@ perci_tuner = os.environ.get("PERCI_TUNER") or project_root
 config.environment["PERCI_TUNER"] = perci_tuner
 config.substitutions.append(("%PERCI_TUNER", perci_tuner))
 
-# Safety net in case a runaway test ignores its own command-level timeout.
-config.timeout = 60
+config.timeout = 240

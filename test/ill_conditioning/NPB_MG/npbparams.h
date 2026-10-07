@@ -1,19 +1,19 @@
-/* CLASS = A */
+/* CLASS = S (class A 256^3 too slow for smoke tests) */
 /*
 c  This file is generated automatically by the setparams utility.
 c  It sets the number of processors and the class of the NPB
 c  in this directory. Do not modify it by hand.
 */
-#define	NX_DEFAULT	256
-#define	NY_DEFAULT	256
-#define	NZ_DEFAULT	256
+#define	NX_DEFAULT	32
+#define	NY_DEFAULT	32
+#define	NZ_DEFAULT	32
 #define	NIT_DEFAULT	4
-#define	LM	8
-#define	LT_DEFAULT	8
+#define	LM	7
+#define	LT_DEFAULT	3
 #define	DEBUG_DEFAULT	0
-#define	NDIM1	8
-#define	NDIM2	8
-#define	NDIM3	8
+#define	NDIM1	3
+#define	NDIM2	3
+#define	NDIM3	3
 #define	CONVERTDOUBLE	FALSE
 #define COMPILETIME "07 Jan 2026"
 #define NPBVERSION "3.0 structured"
