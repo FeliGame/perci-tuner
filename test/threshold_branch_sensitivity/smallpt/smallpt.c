@@ -1,8 +1,5 @@
-// RUN: timeout -k 2 90 sh -c 'rm -rf "%t" && mkdir -p "%t" && cd "%t" && sh "%PERCI_TUNER/scripts/run.sh" search-optimize  "%s" -arg=1 -arg=32 -arg=32 -lm' > %t.out 2>&1
+// RUN: timeout -k 2 200 sh -c 'rm -rf "%t" && mkdir -p "%t" && cd "%t" && sh "%PERCI_TUNER/scripts/run.sh" search-optimize  "%s" -arg=1 -arg=32 -arg=32 -lm' > %t.out 2>&1
 // RUN: ! grep -E 'fatal error:|: error:|error generated|undefined reference|undefined symbol|collect2:|^>>> Perci-Tuner Error' %t.out
-// XFAIL: *
-// Known tuner bug: ChangeVariableDecl emits malformed IR (verifyModule
-// fails) on the first transformed config. Re-enable once the pass is fixed.
 
 /*
  * smallpt.c

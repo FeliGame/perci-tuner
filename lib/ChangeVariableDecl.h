@@ -66,6 +66,8 @@ private:
     Instruction* repairCallInst(CallInst *call);
     Instruction* repairPHINode(PHINode *phi);
     Instruction* repairGEPInst(GetElementPtrInst* gep, Type* targetType);
+    Instruction* repairExtractValueInst(ExtractValueInst *ev);
+    Instruction* repairInsertValueInst(InsertValueInst *iv);
     Constant* repairGEPConstantExpr(ConstantExpr *constant, Type* targetType);
     Instruction* repairIntToFP(Instruction* castInst);
     void repairAllocaUsers(AllocaInst* alloca);

@@ -477,6 +477,37 @@ Instruction* ChangeVariableDecl::repairReturnInst(ReturnInst* ret) {
     return nullptr;  // nothing changed
 }
 
+Instruction* ChangeVariableDecl::repairExtractValueInst(ExtractValueInst *ev) {
+    ArrayRef<unsigned> idxs(ev->idx_begin(), ev->getNumIndices());
+    Type *indexedTy = ExtractValueInst::getIndexedType(
+        ev->getAggregateOperand()->getType(), idxs);
+    if (!indexedTy || indexedTy == ev->getType()) return nullptr;
+    auto *newEV = ExtractValueInst::Create(ev->getAggregateOperand(), idxs,
+                                           ev->getName(), ev);
+    newEV->setDebugLoc(ev->getDebugLoc());
+    ev->replaceAllUsesWith(newEV);
+    instToErase.insert(ev);
+    return newEV;
+}
+
+Instruction* ChangeVariableDecl::repairInsertValueInst(InsertValueInst *iv) {
+    ArrayRef<unsigned> idxs(iv->idx_begin(), iv->getNumIndices());
+    Type *indexedTy = ExtractValueInst::getIndexedType(
+        iv->getAggregateOperand()->getType(), idxs);
+    if (!indexedTy) return nullptr;
+    Value *inserted = iv->getInsertedValueOperand();
+    if (inserted->getType() == indexedTy) return nullptr;
+    // element precision changed: cast the inserted value to the current member type
+    Value *casted = insertCast(inserted, indexedTy, iv);
+    if (!casted) return nullptr;
+    auto *newIV = InsertValueInst::Create(iv->getAggregateOperand(), casted, idxs,
+                                          iv->getName(), iv);
+    newIV->setDebugLoc(iv->getDebugLoc());
+    iv->replaceAllUsesWith(newIV);
+    instToErase.insert(iv);
+    return newIV;
+}
+
 Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType, unsigned align) {
     if (load->getType()->isIntegerTy()) return nullptr; // ignore integer load
     // errs() << "[repair load] " << *load << "->" << *targetType << "\n";
@@ -491,6 +522,13 @@ Instruction* ChangeVariableDecl::repairLoadInst(LoadInst* load, Type* targetType
             loadType = arrayType->getElementType();
         if (load->getType()->isPointerTy())
             return load;
+        // By-value aggregate arguments are ABI-lowered to a coerced load form
+        // (e.g. [3 x double] for a 3-member HFA); such loads feed calls
+        // directly and must keep the coerced type even after the in-memory
+        // struct body changed, or the call signature stops matching.
+        if (load->getType()->isAggregateType() && loadType->isAggregateType() &&
+            load->getType() != loadType)
+            return nullptr;
         if (loadType != load->getType()) {
             auto *newLoad = new LoadInst(loadType, ptrOperand, load->getName(), load->isVolatile(),
 #if LLVM_VERSION_MAJOR >= 19
@@ -1020,6 +1058,10 @@ void ChangeVariableDecl::repairUserType(Value* origin, User *user, Type* targetT
         newInst = repairPHINode(phi);
     else if (auto *gep = dyn_cast<GetElementPtrInst>(inst))
         newInst = repairGEPInst(gep, targetType);
+    else if (auto *ev = dyn_cast<ExtractValueInst>(inst))
+        newInst = repairExtractValueInst(ev);
+    else if (auto *iv = dyn_cast<InsertValueInst>(inst))
+        newInst = repairInsertValueInst(iv);
     else if (auto *castInst = dyn_cast<SIToFPInst>(inst))
         newInst = repairIntToFP(castInst);
     else if (auto *castInst = dyn_cast<UIToFPInst>(inst))
