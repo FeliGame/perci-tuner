@@ -1891,17 +1891,6 @@ Function* ChangeVariableDecl::cloneFunction(Function *oldFunc, std::map<int, Typ
         return nullptr;
     }
 
-    DenseMap<CallInst*, std::pair<unsigned, unsigned>> oldCallInstsInfo;
-    for (auto &BB : *oldFunc) {
-        for (auto &I : BB) {
-            if (auto *oldCall = dyn_cast<CallInst>(&I)) {
-                oldCallInstsInfo[oldCall] = {oldCall->getDebugLoc().getLine(), oldCall->getDebugLoc().getCol()};
-            }
-        }
-    }
-
-    // 使用 CloneFunction 函数来克隆函数体
-    // 首先在 VMap 中添加旧函数参数到新函数参数的映射
     ValueToValueMapTy VMap;
     auto oldArgIt = oldFunc->arg_begin();
     auto newArgIt = newFunc->arg_begin();
@@ -1909,7 +1898,7 @@ Function* ChangeVariableDecl::cloneFunction(Function *oldFunc, std::map<int, Typ
         VMap[&(*oldArgIt)] = &(*newArgIt);
     }
 
-    SmallVector<ReturnInst*, 8> Returns;  
+    SmallVector<ReturnInst*, 8> Returns;
     CloneFunctionInto(newFunc, oldFunc, VMap, CloneFunctionChangeType::LocalChangesOnly, Returns);
     cloneCache[key] = newFunc;
 
@@ -2038,15 +2027,9 @@ void ChangeVariableDecl::updateCallInst(CallInst *call, Function &newFunc, std::
     }
     
     // 创建新的CallInst
-    CallInst *newCall = CallInst::Create(newFunc.getFunctionType(), &newFunc, newArgs, "",
-#if LLVM_VERSION_MAJOR >= 19
-        call->getIterator()
-#else
-        call
-#endif
-    );
+    IRBuilder<> Builder(call);
+    CallInst *newCall = Builder.CreateCall(newFunc.getFunctionType(), &newFunc, newArgs, call->getName());
     newCall->setDebugLoc(call->getDebugLoc());
-    newCall->takeName(call);
     replaceMultiOperandInst(call, newCall);
 
     SmallVector<User*, 8> users;
