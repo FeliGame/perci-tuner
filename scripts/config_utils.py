@@ -43,6 +43,59 @@ FUNCTION_PRECISIONS = [
     "tgamma", "tgammaf", "tgammal"  # gamma函数（C99）
 ]
 
+# Map the bit width used by the -search-range option to a precision name.
+SEARCH_RANGE_WIDTHS = {
+    16: "__fp16",
+    32: "float",
+    64: "double",
+    128: "long double",
+}
+
+# Precisions allowed in the search space. The default is the full range.
+# It is restricted by the -search-range option (see set_search_range).
+SEARCH_RANGE = list(PRECISIONS)
+
+
+# Restrict the search space to the precisions given by -search-range.
+# range_str is a comma-separated list of bit widths (16, 32, 64, 128); the
+# user-provided order does not matter because the result is always sorted
+# ascending as required by the search flow.
+def set_search_range(range_str):
+    global SEARCH_RANGE
+    allowed = []
+    for token in str(range_str).split(','):
+        token = token.strip()
+        if token == '':
+            continue
+        if token not in ('16', '32', '64', '128'):
+            raise ValueError(
+                f"invalid value '{token}' for -search-range (allowed: 16, 32, 64, 128)"
+            )
+        precision = SEARCH_RANGE_WIDTHS[int(token)]
+        if precision not in allowed:
+            allowed.append(precision)
+    if not allowed:
+        raise ValueError("-search-range requires at least one of 16, 32, 64, 128")
+    # Keep the ascending precision order used everywhere else.
+    SEARCH_RANGE = [p for p in PRECISIONS if p in allowed]
+
+
+# Extract the base precision name from a variable type (e.g. "const double*[6]" -> "double")
+def _variable_base_precision(type_str):
+    base = type_str.split('[')[0].rstrip('*').strip()
+    if base.startswith('const '):
+        base = base[len('const '):]
+    return base
+
+
+# Map a math function version name (e.g. "sinf"/"sin"/"sinl") to its precision
+def _function_base_precision(version):
+    if version.endswith('l'):
+        return "long double"
+    if version.endswith('f'):
+        return "float"
+    return "double"
+
 
 # Helper function to extract the size from an (const) array type (e.g., "const float[6]" -> 6)
 def extract_array_size(type_str):
@@ -87,6 +140,27 @@ def set_var_search_types(change_set):
             change_var['search_types'] = CONST_PRECISIONS[:CONST_PRECISIONS.index(type_str) + 1]
         elif type_str in POINTER_PRECISIONS:
             change_var['search_types'] = POINTER_PRECISIONS[:POINTER_PRECISIONS.index(type_str) + 1]
+
+    # Apply the -search-range constraint to every element (variables and calls).
+    # An element may take any precision in the search range, and always keeps its
+    # original precision, so that mixed configs (some elements lowered to the
+    # search range, others left unchanged) remain reachable.
+    for change_var in change_set:
+        search_types = change_var.get('search_types', [])
+        if not search_types:
+            continue
+        if 'caller' in change_var:  # math function call
+            original = _function_base_precision(change_var['type'])
+            precision_of = _function_base_precision
+        else:  # variable (global/local/struct member)
+            original = _variable_base_precision(change_var['type'])
+            precision_of = _variable_base_precision
+        # Filtering/sorting keeps the ascending precision order.
+        change_var['search_types'] = sorted(
+            (t for t in search_types
+             if precision_of(t) in SEARCH_RANGE or precision_of(t) == original),
+            key=lambda t: PRECISIONS.index(precision_of(t)),
+        )
 
     # Delete the variables that don't need to change precisions
     # i.  the variables' type is not in the valid precision types

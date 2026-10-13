@@ -22,6 +22,7 @@ def parse_arguments():
         '-partition': 'sorted_partition.json',
         '-fp128todd': False,
         '-mix-binop': True,
+        '-search-range': '128,64,32,16',
         '-link-libs': [],
         '-link-dirs': [],
         '-rpath': [],
@@ -157,6 +158,11 @@ def main():
     bitcode = args['-ir']
     original_conf_file = args['-config']
     config_utils.thres = args['-thres']
+    try:
+        config_utils.set_search_range(args['-search-range'])
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
     transform.RUNNING_TIMES = args['-repeat']
     transform.TIME_MODE = args['-time-mode']
     transform.show_history = args['-history']
@@ -196,6 +202,7 @@ def main():
     print(f"  Timeout multiplier: {args['-timeout']}")
     print(f"  Time mode: {args['-time-mode']}")
     print(f"  Shuffled: {args['-shuffled']}")
+    print(f"  Search range: {args['-search-range']}")
     print(f"  FP128 to DD: {args['-fp128todd']}")
     print(f"  Double-Double & double mix BinOp: {args['-mix-binop']}")
     print(f"  Link libs: {args['-link-libs']}")

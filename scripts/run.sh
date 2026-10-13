@@ -40,6 +40,7 @@ HISTORY_FLAG=true
 SHUFFLED_FLAG=false
 BASELINE_TIME=""
 BASELINE_RESULT=""
+SEARCH_RANGE="128,64,32,16"
 
 # Change-by-config options.
 TARGET_CONFIG="changed_config.json"
@@ -166,6 +167,9 @@ Search options:
   -timeout=<1.5>              Set runtime&compile timeout multiplier (default 1.5 x baseline)
   -time-mode=program/kernel   Measure full program or stderr core_time_sec=<seconds> (default program)
   -shuffled                   Shuffle searched variables (default false)
+  -search-range=<list>        Comma-separated searchable precisions as bit
+                              widths from 128,64,32,16 (default 128,64,32,16)
+                              Only lowers precision (cannot upgrade original)
   -history                    Keep search history (default true)
   -arg=<arg>                  Add one executable argument, in order
   -base-time=<time>           Manually set baseline running time
@@ -389,6 +393,7 @@ run_search_optimize() {
         -time-mode="$TIME_MODE" \
         -history="$HISTORY_FLAG" \
         -shuffled="$SHUFFLED_FLAG" \
+        -search-range="$SEARCH_RANGE" \
         -mxp="$MXP_FLAG" \
         -fp128todd="$DD_FLAG" \
         output.bc \
@@ -468,6 +473,9 @@ for arg in "$@"; do
             ;;
         -shuffled)
             SHUFFLED_FLAG=true
+            ;;
+        -search-range=*)
+            SEARCH_RANGE="${arg#-search-range=}"
             ;;
         -history)
             HISTORY_FLAG=true
