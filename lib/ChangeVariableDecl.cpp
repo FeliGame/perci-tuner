@@ -152,7 +152,9 @@ void ChangeVariableDecl::initBaseTypeMaps(Module &module) {
                     if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
                         auto loc = DDI->getDebugLoc();
                         if (!loc) continue;
-                        auto fileName = DV->getFile()->getFilename().str();
+                        auto file = DV->getFile();
+                        if (!file) continue;
+                        auto fileName = file->getFilename().str();
                         std::string key = fileName + ":" + std::to_string(loc.getLine()) + ":" + std::to_string(loc.getCol());
                         auto it = configMap.find(key);
                         if (it == configMap.end()) continue;
@@ -1433,7 +1435,9 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
                         auto varName = DV->getName();
                         auto loc = DVR->getDebugLoc();
                         if (!loc) continue;
-                        auto fileName = DV->getFile()->getFilename().str();
+                        auto file = DV->getFile();
+                        if (!file) continue;
+                        auto fileName = file->getFilename().str();
 
                         std::string key = fileName + ":" + std::to_string(loc.getLine()) + ":" + std::to_string(loc.getCol());
                         auto it = configMap.find(key);
@@ -1502,8 +1506,11 @@ void ChangeVariableDecl::runOnFunction(Function &F) {
             else if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
                 if (auto *DV = dyn_cast<DILocalVariable>(DDI->getVariable())) {
                     auto varName = DV->getName();
-                    auto fileName = DV->getFile()->getFilename().str();
                     auto loc = DDI->getDebugLoc();
+                    if (!loc) continue;
+                    auto file = DV->getFile();
+                    if (!file) continue;
+                    auto fileName = file->getFilename().str();
 
                     std::string key = fileName + ":" + std::to_string(loc.getLine()) + ":" + std::to_string(loc.getCol());
                     auto it = configMap.find(key);
