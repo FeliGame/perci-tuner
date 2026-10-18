@@ -49,8 +49,6 @@ add_llvm_pass_plugin(PerciTuner
     lib/FP128ToDD.cpp
 )
 
-add_library(PerciAST MODULE ast/PerciAST.cpp)
-
 # Link against LLVM libraries
 target_link_libraries(PerciTuner ${LLVM_LIBS})
 

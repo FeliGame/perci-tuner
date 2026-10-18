@@ -65,8 +65,6 @@ OPT_LEVEL="-O2" # Example: -O2. Beware that optimization may change results.
 # run print-config before search
 REFRESH_CONFIG=true
 
-# PERCI_ANALYSIS_OPTIONS="-Xclang -load -Xclang $PERCI_TUNER/build/libPerciAST.so -Xclang -plugin -Xclang perci-analysis "
-
 ###############################################################################
 # Small helpers
 ###############################################################################
@@ -291,11 +289,11 @@ compile_sources_to_bitcode() {
         [ -f "$src_file" ] || die "file not found: $src_file"
 
         if [ "$FPE_FLAG" = true ]; then
-            clang $PERCI_ANALYSIS_OPTIONS -S -emit-llvm -ffp-contract=fast -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe \
+            clang -S -emit-llvm -ffp-contract=fast -g -gdwarf-2 -funwind-tables -mllvm -mxpfpe \
                 "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
                 -fno-discard-value-names -o "$src_file.bc"
         else
-            clang $PERCI_ANALYSIS_OPTIONS -g -emit-llvm -ffp-contract=fast -c \
+            clang -g -emit-llvm -ffp-contract=fast -c \
                 "$src_file" $FP128_SUPPORT $INCLUDE_DIRS $HALF_PRECISION_SUPPORT \
                 -fno-discard-value-names -o "$src_file.bc"
         fi
@@ -343,7 +341,7 @@ run_change_by_config() {
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output.bc -o changed_output.bc
 
-    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
+    clang $OPT_LEVEL -o changed_output changed_output.bc $LINK_LIBS $LINK_DIRS $DD_SUPPORT
     info "[Changed] IR: changed_output.bc, Executable: changed_output"
 }
 
@@ -354,7 +352,7 @@ print_config() {
             --is-original=true \
             output.bc -o mxp.bc
 
-        clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+        clang $OPT_LEVEL -o output mxp.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
         rm mxp.bc
 
         LAST_LINE=$(./output | tail -n 1)
@@ -380,7 +378,7 @@ print_config() {
     # remove these to ensure optimzations available
     sed -i 's/\boptnone\b//g' output.bc
     sed -i 's/\bnoinline\b//g' output.bc
-    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
+    clang $OPT_LEVEL -o output output.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $DD_SUPPORT
     info "[Original] Config: config.json, IR: output.bc, Executable: output"
 }
 
@@ -410,7 +408,7 @@ run_multi_version() {
 
     export PERCI_TUNER_ORIGINAL_VERSION="$ORIGINAL_VERSION_FLAG"
 
-    clang $PERCI_ANALYSIS_OPTIONS -S -emit-llvm -fno-discard-value-names \
+    clang -S -emit-llvm -fno-discard-value-names \
         -o mvselect.bc "$PERCI_TUNER/lib/mvselect.c"
 
     llvm-link output.bc mvselect.bc -o output+mvselect.bc
@@ -426,14 +424,14 @@ run_multi_version() {
         --enable-mix-binop="$MIX_BINOP_FLAG" \
         output+mvselect.bc -o merged.bc
 
-    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
+    clang $OPT_LEVEL -o merged merged.bc $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
     info "[Merged] IR: merged.bc, Executable: merged"
 }
 
 run_fpe_postprocess() {
     [ "$FPE_FLAG" = true ] || return 0
 
-    clang $PERCI_ANALYSIS_OPTIONS $OPT_LEVEL -o fpe_opt -rdynamic -funwind-tables optimized_output.bc \
+    clang $OPT_LEVEL -o fpe_opt -rdynamic -funwind-tables optimized_output.bc \
         -lm $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS
 }
 
