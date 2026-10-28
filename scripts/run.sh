@@ -41,6 +41,12 @@ SHUFFLED_FLAG=false
 BASELINE_TIME=""
 BASELINE_RESULT=""
 SEARCH_RANGE="128,64,32,16"
+STRATEGY_FILE=""
+STRATEGY_FORMAT="auto"
+MAX_EVALS="0"
+AGENT="none"
+ALLOW_GENERATED_STRATEGY=false
+TELEMETRY_INTERVAL="25"
 
 # Change-by-config options.
 TARGET_CONFIG="changed_config.json"
@@ -159,7 +165,8 @@ Available modes:
   multi-version     Generate multi-version executable
 
 Search options:
-  -algorithm=exhaust/dd/pedd  Select search algorithm (default dd)
+  -algorithm=exhaust/dd/pedd/hidd/strategy
+                              Select search algorithm (default dd)
   -thres=<1e-6>               Set error threshold (default 1e-6)
   -repeat=<1>                 Set repeat count (default 1)
   -timeout=<1.5>              Set runtime&compile timeout multiplier (default 1.5 x baseline)
@@ -173,6 +180,18 @@ Search options:
   -base-time=<time>           Manually set baseline running time
   -base-result=<result>       Manually set baseline result value
   -refresh-config             Refresh initial config file (default true)
+  -strategy=<file>            Search strategy file (.jsonl 行式 / .json DSL / .py);
+                              omit with -agent=opencode to let LLM generate one
+  -strategy-format=auto/json/jsonl/python
+                              Strategy format (default auto by extension)
+  -max-evals=<n>              Maximum evaluations, 0 means unlimited (default 0)
+  -agent=none/opencode        Agent for program-structure strategy generation
+                              and checkpoint analysis (default none)
+  -telemetry-interval=<n>     Checkpoint interval in evals: every n evals the
+                              agent analyzes run_history data (time, precision
+                              configs, results, trends) and may adjust search
+                              (default 25)
+  -allow-generated-strategy   Allow executing Python strategy files
 
 Common options:
   -include-file=<file1,pat*>     Comma-separated source files to scan (default scan all)
@@ -383,6 +402,11 @@ print_config() {
 }
 
 run_search_optimize() {
+    # 策略/agent 参数总是传递：-agent=opencode 可以在没有 -strategy 时生成策略
+    STRATEGY_ARGS="-strategy=$STRATEGY_FILE -strategy-format=$STRATEGY_FORMAT -max-evals=$MAX_EVALS -agent=$AGENT -telemetry-interval=$TELEMETRY_INTERVAL"
+    if [ "$ALLOW_GENERATED_STRATEGY" = true ]; then
+        STRATEGY_ARGS="$STRATEGY_ARGS -allow-generated-strategy"
+    fi
     python3 -u "$PERCI_TUNER/scripts/search.py" \
         -algorithm="$RUN_ALGORITHM" \
         -thres="$THRESHOLD" \
@@ -398,7 +422,8 @@ run_search_optimize() {
         -mix-binop="$MIX_BINOP_FLAG" \
         $RUN_ARGS $LINK_LIBS $LINK_DIRS $RUNTIME_LIB_DIRS $OPT_LEVEL \
         -base-time="$BASELINE_TIME" \
-        -base-result="$BASELINE_RESULT"
+        -base-result="$BASELINE_RESULT" \
+        $STRATEGY_ARGS
 }
 
 run_multi_version() {
@@ -465,6 +490,24 @@ for arg in "$@"; do
             ;;
         -algorithm=*)
             RUN_ALGORITHM="${arg#-algorithm=}"
+            ;;
+        -strategy=*)
+            STRATEGY_FILE="${arg#-strategy=}"
+            ;;
+        -strategy-format=*)
+            STRATEGY_FORMAT="${arg#-strategy-format=}"
+            ;;
+        -max-evals=*)
+            MAX_EVALS="${arg#-max-evals=}"
+            ;;
+        -agent=*)
+            AGENT="${arg#-agent=}"
+            ;;
+        -telemetry-interval=*)
+            TELEMETRY_INTERVAL="${arg#-telemetry-interval=}"
+            ;;
+        -allow-generated-strategy)
+            ALLOW_GENERATED_STRATEGY=true
             ;;
         -mix-binop=*)
             MIX_BINOP_FLAG="${arg#-mix-binop=}"

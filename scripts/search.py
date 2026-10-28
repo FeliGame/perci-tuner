@@ -5,6 +5,7 @@
 import sys, json, os, time, copy, math
 import config_utils, data_utils, transform
 import exhaust_algorithm, dd_algorithm, hidd_algorithm, pedd_algorithm, algorithm_utils
+import strategy_algorithm
 
 def parse_arguments():
     params = {
@@ -30,6 +31,12 @@ def parse_arguments():
 	    '-run-args': [],
         '-base-time': '',
         '-base-result': '',
+        '-strategy': '',
+        '-strategy-format': 'auto',
+        '-max-evals': 0,
+        '-agent': 'none',
+        '-allow-generated-strategy': False,
+        '-telemetry-interval': 25,
     }
     
     for arg in sys.argv[1:]:
@@ -43,6 +50,8 @@ def parse_arguments():
             k, v = arg.split('=', 1)
             if v != '':
                 params['-run-args'].append(v)
+        elif arg == '-allow-generated-strategy':
+            params['-allow-generated-strategy'] = True
         elif '=' in arg:
             key, value = arg.split('=', 1)
             if key in params:
@@ -199,6 +208,20 @@ def main():
     print(f"  Repeat times: {args['-repeat']}")
     print(f"  Show history: {args['-history']}")
     print(f"  Algorithm: {args['-algorithm']}")
+    strategy_arg = args['-strategy']
+    if not strategy_arg and args['-agent'] != 'none':
+        strategy_arg = '(LLM 生成)'
+    elif not strategy_arg:
+        strategy_arg = '(未指定)'
+    print(f"  Strategy: {strategy_arg}")
+    print(f"  Strategy format: {args['-strategy-format']}")
+    if args['-max-evals'] == 0:
+        print("  Max evals: 0 (unlimited — 建议配合 -max-evals 限制评估次数)")
+    else:
+        print(f"  Max evals: {args['-max-evals']}")
+    print(f"  Agent: {args['-agent']}")
+    print(f"  Allow generated strategy: {args['-allow-generated-strategy']}")
+    print(f"  Telemetry interval: {args['-telemetry-interval']}")
     print(f"  Timeout multiplier: {args['-timeout']}")
     print(f"  Time mode: {args['-time-mode']}")
     print(f"  Shuffled: {args['-shuffled']}")
@@ -251,6 +274,8 @@ def main():
         partition_conf_file = args['-partition']
         partition_tree = json.loads(open(partition_conf_file, 'r').read())
         hidd_algorithm.run(bitcode, change_set, partition_tree)
+    elif algorithm.lower() in ('strategy', 'llm'):
+        strategy_algorithm.run(bitcode, change_set, args)
     else:
         print("Error: Invalid algorithm!")
         sys.exit(1)
