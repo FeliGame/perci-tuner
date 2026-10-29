@@ -2,7 +2,10 @@ build/
 config/
 exec/
 IR/
-*/__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
 ir_timing.txt
 .DS_Store
 *.csv
@@ -20,3 +23,6 @@ merged
 
 test/**/Output/
 test/.lit_test_times.txt
+
+# Perci-Tuner Agent Skill runtime
+.sessions/
